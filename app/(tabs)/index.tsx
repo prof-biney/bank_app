@@ -28,7 +28,6 @@ export default function Index() {
         <View className="mb-8">{/* <BankCard /> */}</View>
 
         {/* Transactions */}
-        
       </ScrollView>
     </SafeAreaView>
   );
