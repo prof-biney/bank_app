@@ -1,3 +1,39 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer utilities {
+  .flex-center {
+    @apply flex items-center justify-center;
+  }
+
+  .flex-between {
+    @apply flex items-center justify-between;
+  }
+
+  .flex-start {
+    @apply flex items-start justify-center;
+  }
+}
+
+@layer components {
+  .greeting {
+    @apply font-inter text-base text-gray-500 mb-1;
+  }
+
+  .username {
+    @apply text-2xl font-inter-bold text-gray-800;
+  }
+
+  .notification-button {
+    @apply relative w-11 h-11 rounded-full bg-white justify-center items-center shadow shadow-black/10 elevation-3;
+  }
+
+  .label {
+    @apply text-base text-start w-full font-inter-medium text-gray-500 pl-2;
+  }
+
+  .input {
+    @apply rounded-lg p-3 w-full text-base font-inter-semibold text-dark-100 border-b leading-5;
+  }
+}
