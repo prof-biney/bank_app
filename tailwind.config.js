@@ -9,6 +9,7 @@ module.exports = {
           1: "rgba(255, 255, 255, 0.10)",
         },
         bankGradient: "#0179FE",
+        primary: "#0179FE",
         indigo: {
           500: "#6172F3",
           700: "#3538CD",
