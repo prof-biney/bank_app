@@ -53,6 +53,9 @@ module.exports = {
           700: "#344054",
           900: "#101828",
         },
+        dark: {
+          100: "#181C2E",
+        },
       },
       fontFamily: {
         inter: ["Inter", "sans-serif"],

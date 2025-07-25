@@ -29,7 +29,7 @@ const CustomInput = ({
         placeholderTextColor="#888"
         className={cn(
           "input",
-          isFocused ? "border-red-800" : "border-gray-300"
+          isFocused ? "border-blue-600" : "border-gray-300"
         )}
       />
     </View>

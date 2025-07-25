@@ -1,10 +1,9 @@
-import "@/app/global.css"; // Import global styles
 import { Bell } from "lucide-react-native";
 import { useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-export default function Index() {
+export default function App() {
   const [showNotification, setShowNotification] = useState(false);
 
   return (
