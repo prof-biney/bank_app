@@ -22,6 +22,6 @@
   }
 
   .input {
-    @apply rounded-lg p-3 w-full text-base font-inter-semibold text-dark-100 border-b leading-5;
+    @apply rounded-lg p-3 w-full text-base font-inter-semibold text-dark-100 border leading-5;
   }
 }
