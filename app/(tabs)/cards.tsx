@@ -2,12 +2,12 @@ import React from "react";
 import {
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { BankCard } from "../../components/BankCard";
 import { useApp } from "../../context/AppContext";
 
