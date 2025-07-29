@@ -1,4 +1,3 @@
-import { clsx } from "clsx";
 import { Link, router } from "expo-router";
 import React, { useState } from "react";
 import {
@@ -6,6 +5,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
@@ -43,40 +43,32 @@ export default function SignUpScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-teal-700">
+    <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
-        className="flex-1"
+        style={styles.keyboardContainer}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        <View className="flex-1 justify-center px-6">
-          <View className="items-center mb-12">
-            <Text className="text-4xl font-bold text-white mb-2">
-              Create Account
-            </Text>
-            <Text className="text-base text-white/80">Join us today</Text>
+        <View style={styles.content}>
+          <View style={styles.header}>
+            <Text style={styles.title}>Create Account</Text>
+            <Text style={styles.subtitle}>Join us today</Text>
           </View>
 
-          <View className="bg-white rounded-xl p-6 shadow-md elevation-8">
-            {/* Full Name */}
-            <View className="mb-5">
-              <Text className="text-sm font-semibold text-gray-700 mb-2">
-                Full Name
-              </Text>
+          <View style={styles.form}>
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Full Name</Text>
               <TextInput
-                className="border border-gray-300 rounded-lg px-4 py-3 text-base bg-gray-50"
+                style={styles.input}
                 value={name}
                 onChangeText={setName}
                 placeholder="Enter your full name"
               />
             </View>
 
-            {/* Email */}
-            <View className="mb-5">
-              <Text className="text-sm font-semibold text-gray-700 mb-2">
-                Email
-              </Text>
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Email</Text>
               <TextInput
-                className="border border-gray-300 rounded-lg px-4 py-3 text-base bg-gray-50"
+                style={styles.input}
                 value={email}
                 onChangeText={setEmail}
                 placeholder="Enter your email"
@@ -85,13 +77,10 @@ export default function SignUpScreen() {
               />
             </View>
 
-            {/* Password */}
-            <View className="mb-5">
-              <Text className="text-sm font-semibold text-gray-700 mb-2">
-                Password
-              </Text>
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Password</Text>
               <TextInput
-                className="border border-gray-300 rounded-lg px-4 py-3 text-base bg-gray-50"
+                style={styles.input}
                 value={password}
                 onChangeText={setPassword}
                 placeholder="Create a password"
@@ -99,29 +88,20 @@ export default function SignUpScreen() {
               />
             </View>
 
-            {/* Submit Button */}
             <TouchableOpacity
-              className={clsx(
-                "bg-teal-700 rounded-lg py-4 items-center mt-2",
-                isLoading && "opacity-60"
-              )}
+              style={[styles.button, isLoading && styles.buttonDisabled]}
               onPress={handleSignUp}
               disabled={isLoading}
             >
-              <Text className="text-white text-base font-semibold">
+              <Text style={styles.buttonText}>
                 {isLoading ? "Creating Account..." : "Create Account"}
               </Text>
             </TouchableOpacity>
 
-            {/* Footer */}
-            <View className="flex-row justify-center mt-6">
-              <Text className="text-sm text-gray-500">
-                Already have an account?{" "}
-              </Text>
-              <Link href="/(auth)/sign-in" className="ml-1">
-                <Text className="text-sm font-semibold text-teal-700">
-                  Sign In
-                </Text>
+            <View style={styles.footer}>
+              <Text style={styles.footerText}>Already have an account? </Text>
+              <Link href="/(auth)/sign-in" style={styles.link}>
+                <Text style={styles.linkText}>Sign In</Text>
               </Link>
             </View>
           </View>
@@ -130,3 +110,95 @@ export default function SignUpScreen() {
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#0F766E",
+  },
+  keyboardContainer: {
+    flex: 1,
+  },
+  content: {
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: 24,
+  },
+  header: {
+    alignItems: "center",
+    marginBottom: 48,
+  },
+  title: {
+    fontSize: 32,
+    fontWeight: "bold",
+    color: "white",
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: "rgba(255, 255, 255, 0.8)",
+  },
+  form: {
+    backgroundColor: "white",
+    borderRadius: 16,
+    padding: 24,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  inputContainer: {
+    marginBottom: 20,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#374151",
+    marginBottom: 8,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    backgroundColor: "#F9FAFB",
+  },
+  button: {
+    backgroundColor: "#0F766E",
+    borderRadius: 8,
+    paddingVertical: 16,
+    alignItems: "center",
+    marginTop: 8,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  buttonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  footer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    marginTop: 24,
+  },
+  footerText: {
+    color: "#6B7280",
+    fontSize: 14,
+  },
+  link: {
+    marginLeft: 4,
+  },
+  linkText: {
+    color: "#0F766E",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+});
