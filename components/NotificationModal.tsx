@@ -1,6 +1,13 @@
 import { Bell, CreditCard, TrendingUp, X } from "lucide-react-native";
 import React from "react";
-import { Modal, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import {
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 interface NotificationModalProps {
   visible: boolean;
@@ -56,44 +63,37 @@ export function NotificationModal({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <View className="flex-1 bg-slate-50">
-        <View className="flex-row justify-between items-center px-5 pt-5 pb-6 bg-white border-b border-slate-100">
-          <Text className="text-xl font-bold text-gray-900">Notifications</Text>
-          <TouchableOpacity
-            onPress={onClose}
-            className="w-8 h-8 rounded-full bg-slate-100 justify-center items-center"
-          >
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Notifications</Text>
+          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
             <X color="#374151" size={24} />
           </TouchableOpacity>
         </View>
 
         <ScrollView
-          className="flex-1 px-5 pt-4"
+          style={styles.notificationsList}
           showsVerticalScrollIndicator={false}
         >
           {mockNotifications.map((notification) => (
             <TouchableOpacity
               key={notification.id}
-              className="flex-row bg-white rounded-xl p-4 mb-3 shadow-sm"
+              style={styles.notificationItem}
             >
-              <View className="w-10 h-10 rounded-full bg-gray-50 justify-center items-center mr-3">
+              <View style={styles.notificationIcon}>
                 {getNotificationIcon(notification.type)}
               </View>
-              <View className="flex-1">
-                <View className="flex-row items-center mb-1">
-                  <Text className="text-base font-semibold text-gray-900 flex-1">
+              <View style={styles.notificationContent}>
+                <View style={styles.notificationHeader}>
+                  <Text style={styles.notificationTitle}>
                     {notification.title}
                   </Text>
-                  {notification.unread && (
-                    <View className="w-2 h-2 rounded-full bg-teal-700" />
-                  )}
+                  {notification.unread && <View style={styles.unreadDot} />}
                 </View>
-                <Text className="text-sm text-gray-500 mb-1">
+                <Text style={styles.notificationMessage}>
                   {notification.message}
                 </Text>
-                <Text className="text-xs text-gray-400">
-                  {notification.time}
-                </Text>
+                <Text style={styles.notificationTime}>{notification.time}</Text>
               </View>
             </TouchableOpacity>
           ))}
@@ -102,3 +102,92 @@ export function NotificationModal({
     </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#F8FAFC",
+  },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 24,
+    backgroundColor: "white",
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#1F2937",
+  },
+  closeButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#F3F4F6",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  notificationsList: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+  notificationItem: {
+    flexDirection: "row",
+    backgroundColor: "white",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  notificationIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#F9FAFB",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  notificationContent: {
+    flex: 1,
+  },
+  notificationHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  notificationTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1F2937",
+    flex: 1,
+  },
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#0F766E",
+  },
+  notificationMessage: {
+    fontSize: 14,
+    color: "#6B7280",
+    marginBottom: 4,
+  },
+  notificationTime: {
+    fontSize: 12,
+    color: "#9CA3AF",
+  },
+});

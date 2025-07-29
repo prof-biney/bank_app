@@ -1,6 +1,6 @@
 import { Check } from "lucide-react-native";
 import React from "react";
-import { Modal, Text, TouchableOpacity, View } from "react-native";
+import { Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 interface DateFilterModalProps {
   visible: boolean;
@@ -34,23 +34,17 @@ export function DateFilterModal({
       animationType="fade"
       onRequestClose={onClose}
     >
-      <TouchableOpacity
-        className="flex-1 bg-black/50 justify-center items-center px-5"
-        activeOpacity={1}
-        onPress={onClose}
-      >
-        <View className="bg-white rounded-2xl p-5 w-full max-w-[300px]">
-          <Text className="text-lg font-bold text-gray-800 text-center mb-4">
-            Filter Transactions
-          </Text>
+      <TouchableOpacity style={styles.overlay} onPress={onClose}>
+        <View style={styles.modal}>
+          <Text style={styles.title}>Filter Transactions</Text>
 
           {filterOptions.map((option) => (
             <TouchableOpacity
               key={option.key}
-              className="flex-row justify-between items-center py-4 border-b border-gray-100"
+              style={styles.option}
               onPress={() => handleFilterSelect(option.key)}
             >
-              <Text className="text-base text-gray-700">{option.label}</Text>
+              <Text style={styles.optionText}>{option.label}</Text>
               {selectedFilter === option.key && (
                 <Check color="#0F766E" size={20} />
               )}
@@ -61,3 +55,39 @@ export function DateFilterModal({
     </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
+  modal: {
+    backgroundColor: "white",
+    borderRadius: 16,
+    padding: 20,
+    width: "100%",
+    maxWidth: 300,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#1F2937",
+    marginBottom: 16,
+    textAlign: "center",
+  },
+  option: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+  optionText: {
+    fontSize: 16,
+    color: "#374151",
+  },
+});

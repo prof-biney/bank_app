@@ -5,7 +5,7 @@ import {
   CreditCard,
 } from "lucide-react-native";
 import React from "react";
-import { Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { Transaction } from "../types/index";
 
 interface TransactionItemProps {
@@ -41,30 +41,67 @@ export function TransactionItem({ transaction }: TransactionItemProps) {
   };
 
   return (
-    <View className="flex-row items-center py-4 px-5 bg-white border-b border-gray-100">
-      <View className="w-10 h-10 rounded-full bg-gray-50 justify-center items-center mr-3">
-        {getTransactionIcon()}
+    <View style={styles.container}>
+      <View style={styles.iconContainer}>{getTransactionIcon()}</View>
+
+      <View style={styles.details}>
+        <Text style={styles.description}>{transaction.description}</Text>
+        <Text style={styles.category}>{transaction.category}</Text>
       </View>
 
-      <View className="flex-1">
-        <Text className="text-base font-semibold text-gray-800 mb-1">
-          {transaction.description}
-        </Text>
-        <Text className="text-sm text-gray-500">{transaction.category}</Text>
-      </View>
-
-      <View className="items-end">
-        <Text
-          className="text-base font-bold mb-1"
-          style={{ color: getAmountColor() }}
-        >
+      <View style={styles.amountContainer}>
+        <Text style={[styles.amount, { color: getAmountColor() }]}>
           {transaction.amount > 0 ? "+" : ""}$
           {Math.abs(transaction.amount).toFixed(2)}
         </Text>
-        <Text className="text-xs text-gray-400">
-          {formatDate(transaction.date)}
-        </Text>
+        <Text style={styles.date}>{formatDate(transaction.date)}</Text>
       </View>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    backgroundColor: "white",
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+  iconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#F9FAFB",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  details: {
+    flex: 1,
+  },
+  description: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1F2937",
+    marginBottom: 4,
+  },
+  category: {
+    fontSize: 14,
+    color: "#6B7280",
+  },
+  amountContainer: {
+    alignItems: "flex-end",
+  },
+  amount: {
+    fontSize: 16,
+    fontWeight: "bold",
+    marginBottom: 4,
+  },
+  date: {
+    fontSize: 12,
+    color: "#9CA3AF",
+  },
+});

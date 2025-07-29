@@ -9,11 +9,9 @@ interface QuickActionProps {
 
 export function QuickAction({ icon, label, onPress }: QuickActionProps) {
   return (
-    <TouchableOpacity className="flex-1 text-center" onPress={onPress}>
-      <View className="w-14 h-14 rounded-full bg-slate-100 justify-center items-center mb-2">
-        {icon}
-      </View>
-      <Text className="text-base text-slate-700 font-medium">{label}</Text>
+    <TouchableOpacity style={styles.container} onPress={onPress}>
+      <View style={styles.iconContainer}>{icon}</View>
+      <Text style={styles.label}>{label}</Text>
     </TouchableOpacity>
   );
 }
