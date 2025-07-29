@@ -54,7 +54,7 @@ export default function RootLayout() {
           <RootLayoutContent />
         </AppProvider>
       </AuthProvider>
-      <StatusBar style="auto" />
+      <StatusBar style="dark" />
     </>
   );
 }
