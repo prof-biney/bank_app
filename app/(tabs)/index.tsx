@@ -232,10 +232,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#EF4444",
   },
   cardSection: {
-    marginBottom: 32,
+    flex: 1,
+    paddingHorizontal: 20,
   },
   cardsScroll: {
-    paddingLeft: 20,
+    marginBottom: 32,
   },
   quickActions: {
     flexDirection: "row",
