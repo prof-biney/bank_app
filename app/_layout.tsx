@@ -1,29 +1,60 @@
-import { AppProvider } from "@/context/AppContext";
-import { useFonts } from "expo-font";
-import { SplashScreen, Stack } from "expo-router";
-import { useEffect } from "react";
-import { AuthProvider } from "../context/AuthContext";
+import { useFrameworkReady } from "@/hooks/useFrameworkReady";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Stack } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { useEffect, useState } from "react";
+import { AppProvider } from "../context/AppContext";
+import { AuthProvider, useAuth } from "../context/AuthContext";
 import "./global.css";
 
-export default function RootLayout() {
-  const [fontLoaded, eror] = useFonts({
-    Inter: require("../assets/fonts/Inter-Regular.ttf"),
-    "Inter-Bold": require("../assets/fonts/Inter-Bold.ttf"),
-    "inter-SemiBold": require("../assets/fonts/Inter-SemiBold.ttf"),
-    "inter-Medium": require("../assets/fonts/Inter-Medium.ttf"),
-    "inter-Light": require("../assets/fonts/Inter-Light.ttf"),
-  });
+function RootLayoutContent() {
+  const { user, isLoading } = useAuth();
+  const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(
+    null
+  );
 
   useEffect(() => {
-    if (eror) throw eror;
-    if (!fontLoaded) SplashScreen.hideAsync();
-  }, [fontLoaded, eror]);
+    checkOnboardingStatus();
+  }, []);
+
+  const checkOnboardingStatus = async () => {
+    try {
+      const status = await AsyncStorage.getItem("onboardingComplete");
+      setOnboardingComplete(status === "true");
+    } catch (error) {
+      console.error("Error checking onboarding status:", error);
+      setOnboardingComplete(false);
+    }
+  };
+
+  if (isLoading || onboardingComplete === null) {
+    return null; // Loading state
+  }
 
   return (
-    <AuthProvider>
-      <AppProvider>
-        <Stack screenOptions={{ headerShown: false }} />
-      </AppProvider>
-    </AuthProvider>
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="(auth)" />
+      <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="onboarding" />
+      <Stack.Screen name="transfer" />
+      <Stack.Screen name="settings" />
+      <Stack.Screen name="help-support" />
+      <Stack.Screen name="+not-found" />
+    </Stack>
+  );
+}
+
+export default function RootLayout() {
+  useFrameworkReady();
+
+  return (
+    <>
+      <AuthProvider>
+        <AppProvider>
+          <RootLayoutContent />
+        </AppProvider>
+      </AuthProvider>
+      <StatusBar style="auto" />
+    </>
   );
 }
