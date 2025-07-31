@@ -19,10 +19,9 @@ function RootLayoutContent() {
 
   const checkOnboardingStatus = async () => {
     try {
-      const status = await AsyncStorage.getItem("onboardingComplete");
-      setOnboardingComplete(status === "true");
-    } catch (error) {
-      console.error("Error checking onboarding status:", error);
+      const onboardingStatus = await AsyncStorage.getItem("onboardingComplete");
+      setOnboardingComplete(onboardingStatus === "true");
+    } catch {
       setOnboardingComplete(false);
     }
   };
