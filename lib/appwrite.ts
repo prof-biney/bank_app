@@ -1,4 +1,11 @@
-import { Account, Avatars, Client, Databases, ID } from "react-native-appwrite";
+import {
+  Account,
+  Avatars,
+  Client,
+  Databases,
+  ID,
+  Query,
+} from "react-native-appwrite";
 
 export const appwriteConfig = {
   endpoint: process.env.EXPO_PUBLIC_APPWRITE_ENDPOINT!,
@@ -73,13 +80,27 @@ export const signOut = async () => {
   }
 };
 
-export const getLoggedInUser = async () => {
+export const getCurrentUser = async () => {
   try {
-    const user = await account.get();
+    // get the current account
+    const currentAccount = await account.get();
 
-    // return JSON.parse(JSON.stringify(user))
-    return user;
+    if (!currentAccount) {
+      throw new Error("No user found");
+    }
+
+    // get the user from the database
+    const currentUser = await databases.listDocuments(
+      appwriteConfig.databaseId,
+      appwriteConfig.userCollectionId,
+      [Query.equal("accountId", currentAccount.$id)]
+    );
+
+    if (!currentUser) throw Error;
+
+    // return the user
+    return currentUser.documents[0];
   } catch (error) {
-    throw error;
+    throw new Error(error as string);
   }
 };
