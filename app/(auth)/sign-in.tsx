@@ -11,30 +11,58 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useAuth } from "../../context/AuthContext";
+// import { useAuth } from "../../context/AuthContext";
+import { signIn } from "@/lib/appwrite";
 
 export default function SignInScreen() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const { signIn } = useAuth();
+  // const [email, setEmail] = useState("");
+  // const [password, setPassword] = useState("");
+  // const [isLoading, setIsLoading] = useState(false);
+  // const { signIn } = useAuth();
 
-  const handleSignIn = async () => {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [form, setForm] = useState({
+    email: "",
+    password: "",
+  });
+
+  const submit = async () => {
+    const { email, password } = form;
+
     if (!email || !password) {
       Alert.alert("Error", "Please fill in all fields");
       return;
     }
 
-    setIsLoading(true);
-    const success = await signIn(email, password);
-    setIsLoading(false);
+    setIsSubmitting(true);
 
-    if (success) {
-      router.replace("/(tabs)");
-    } else {
-      Alert.alert("Error", "Invalid credentials");
+    try {
+      await signIn(email, password);
+
+      router.replace("/");
+    } catch (error: any) {
+      Alert.alert("Error", error.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
+
+  // const handleSignIn = async () => {
+  //   if (!email || !password) {
+  //     Alert.alert("Error", "Please fill in all fields");
+  //     return;
+  //   }
+
+  //   setIsLoading(true);
+  //   const success = await signIn(email, password);
+  //   setIsLoading(false);
+
+  //   if (success) {
+  //     router.replace("/(tabs)");
+  //   } else {
+  //     Alert.alert("Error", "Invalid credentials");
+  //   }
+  // };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -53,8 +81,10 @@ export default function SignInScreen() {
               <Text style={styles.label}>Email</Text>
               <TextInput
                 style={styles.input}
-                value={email}
-                onChangeText={setEmail}
+                value={form.email}
+                onChangeText={(text) =>
+                  setForm((prev) => ({ ...prev, email: text }))
+                }
                 placeholder="Enter your email"
                 keyboardType="email-address"
                 autoCapitalize="none"
@@ -65,21 +95,30 @@ export default function SignInScreen() {
               <Text style={styles.label}>Password</Text>
               <TextInput
                 style={styles.input}
-                value={password}
-                onChangeText={setPassword}
+                value={form.password}
+                onChangeText={(text) =>
+                  setForm((prev) => ({ ...prev, password: text }))
+                }
                 placeholder="Enter your password"
                 secureTextEntry
               />
             </View>
 
             <TouchableOpacity
-              style={[styles.button, isLoading && styles.buttonDisabled]}
-              onPress={handleSignIn}
-              disabled={isLoading}
+              style={[styles.button, isSubmitting && styles.buttonDisabled]}
+              onPress={submit}
+              disabled={isSubmitting}
             >
               <Text style={styles.buttonText}>
-                {isLoading ? "Signing In..." : "Sign In"}
+                {isSubmitting ? "Signing In..." : "Sign In"}
               </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.button}
+              onPress={() => router.replace("/")}
+            >
+              <Text style={styles.buttonText}>Go Home</Text>
             </TouchableOpacity>
 
             <View style={styles.footer}>

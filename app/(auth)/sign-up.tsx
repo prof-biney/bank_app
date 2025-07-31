@@ -1,3 +1,4 @@
+import { createUser } from "@/lib/appwrite";
 import { Link, router } from "expo-router";
 import React, { useState } from "react";
 import {
@@ -19,6 +20,34 @@ export default function SignUpScreen() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const { signUp } = useAuth();
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+  });
+
+  const submit = async () => {
+    const { name, email, password } = form;
+
+    if (!name || !email || !password) {
+      Alert.alert("Error", "Please fill in all fields");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      await createUser({ email, name, password });
+
+      router.replace("/onboarding");
+    } catch (error: any) {
+      Alert.alert("Error", error.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handleSignUp = async () => {
     if (!name || !email || !password) {
@@ -59,8 +88,10 @@ export default function SignUpScreen() {
               <Text style={styles.label}>Full Name</Text>
               <TextInput
                 style={styles.input}
-                value={name}
-                onChangeText={setName}
+                value={form.name}
+                onChangeText={(text) =>
+                  setForm((prev) => ({ ...prev, name: text }))
+                }
                 placeholder="Enter your full name"
               />
             </View>
@@ -69,8 +100,10 @@ export default function SignUpScreen() {
               <Text style={styles.label}>Email</Text>
               <TextInput
                 style={styles.input}
-                value={email}
-                onChangeText={setEmail}
+                value={form.email}
+                onChangeText={(text) =>
+                  setForm((prev) => ({ ...prev, email: text }))
+                }
                 placeholder="Enter your email"
                 keyboardType="email-address"
                 autoCapitalize="none"
@@ -81,20 +114,22 @@ export default function SignUpScreen() {
               <Text style={styles.label}>Password</Text>
               <TextInput
                 style={styles.input}
-                value={password}
-                onChangeText={setPassword}
+                value={form.password}
+                onChangeText={(text) =>
+                  setForm((prev) => ({ ...prev, password: text }))
+                }
                 placeholder="Create a password"
                 secureTextEntry
               />
             </View>
 
             <TouchableOpacity
-              style={[styles.button, isLoading && styles.buttonDisabled]}
-              onPress={handleSignUp}
-              disabled={isLoading}
+              style={[styles.button, isSubmitting && styles.buttonDisabled]}
+              onPress={submit}
+              disabled={isSubmitting}
             >
               <Text style={styles.buttonText}>
-                {isLoading ? "Creating Account..." : "Create Account"}
+                {isSubmitting ? "Creating Account..." : "Create Account"}
               </Text>
             </TouchableOpacity>
 

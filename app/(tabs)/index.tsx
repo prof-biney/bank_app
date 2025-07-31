@@ -1,3 +1,4 @@
+import { getLoggedInUser } from "@/lib/appwrite";
 import { router } from "expo-router";
 import {
   ArrowDownLeft,
@@ -23,14 +24,23 @@ import { NotificationModal } from "../../components/NotificationModal";
 import { QuickAction } from "../../components/QuickAction";
 import { TransactionItem } from "../../components/TransactionItem";
 import { useApp } from "../../context/AppContext";
-import { useAuth } from "../../context/AuthContext";
 
 export default function HomeScreen() {
-  const { user } = useAuth();
+  // const { user } = useAuth();
   const { cards, activeCard, setActiveCard, transactions } = useApp();
   const [showNotifications, setShowNotifications] = React.useState(false);
   const [showDateFilter, setShowDateFilter] = React.useState(false);
   const [dateFilter, setDateFilter] = React.useState("all");
+  // const user = getLoggedInUser();
+  let user: any;
+
+  const getUser = async () => {
+    console.log("fgdsfgsdfg");
+
+    user = await getLoggedInUser();
+
+    console.log(user);
+  };
 
   const getFilteredTransactions = () => {
     const now = new Date();
@@ -91,7 +101,7 @@ export default function HomeScreen() {
           <View style={styles.header}>
             <View>
               <Text style={styles.greeting}>Welcome back!</Text>
-              <Text style={styles.userName}>{user?.name}</Text>
+              <Text style={styles.userName}>{user?.$id}</Text>
             </View>
             <TouchableOpacity
               style={styles.notificationButton}
@@ -138,8 +148,13 @@ export default function HomeScreen() {
             <QuickAction
               icon={<MoreHorizontal color="#0F766E" size={24} />}
               label="More"
-              onPress={() => {}}
+              onPress={getUser}
             />
+          </View>
+
+          <View>
+            <Text>{user?.name}</Text>
+            <Text>Text</Text>
           </View>
 
           <View style={styles.transactionsSection}>
