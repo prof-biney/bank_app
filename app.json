@@ -1,5 +1,13 @@
 {
   "expo": {
+    "androidNavigationBar": {
+      "backgroundColor": "#ffffff",
+      "barStyle": "dark-content"
+    },
+    "androidStatusBar": {
+      "backgroundColor": "#ffffff",
+      "barStyle": "dark-content"
+    },
     "name": "bank_app",
     "slug": "bank_app",
     "version": "1.0.0",
