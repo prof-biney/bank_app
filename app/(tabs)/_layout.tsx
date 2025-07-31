@@ -1,7 +1,10 @@
 import { Tabs } from "expo-router";
 import { Activity, CreditCard, House, User } from "lucide-react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
+
   return (
     <Tabs
       screenOptions={{
@@ -10,8 +13,8 @@ export default function TabLayout() {
           backgroundColor: "white",
           borderTopWidth: 1,
           borderTopColor: "#F3F4F6",
-          height: 80,
-          paddingBottom: 20,
+          height: 80 + insets.bottom,
+          paddingBottom: 20 + insets.bottom,
           paddingTop: 8,
           position: "absolute",
           bottom: 0,
