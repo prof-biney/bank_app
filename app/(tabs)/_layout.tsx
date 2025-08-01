@@ -1,9 +1,13 @@
-import { Tabs } from "expo-router";
+import useAuthStore from "@/store/auth.store";
+import { Redirect, Tabs } from "expo-router";
 import { Activity, CreditCard, House, User } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
+  const { isAuthenticated } = useAuthStore();
+
+  if (!isAuthenticated) return <Redirect href="/sign-in" />;
 
   return (
     <Tabs

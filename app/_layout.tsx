@@ -1,21 +1,31 @@
+import { AppProvider } from "@/context/AppContext";
+import { AuthProvider } from "@/context/AuthContext";
 import { useFrameworkReady } from "@/hooks/useFrameworkReady";
+import useAuthStore from "@/store/auth.store";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
-import { AppProvider } from "../context/AppContext";
-import { AuthProvider, useAuth } from "../context/AuthContext";
 import "./global.css";
 
 function RootLayoutContent() {
-  const { user, isLoading } = useAuth();
+  const { isLoading, fetchAuthenticatedUser } = useAuthStore();
+  // const { user, isLoading } = useAuth();
   const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(
     null
   );
 
+  // useEffect(() => {
+  //   checkOnboardingStatus();
+  // }, []);
+
   useEffect(() => {
-    checkOnboardingStatus();
+    fetchAuthenticatedUser();
   }, []);
+
+  if (isLoading) {
+    return null;
+  }
 
   const checkOnboardingStatus = async () => {
     try {
@@ -25,10 +35,6 @@ function RootLayoutContent() {
       setOnboardingComplete(false);
     }
   };
-
-  if (isLoading || onboardingComplete === null) {
-    return null; // Loading state
-  }
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
@@ -53,6 +59,7 @@ export default function RootLayout() {
           <RootLayoutContent />
         </AppProvider>
       </AuthProvider>
+
       <StatusBar style="dark" />
     </>
   );
