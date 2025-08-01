@@ -12,13 +12,15 @@ import {
   View,
 } from "react-native";
 // import { useAuth } from "../../context/AuthContext";
-import { signIn } from "@/lib/appwrite";
+import useAuthStore from "@/store/auth.store";
 
 export default function SignInScreen() {
   // const [email, setEmail] = useState("");
   // const [password, setPassword] = useState("");
   // const [isLoading, setIsLoading] = useState(false);
   // const { signIn } = useAuth();
+
+  const { login } = useAuthStore();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [form, setForm] = useState({
@@ -37,7 +39,8 @@ export default function SignInScreen() {
     setIsSubmitting(true);
 
     try {
-      await signIn(email, password);
+      // await signIn(email, password);
+      await login(email, password);
 
       router.replace("/");
     } catch (error: any) {
