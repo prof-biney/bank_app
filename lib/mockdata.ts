@@ -1,4 +1,4 @@
-import { Card, Recipient, Transaction } from "../types";
+import { Card, Recipient, Transaction } from "../types/index";
 
 export const mockCards: Card[] = [
   {
@@ -7,7 +7,7 @@ export const mockCards: Card[] = [
     cardNumber: "•••• •••• •••• 1990",
     cardHolderName: "Andrew Biney",
     expiryDate: "12/26",
-    balance: 10250.0,
+    balance: 390243.75,
     cardType: "visa",
     isActive: true,
     cardColor: "#1F2937",
@@ -18,7 +18,7 @@ export const mockCards: Card[] = [
     cardNumber: "•••• •••• •••• 2455",
     cardHolderName: "Andrew Biney",
     expiryDate: "08/27",
-    balance: 5420.75,
+    balance: 45420.75,
     cardType: "mastercard",
     isActive: false,
     cardColor: "#0F766E",
