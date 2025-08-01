@@ -1,4 +1,4 @@
-import { signOut } from "@/lib/appwrite";
+import useAuthStore from "@/store/auth.store";
 import { router } from "expo-router";
 import {
   CircleHelp as HelpCircle,
@@ -17,10 +17,9 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useAuth } from "../../context/AuthContext";
 
 export default function ProfileScreen() {
-  const { user } = useAuth();
+  const { user, logout } = useAuthStore();
 
   const handleSignOut = () => {
     Alert.alert("Sign Out", "Are you sure you want to sign out?", [
@@ -29,8 +28,8 @@ export default function ProfileScreen() {
         text: "Sign Out",
         style: "destructive",
         onPress: async () => {
-          await signOut();
-          router.replace("/(auth)/sign-in");
+          logout();
+          router.replace("/sign-in");
         },
       },
     ]);
