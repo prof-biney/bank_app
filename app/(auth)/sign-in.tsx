@@ -117,12 +117,12 @@ export default function SignInScreen() {
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
+            {/* <TouchableOpacity
               style={styles.button}
               onPress={() => router.replace("/")}
             >
               <Text style={styles.buttonText}>Go Home</Text>
-            </TouchableOpacity>
+            </TouchableOpacity> */}
 
             <View style={styles.footer}>
               <Text style={styles.footerText}>
