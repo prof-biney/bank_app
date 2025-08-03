@@ -29,18 +29,30 @@ export default function SignInScreen() {
     password: "",
   });
 
+  // Email validation function
+  const isValidEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
   const submit = async () => {
     const { email, password } = form;
 
+    // Check if fields are empty
     if (!email || !password) {
       showAlert('error', 'Please fill in all fields', 'Sign In Error');
+      return;
+    }
+
+    // Validate email format
+    if (!isValidEmail(email)) {
+      showAlert('error', 'Please enter a valid email address', 'Sign In Error');
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      // await signIn(email, password);
       await login(email, password);
 
       // Show success message before navigation
@@ -51,7 +63,29 @@ export default function SignInScreen() {
         router.replace("/");
       }, 1000);
     } catch (error: any) {
-      showAlert('error', error.message || 'Authentication failed. Please try again.', 'Sign In Error');
+      // Handle specific error types with more descriptive messages
+      let errorMessage = 'Authentication failed. Please try again.';
+      let errorTitle = 'Sign In Error';
+      
+      if (error.message) {
+        if (error.message.includes('Invalid credentials')) {
+          errorMessage = 'The email or password you entered is incorrect. Please try again.';
+        } else if (error.message.includes('Rate limit')) {
+          errorMessage = 'Too many login attempts. Please try again later.';
+          errorTitle = 'Rate Limit Exceeded';
+        } else if (error.message.includes('User not found')) {
+          errorMessage = 'No account found with this email. Please check your email or sign up.';
+        } else if (error.message.includes('network')) {
+          errorMessage = 'Network error. Please check your internet connection and try again.';
+          errorTitle = 'Connection Error';
+        } else {
+          // Use the original error message if it's available
+          errorMessage = error.message;
+        }
+      }
+      
+      showAlert('error', errorMessage, errorTitle);
+      console.log('Sign in error:', error);
     } finally {
       setIsSubmitting(false);
     }

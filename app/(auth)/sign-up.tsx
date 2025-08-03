@@ -29,16 +29,61 @@ export default function SignUpScreen() {
     password: "",
   });
 
+  // Email validation function
+  const isValidEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  // Password strength validation
+  const validatePassword = (password: string): { isValid: boolean; message: string } => {
+    if (password.length < 8) {
+      return { isValid: false, message: 'Password must be at least 8 characters long' };
+    }
+    
+    // Check for at least one number
+    if (!/\d/.test(password)) {
+      return { isValid: false, message: 'Password must contain at least one number' };
+    }
+    
+    // Check for at least one uppercase letter
+    if (!/[A-Z]/.test(password)) {
+      return { isValid: false, message: 'Password must contain at least one uppercase letter' };
+    }
+    
+    // Check for at least one special character
+    if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+      return { isValid: false, message: 'Password must contain at least one special character' };
+    }
+    
+    return { isValid: true, message: '' };
+  };
+
   const submit = async () => {
     const { name, email, password } = form;
 
+    // Check if fields are empty
     if (!name || !email || !password) {
       showAlert('error', 'Please fill in all fields', 'Sign Up Error');
       return;
     }
 
-    if (password.length < 6) {
-      showAlert('error', 'Password must be at least 6 characters', 'Sign Up Error');
+    // Validate email format
+    if (!isValidEmail(email)) {
+      showAlert('error', 'Please enter a valid email address', 'Sign Up Error');
+      return;
+    }
+
+    // Validate password strength
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.isValid) {
+      showAlert('error', passwordValidation.message, 'Password Requirements');
+      return;
+    }
+
+    // Validate name (at least 2 characters)
+    if (name.trim().length < 2) {
+      showAlert('error', 'Name must be at least 2 characters long', 'Sign Up Error');
       return;
     }
 
@@ -55,7 +100,30 @@ export default function SignUpScreen() {
         router.replace("/onboarding");
       }, 1500);
     } catch (error: any) {
-      showAlert('error', error.message || 'Failed to create account', 'Sign Up Error');
+      // Handle specific error types with more descriptive messages
+      let errorMessage = 'Failed to create account. Please try again.';
+      let errorTitle = 'Sign Up Error';
+      
+      if (error.message) {
+        if (error.message.includes('email already exists')) {
+          errorMessage = 'An account with this email already exists. Please use a different email or sign in.';
+          errorTitle = 'Email Already Registered';
+        } else if (error.message.includes('invalid email')) {
+          errorMessage = 'The email address format is invalid. Please check and try again.';
+        } else if (error.message.includes('password')) {
+          errorMessage = 'The password does not meet security requirements. Please try a different password.';
+          errorTitle = 'Password Error';
+        } else if (error.message.includes('network')) {
+          errorMessage = 'Network error. Please check your internet connection and try again.';
+          errorTitle = 'Connection Error';
+        } else {
+          // Use the original error message if it's available
+          errorMessage = error.message;
+        }
+      }
+      
+      showAlert('error', errorMessage, errorTitle);
+      console.log('Sign up error:', error);
     } finally {
       setIsSubmitting(false);
     }
