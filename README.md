@@ -78,10 +78,35 @@ Before you begin, ensure you have the following installed:
 Create a `.env` file in the root directory with the following variables:
 
 ```
-APPWRITE_ENDPOINT=your_appwrite_endpoint
-APPWRITE_PROJECT_ID=your_appwrite_project_id
-PAYSTACK_PUBLIC_KEY=your_paystack_public_key
+# Appwrite Configuration
+EXPO_PUBLIC_APPWRITE_ENDPOINT=https://cloud.appwrite.io/v1
+EXPO_PUBLIC_APPWRITE_PROJECT_ID=your_appwrite_project_id
+EXPO_PUBLIC_APPWRITE_PLATFORM=com.profbiney.vault
+EXPO_PUBLIC_APPWRITE_DATABASE_ID=your_appwrite_database_id
+EXPO_PUBLIC_APPWRITE_USER_COLLECTION_ID=your_appwrite_user_collection_id
+
+# Paystack Configuration
+EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY=your_paystack_public_key
+EXPO_PUBLIC_PAYSTACK_DEFAULT_EMAIL=default_email@example.com
+EXPO_PUBLIC_PAYSTACK_CURRENCY=GHS
+
+# Application Environment
+EXPO_PUBLIC_APP_ENV=development
 ```
+
+> **Note:** Replace the placeholder values with your actual API keys and configuration values.
+
+### Verifying Environment Variables
+
+You can verify that your environment variables are set up correctly by running:
+
+```bash
+npm run test-env
+# or
+yarn test-env
+```
+
+This will display all the configured environment variables and help you identify any issues with your setup.
 
 ## 🧪 Testing
 
