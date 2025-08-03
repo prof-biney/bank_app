@@ -1,4 +1,5 @@
 import { AppProvider } from "@/context/AppContext";
+import { AlertProvider } from "@/context/AlertContext";
 import { AuthProvider } from "@/context/AuthContext";
 import { useFrameworkReady } from "@/hooks/useFrameworkReady";
 import useAuthStore from "@/store/auth.store";
@@ -7,6 +8,7 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import "./global.css";
+import { Alert } from "@/components/Alert";
 
 function RootLayoutContent() {
   const { isLoading, fetchAuthenticatedUser } = useAuthStore();
@@ -54,11 +56,14 @@ export default function RootLayout() {
 
   return (
     <>
-      <AuthProvider>
-        <AppProvider>
-          <RootLayoutContent />
-        </AppProvider>
-      </AuthProvider>
+      <AlertProvider>
+        <AuthProvider>
+          <AppProvider>
+            <RootLayoutContent />
+            <Alert />
+          </AppProvider>
+        </AuthProvider>
+      </AlertProvider>
 
       <StatusBar style="dark" />
     </>

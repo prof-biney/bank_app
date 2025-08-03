@@ -2,7 +2,6 @@ import { createUser } from "@/lib/appwrite";
 import { Link, router } from "expo-router";
 import React, { useState } from "react";
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
@@ -13,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "../../context/AuthContext";
+import { useAlert } from "@/context/AlertContext";
 
 export default function SignUpScreen() {
   const [name, setName] = useState("");
@@ -20,6 +20,7 @@ export default function SignUpScreen() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const { signUp } = useAuth();
+  const { showAlert } = useAlert();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [form, setForm] = useState({
@@ -32,7 +33,12 @@ export default function SignUpScreen() {
     const { name, email, password } = form;
 
     if (!name || !email || !password) {
-      Alert.alert("Error", "Please fill in all fields");
+      showAlert('error', 'Please fill in all fields', 'Sign Up Error');
+      return;
+    }
+
+    if (password.length < 6) {
+      showAlert('error', 'Password must be at least 6 characters', 'Sign Up Error');
       return;
     }
 
@@ -41,35 +47,21 @@ export default function SignUpScreen() {
     try {
       await createUser({ email, name, password });
 
-      router.replace("/onboarding");
+      // Show success message before navigation
+      showAlert('success', 'Your account has been created successfully.', 'Welcome!');
+      
+      // Navigate after a short delay to allow the user to see the alert
+      setTimeout(() => {
+        router.replace("/onboarding");
+      }, 1500);
     } catch (error: any) {
-      Alert.alert("Error", error.message);
+      showAlert('error', error.message || 'Failed to create account', 'Sign Up Error');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleSignUp = async () => {
-    if (!name || !email || !password) {
-      Alert.alert("Error", "Please fill in all fields");
-      return;
-    }
-
-    if (password.length < 6) {
-      Alert.alert("Error", "Password must be at least 6 characters");
-      return;
-    }
-
-    setIsLoading(true);
-    const success = await signUp(name, email, password);
-    setIsLoading(false);
-
-    if (success) {
-      router.replace("/onboarding");
-    } else {
-      Alert.alert("Error", "Failed to create account");
-    }
-  };
+  // The handleSignUp function has been removed as it's been replaced by the submit function
 
   return (
     <SafeAreaView style={styles.container}>

@@ -15,11 +15,13 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { BankCard } from "../components/BankCard";
 import { RecipientItem } from "../components/RecipientItem";
 import { useApp } from "../context/AppContext";
+import { useAlert } from "../context/AlertContext";
 import { mockRecipients } from "../lib/mockdata";
 import { Recipient } from "../types/index";
 
 export default function TransferScreen() {
   const { cards, activeCard, setActiveCard, addTransaction } = useApp();
+  const { showAlert } = useAlert();
   const [selectedRecipient, setSelectedRecipient] = useState<Recipient | null>(
     null
   );
@@ -39,22 +41,49 @@ export default function TransferScreen() {
   };
 
   const handleTransfer = () => {
-    if (!activeCard || !selectedRecipient || !amount) return;
+    if (!activeCard || !selectedRecipient || !amount) {
+      showAlert('error', 'Please complete all required fields.', 'Transfer Error');
+      return;
+    }
 
     const transferAmount = parseFloat(amount);
+    
+    if (isNaN(transferAmount) || transferAmount <= 0) {
+      showAlert('error', 'Please enter a valid amount.', 'Transfer Error');
+      return;
+    }
+    
+    if (transferAmount > activeCard.balance) {
+      showAlert('error', 'Insufficient funds for this transfer.', 'Transfer Error');
+      return;
+    }
 
-    addTransaction({
-      userId: "user1",
-      cardId: activeCard.id,
-      type: "transfer",
-      amount: -transferAmount,
-      description: `To ${selectedRecipient.name}`,
-      recipient: selectedRecipient.name,
-      category: "Transfer",
-      status: "completed",
-    });
+    try {
+      addTransaction({
+        userId: "user1",
+        cardId: activeCard.id,
+        type: "transfer",
+        amount: -transferAmount,
+        description: `To ${selectedRecipient.name}`,
+        recipient: selectedRecipient.name,
+        category: "Transfer",
+        status: "completed",
+      });
 
-    router.back();
+      showAlert(
+        'success', 
+        `$${transferAmount.toFixed(2)} has been successfully transferred to ${selectedRecipient.name}.`,
+        'Transfer Successful'
+      );
+      
+      // Navigate back after a short delay to allow the user to see the alert
+      setTimeout(() => {
+        router.back();
+      }, 1500);
+    } catch (error) {
+      showAlert('error', 'An error occurred while processing your transfer. Please try again.', 'Transfer Failed');
+      console.error('Transfer error:', error);
+    }
   };
 
   return (

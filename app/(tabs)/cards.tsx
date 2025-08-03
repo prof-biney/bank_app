@@ -16,12 +16,28 @@ import { useApp } from "../../context/AppContext";
 export default function CardsScreen() {
   const { cards, activeCard, setActiveCard } = useApp();
 
+  // Check for required environment variables
+  const requiredEnvVars = ['EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY'];
+  const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
+  
+  if (missingEnvVars.length > 0) {
+    console.warn(`Missing required Paystack environment variables: ${missingEnvVars.join(', ')}`);
+    console.warn('Please check your .env file and make sure all required variables are defined.');
+  }
+  
+  // Get Paystack configuration from environment variables with fallbacks
+  const paystackPublicKey = process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY || "";
+  const paystackCurrency = process.env.EXPO_PUBLIC_PAYSTACK_CURRENCY || "GHS";
+  
+  // Default payment channels
+  const defaultChannels = ["card", "mobile_money", "bank"];
+  
   return (
     <PaystackProvider
-      debug
-      publicKey="pk_test_4f1fd55a9201c20ad129ad496315324ed1ddb023"
-      currency="GHS"
-      defaultChannels={["card", "mobile_money", "bank"]}
+      debug={process.env.EXPO_PUBLIC_APP_ENV === "development"}
+      publicKey={paystackPublicKey}
+      currency={paystackCurrency}
+      defaultChannels={defaultChannels}
     >
       <SafeAreaView style={styles.container}>
         <KeyboardAvoidingView
