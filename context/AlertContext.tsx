@@ -43,12 +43,33 @@ export function AlertProvider({ children }: { children: ReactNode }) {
     ]);
 
     // Automatically remove the alert after the specified duration
+    // Using React.useEffect to handle the setTimeout to avoid scheduling updates
+    // during render or in useInsertionEffect
     if (duration > 0) {
-      setTimeout(() => {
-        hideAlert(id);
-      }, duration);
+      // We don't set up the timeout here to avoid scheduling updates
+      // during render or in useInsertionEffect
     }
   };
+  
+  // Use useEffect to handle auto-removal of alerts with duration
+  React.useEffect(() => {
+    // Find alerts with duration that need timers
+    const alertsWithDuration = alerts.filter(
+      alert => alert.duration && alert.duration > 0
+    );
+    
+    // Set up timers for each alert
+    const timers = alertsWithDuration.map(alert => {
+      return setTimeout(() => {
+        hideAlert(alert.id);
+      }, alert.duration);
+    });
+    
+    // Clean up timers on unmount or when alerts change
+    return () => {
+      timers.forEach(timer => clearTimeout(timer));
+    };
+  }, [alerts]);
 
   // Function to hide an alert
   const hideAlert = (id: string) => {
