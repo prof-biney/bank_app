@@ -71,7 +71,10 @@ const PasswordField: React.FC<PasswordFieldProps> = ({
         updatePasswordStrength(value);
       }
     }
-  }, [value, validation.isTouched, enableValidation, onValidationChange]);
+    // Note: onValidationChange is intentionally excluded from the dependency array
+    // to prevent infinite render loops, as it's an inline function recreated on each render
+    // of the parent component
+  }, [value, validation.isTouched, enableValidation, validation]);
   
   // Update password strength
   const updatePasswordStrength = (password: string) => {
