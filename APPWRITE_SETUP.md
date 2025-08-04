@@ -22,8 +22,8 @@ Before you begin, ensure you have:
 1. An [Appwrite account](https://appwrite.io/) (sign up if you don't have one)
 2. Access to the [Appwrite Console](https://cloud.appwrite.io/console)
 3. Your React Native application's bundle identifiers:
-   - Android: `com.profbiney.vault` (or your custom bundle ID)
-   - iOS: `com.profbiney.vault` (or your custom bundle ID)
+   - Android: `com.user.extensoin` (or your custom bundle ID)
+   - iOS: `com.user.extension` (or your custom bundle ID)
 
 ## Creating an Appwrite Project
 
@@ -77,7 +77,7 @@ After registering your platforms, you need to configure your environment variabl
    # Appwrite Configuration
    EXPO_PUBLIC_APPWRITE_ENDPOINT=https://cloud.appwrite.io/v1
    EXPO_PUBLIC_APPWRITE_PROJECT_ID=your_actual_project_id
-   EXPO_PUBLIC_APPWRITE_PLATFORM=com.profbiney.vault
+   EXPO_PUBLIC_APPWRITE_PLATFORM=com.user.extension
    EXPO_PUBLIC_APPWRITE_DATABASE_ID=your_database_id
    EXPO_PUBLIC_APPWRITE_USER_COLLECTION_ID=your_user_collection_id
    ```
@@ -108,7 +108,7 @@ To verify that your Appwrite configuration is correct:
 
 If you encounter this error:
 ```
-[AppwriteException: Invalid Origin. Register your new client (com.profbiney.vault) as a new Android platform on your project console dashboard]
+[AppwriteException: Invalid Origin. Register your new client (com.user.extension) as a new Android platform on your project console dashboard]
 ```
 
 This means the platform identifier in your app doesn't match any registered platform in your Appwrite project. To fix this:
@@ -146,15 +146,19 @@ To fix this issue:
    - Don't use `Alert.alert` directly in component rendering or in `useInsertionEffect`
    - Move alert calls to event handlers or `useEffect` hooks
 
-2. **Use console.log for errors during rendering**:
-   - Replace `Alert.alert` with `console.log` for error reporting during rendering
+2. **Use appropriate console methods for system exceptions**:
+   - Replace `Alert.alert` with the appropriate console method based on the message type:
+     - `console.error` for errors
+     - `console.warn` for warnings
+     - `console.info` for informational messages
+     - `console.log` for general logging
    - Example:
      ```typescript
      // Instead of:
      // Alert.alert("Error", "Login failed: " + error.message);
      
      // Use:
-     console.log("Login error:", error);
+     console.error("Login error:", error);
      ```
 
 3. **Handle UI updates properly**:
