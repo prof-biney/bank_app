@@ -141,7 +141,10 @@ const PhoneNumberField: React.FC<PhoneNumberFieldProps> = ({
       // Update digit progress for animation
       updatePhoneDigitProgress(phoneValidation.digitCount, phoneValidation.maxDigits);
     }
-  }, [value, countryCode, validation.isTouched, onValidationChange]);
+    // Note: onValidationChange is intentionally excluded from the dependency array
+    // to prevent infinite render loops, as it's an inline function recreated on each render
+    // of the parent component
+  }, [value, countryCode, validation.isTouched, validation]);
   
   // Phone number validation function
   const validatePhoneNumber = (phoneNumber: string, country: string): { 
