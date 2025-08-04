@@ -56,10 +56,11 @@ const ConfirmPasswordField: React.FC<ConfirmPasswordFieldProps> = ({
         isPartialMatch: confirmPasswordValidation.isPartialMatch
       });
     }
-    // Note: onValidationChange is intentionally excluded from the dependency array
-    // to prevent infinite render loops, as it's an inline function recreated on each render
-    // of the parent component
-  }, [value, password, validation.isTouched, validation]);
+    // Note: onValidationChange and validation are intentionally excluded from the dependency array
+    // to prevent infinite render loops. onValidationChange is an inline function recreated on each render
+    // of the parent component, and including the entire validation object would cause the effect to run
+    // whenever any validation property changes, creating a potential loop when we update validation state.
+  }, [value, password, validation.isTouched]);
   
   // Handle text change
   const handleChangeText = (text: string) => {
