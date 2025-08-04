@@ -56,7 +56,10 @@ const ConfirmPasswordField: React.FC<ConfirmPasswordFieldProps> = ({
         isPartialMatch: confirmPasswordValidation.isPartialMatch
       });
     }
-  }, [value, password, validation.isTouched, onValidationChange]);
+    // Note: onValidationChange is intentionally excluded from the dependency array
+    // to prevent infinite render loops, as it's an inline function recreated on each render
+    // of the parent component
+  }, [value, password, validation.isTouched, validation]);
   
   // Handle text change
   const handleChangeText = (text: string) => {
