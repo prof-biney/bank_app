@@ -2,7 +2,7 @@ import { useAlert } from "@/context/AlertContext";
 import { createUser } from "@/lib/appwrite";
 import useAuthStore from "@/store/auth.store";
 import { Link, router } from "expo-router";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -13,6 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { Feather, MaterialIcons } from "@expo/vector-icons";
 
 export default function SignUpScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -21,19 +22,52 @@ export default function SignUpScreen() {
     email: "",
     password: "",
   });
+  // Validation states
+  const [validation, setValidation] = useState({
+    name: { isValid: false, isTouched: false, errorMessage: "" },
+    email: { isValid: false, isTouched: false, errorMessage: "" },
+    password: { isValid: false, isTouched: false, errorMessage: "" },
+  });
   const { login } = useAuthStore();
   const { showAlert } = useAlert();
 
-  // Email validation function
-  const isValidEmail = (email: string): boolean => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
+  // Email validation function with enhanced regex
+  const isValidEmail = (email: string): { isValid: boolean; message: string } => {
+    // More comprehensive email regex that checks for proper format
+    const emailRegex = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+    
+    if (!email) {
+      return { isValid: false, message: "Email is required" };
+    }
+    
+    if (!emailRegex.test(email)) {
+      return { isValid: false, message: "Please enter a valid email address" };
+    }
+    
+    return { isValid: true, message: "" };
+  };
+
+  // Name validation function
+  const validateName = (name: string): { isValid: boolean; message: string } => {
+    if (!name) {
+      return { isValid: false, message: "Name is required" };
+    }
+    
+    if (name.trim().length < 2) {
+      return { isValid: false, message: "Name must be at least 2 characters long" };
+    }
+    
+    return { isValid: true, message: "" };
   };
 
   // Password strength validation
   const validatePassword = (
     password: string
   ): { isValid: boolean; message: string } => {
+    if (!password) {
+      return { isValid: false, message: "Password is required" };
+    }
+    
     if (password.length < 8) {
       return {
         isValid: false,
@@ -67,36 +101,107 @@ export default function SignUpScreen() {
 
     return { isValid: true, message: "" };
   };
+  
+  // Real-time validation as user types
+  useEffect(() => {
+    if (validation.name.isTouched) {
+      const nameValidation = validateName(form.name);
+      setValidation(prev => ({
+        ...prev,
+        name: { 
+          ...prev.name, 
+          isValid: nameValidation.isValid, 
+          errorMessage: nameValidation.message 
+        }
+      }));
+    }
+  }, [form.name]);
+  
+  useEffect(() => {
+    if (validation.email.isTouched) {
+      const emailValidation = isValidEmail(form.email);
+      setValidation(prev => ({
+        ...prev,
+        email: { 
+          ...prev.email, 
+          isValid: emailValidation.isValid, 
+          errorMessage: emailValidation.message 
+        }
+      }));
+    }
+  }, [form.email]);
+  
+  useEffect(() => {
+    if (validation.password.isTouched) {
+      const passwordValidation = validatePassword(form.password);
+      setValidation(prev => ({
+        ...prev,
+        password: { 
+          ...prev.password, 
+          isValid: passwordValidation.isValid, 
+          errorMessage: passwordValidation.message 
+        }
+      }));
+    }
+  }, [form.password]);
+
+  // Function to handle field reset
+  const resetField = (field: 'name' | 'email' | 'password') => {
+    setForm(prev => ({ ...prev, [field]: "" }));
+    // Reset validation but keep it as touched
+    setValidation(prev => ({
+      ...prev,
+      [field]: { isValid: false, isTouched: true, errorMessage: "" }
+    }));
+  };
+
+  // Validate all fields and return if the form is valid
+  const validateForm = (): boolean => {
+    const nameValidation = validateName(form.name);
+    const emailValidation = isValidEmail(form.email);
+    const passwordValidation = validatePassword(form.password);
+    
+    // Update validation state for all fields
+    setValidation({
+      name: { 
+        isValid: nameValidation.isValid, 
+        isTouched: true, 
+        errorMessage: nameValidation.message 
+      },
+      email: { 
+        isValid: emailValidation.isValid, 
+        isTouched: true, 
+        errorMessage: emailValidation.message 
+      },
+      password: { 
+        isValid: passwordValidation.isValid, 
+        isTouched: true, 
+        errorMessage: passwordValidation.message 
+      }
+    });
+    
+    // Form is valid if all fields are valid
+    return nameValidation.isValid && emailValidation.isValid && passwordValidation.isValid;
+  };
 
   const submit = async () => {
     const { name, email, password } = form;
 
-    // Check if fields are empty
-    if (!name || !email || !password) {
-      showAlert("error", "Please fill in all fields", "Sign Up Error");
-      return;
-    }
-
-    // Validate email format
-    if (!isValidEmail(email)) {
-      showAlert("error", "Please enter a valid email address", "Sign Up Error");
-      return;
-    }
-
-    // Validate password strength
-    const passwordValidation = validatePassword(password);
-    if (!passwordValidation.isValid) {
-      showAlert("error", passwordValidation.message, "Password Requirements");
-      return;
-    }
-
-    // Validate name (at least 2 characters)
-    if (name.trim().length < 2) {
-      showAlert(
-        "error",
-        "Name must be at least 2 characters long",
-        "Sign Up Error"
-      );
+    // Validate all fields
+    if (!validateForm()) {
+      // Show alert for the first error found
+      if (!validation.name.isValid) {
+        showAlert("error", validation.name.errorMessage, "Sign Up Error");
+        return;
+      }
+      if (!validation.email.isValid) {
+        showAlert("error", validation.email.errorMessage, "Sign Up Error");
+        return;
+      }
+      if (!validation.password.isValid) {
+        showAlert("error", validation.password.errorMessage, "Password Requirements");
+        return;
+      }
       return;
     }
 
@@ -168,41 +273,155 @@ export default function SignUpScreen() {
           <View style={styles.form}>
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Full Name</Text>
-              <TextInput
-                style={styles.input}
-                value={form.name}
-                onChangeText={(text) =>
-                  setForm((prev) => ({ ...prev, name: text }))
-                }
-                placeholder="Enter your full name"
-              />
+              <View style={styles.inputWrapper}>
+                <TextInput
+                  style={[
+                    styles.input,
+                    validation.name.isTouched && (
+                      validation.name.isValid 
+                        ? styles.validInput 
+                        : validation.name.errorMessage 
+                          ? styles.invalidInput 
+                          : null
+                    )
+                  ]}
+                  value={form.name}
+                  onChangeText={(text) => {
+                    setForm((prev) => ({ ...prev, name: text }));
+                    if (!validation.name.isTouched) {
+                      setValidation(prev => ({
+                        ...prev,
+                        name: { ...prev.name, isTouched: true }
+                      }));
+                    }
+                  }}
+                  placeholder="Enter your full name"
+                />
+                {form.name.length > 0 && (
+                  <TouchableOpacity 
+                    style={styles.resetButton} 
+                    onPress={() => resetField('name')}
+                  >
+                    <Feather name="x" size={18} color="#6B7280" />
+                  </TouchableOpacity>
+                )}
+                {validation.name.isTouched && validation.name.isValid && (
+                  <View style={styles.validationIcon}>
+                    <MaterialIcons name="check-circle" size={20} color="#10B981" />
+                  </View>
+                )}
+                {validation.name.isTouched && !validation.name.isValid && form.name.length > 0 && (
+                  <View style={styles.validationIcon}>
+                    <MaterialIcons name="error" size={20} color="#EF4444" />
+                  </View>
+                )}
+              </View>
+              {validation.name.isTouched && validation.name.errorMessage ? (
+                <Text style={styles.errorText}>{validation.name.errorMessage}</Text>
+              ) : null}
             </View>
 
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Email</Text>
-              <TextInput
-                style={styles.input}
-                value={form.email}
-                onChangeText={(text) =>
-                  setForm((prev) => ({ ...prev, email: text }))
-                }
-                placeholder="Enter your email"
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
+              <View style={styles.inputWrapper}>
+                <TextInput
+                  style={[
+                    styles.input,
+                    validation.email.isTouched && (
+                      validation.email.isValid 
+                        ? styles.validInput 
+                        : validation.email.errorMessage 
+                          ? styles.invalidInput 
+                          : null
+                    )
+                  ]}
+                  value={form.email}
+                  onChangeText={(text) => {
+                    setForm((prev) => ({ ...prev, email: text }));
+                    if (!validation.email.isTouched) {
+                      setValidation(prev => ({
+                        ...prev,
+                        email: { ...prev.email, isTouched: true }
+                      }));
+                    }
+                  }}
+                  placeholder="Enter your email"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+                {form.email.length > 0 && (
+                  <TouchableOpacity 
+                    style={styles.resetButton} 
+                    onPress={() => resetField('email')}
+                  >
+                    <Feather name="x" size={18} color="#6B7280" />
+                  </TouchableOpacity>
+                )}
+                {validation.email.isTouched && validation.email.isValid && (
+                  <View style={styles.validationIcon}>
+                    <MaterialIcons name="check-circle" size={20} color="#10B981" />
+                  </View>
+                )}
+                {validation.email.isTouched && !validation.email.isValid && form.email.length > 0 && (
+                  <View style={styles.validationIcon}>
+                    <MaterialIcons name="error" size={20} color="#EF4444" />
+                  </View>
+                )}
+              </View>
+              {validation.email.isTouched && validation.email.errorMessage ? (
+                <Text style={styles.errorText}>{validation.email.errorMessage}</Text>
+              ) : null}
             </View>
 
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Password</Text>
-              <TextInput
-                style={styles.input}
-                value={form.password}
-                onChangeText={(text) =>
-                  setForm((prev) => ({ ...prev, password: text }))
-                }
-                placeholder="Create a password"
-                secureTextEntry
-              />
+              <View style={styles.inputWrapper}>
+                <TextInput
+                  style={[
+                    styles.input,
+                    validation.password.isTouched && (
+                      validation.password.isValid 
+                        ? styles.validInput 
+                        : validation.password.errorMessage 
+                          ? styles.invalidInput 
+                          : null
+                    )
+                  ]}
+                  value={form.password}
+                  onChangeText={(text) => {
+                    setForm((prev) => ({ ...prev, password: text }));
+                    if (!validation.password.isTouched) {
+                      setValidation(prev => ({
+                        ...prev,
+                        password: { ...prev.password, isTouched: true }
+                      }));
+                    }
+                  }}
+                  placeholder="Create a password"
+                  secureTextEntry
+                />
+                {form.password.length > 0 && (
+                  <TouchableOpacity 
+                    style={styles.resetButton} 
+                    onPress={() => resetField('password')}
+                  >
+                    <Feather name="x" size={18} color="#6B7280" />
+                  </TouchableOpacity>
+                )}
+                {validation.password.isTouched && validation.password.isValid && (
+                  <View style={styles.validationIcon}>
+                    <MaterialIcons name="check-circle" size={20} color="#10B981" />
+                  </View>
+                )}
+                {validation.password.isTouched && !validation.password.isValid && form.password.length > 0 && (
+                  <View style={styles.validationIcon}>
+                    <MaterialIcons name="error" size={20} color="#EF4444" />
+                  </View>
+                )}
+              </View>
+              {validation.password.isTouched && validation.password.errorMessage ? (
+                <Text style={styles.errorText}>{validation.password.errorMessage}</Text>
+              ) : null}
             </View>
 
             <TouchableOpacity
@@ -277,7 +496,13 @@ const styles = StyleSheet.create({
     color: "#374151",
     marginBottom: 8,
   },
+  inputWrapper: {
+    position: "relative",
+    flexDirection: "row",
+    alignItems: "center",
+  },
   input: {
+    flex: 1,
     borderWidth: 1,
     borderColor: "#D1D5DB",
     borderRadius: 8,
@@ -285,6 +510,28 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 16,
     backgroundColor: "#F9FAFB",
+    paddingRight: 40, // Space for the icons
+  },
+  validInput: {
+    borderColor: "#10B981", // Green border for valid input
+  },
+  invalidInput: {
+    borderColor: "#EF4444", // Red border for invalid input
+  },
+  resetButton: {
+    position: "absolute",
+    right: 36,
+    padding: 4,
+  },
+  validationIcon: {
+    position: "absolute",
+    right: 12,
+  },
+  errorText: {
+    color: "#EF4444",
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 4,
   },
   button: {
     backgroundColor: "#0F766E",
