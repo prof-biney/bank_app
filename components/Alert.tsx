@@ -19,6 +19,9 @@ const AlertItem = ({ alert, onHide }: { alert: AlertMessage; onHide: () => void 
   const translateY = useRef(new Animated.Value(-100)).current;
   const opacity = useRef(new Animated.Value(0)).current;
 
+  // Split the animations into separate effects to avoid scheduling updates during render
+  
+  // Handle entrance animation
   useEffect(() => {
     // Slide in and fade in animation
     Animated.parallel([
@@ -33,10 +36,23 @@ const AlertItem = ({ alert, onHide }: { alert: AlertMessage; onHide: () => void 
         useNativeDriver: true,
       }),
     ]).start();
+  }, [translateY, opacity]);
 
-    // If alert has a duration, slide out and fade out after duration
-    if (alert.duration && alert.duration > 0) {
-      const timer = setTimeout(() => {
+  // Handle auto-dismissal separately
+  useEffect(() => {
+    // Only set up the timer if the alert has a duration
+    if (!alert.duration || alert.duration <= 0) {
+      return;
+    }
+    
+    // Create a reference to track if the component is still mounted
+    let isMounted = true;
+    
+    // Set up the timer for auto-dismissal
+    const timer = setTimeout(() => {
+      // Only proceed if the component is still mounted
+      if (isMounted) {
+        // Start the exit animation
         Animated.parallel([
           Animated.timing(translateY, {
             toValue: -100,
@@ -49,13 +65,20 @@ const AlertItem = ({ alert, onHide }: { alert: AlertMessage; onHide: () => void 
             useNativeDriver: true,
           }),
         ]).start(() => {
-          onHide();
+          // Only call onHide if the component is still mounted
+          if (isMounted) {
+            onHide();
+          }
         });
-      }, alert.duration - 300); // Subtract animation duration
+      }
+    }, alert.duration - 300); // Subtract animation duration
 
-      return () => clearTimeout(timer);
-    }
-  }, [alert, onHide, translateY, opacity]);
+    // Clean up function to prevent memory leaks and updates on unmounted components
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [alert.duration, onHide, translateY, opacity]);
 
   // Get icon and colors based on alert type
   const getAlertStyles = (type: AlertType) => {
