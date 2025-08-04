@@ -82,7 +82,9 @@ const useAuthStore = create<AuthState>((set) => ({
           });
         }
       }
-    } catch (error: any) {
+    } catch (error: any) 
+      Alert.alert("Error", error.message);
+
       console.log("Login error:", error);
       set({
         isAuthenticated: false,
