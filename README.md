@@ -262,7 +262,7 @@ This means your Appwrite Project ID is incorrect or not properly set. Check that
 
 If you see this error:
 ```
-[AppwriteException: Invalid Origin. Register your new client (com.profbiney.vault) as a new Android platform on your project console dashboard]
+[AppwriteException: Invalid Origin. Register your new client (com.user.extension) as a new Android platform on your project console dashboard]
 ```
 
 This means the Android platform isn't registered in your Appwrite project:
