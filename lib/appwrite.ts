@@ -9,27 +9,37 @@ import {
 
 // Check for required environment variables
 const requiredEnvVars = [
-  'EXPO_PUBLIC_APPWRITE_ENDPOINT',
-  'EXPO_PUBLIC_APPWRITE_PROJECT_ID',
-  'EXPO_PUBLIC_APPWRITE_PLATFORM',
-  'EXPO_PUBLIC_APPWRITE_DATABASE_ID',
-  'EXPO_PUBLIC_APPWRITE_USER_COLLECTION_ID'
+  "EXPO_PUBLIC_APPWRITE_ENDPOINT",
+  "EXPO_PUBLIC_APPWRITE_PROJECT_ID",
+  "EXPO_PUBLIC_APPWRITE_PLATFORM",
+  "EXPO_PUBLIC_APPWRITE_DATABASE_ID",
+  "EXPO_PUBLIC_APPWRITE_USER_COLLECTION_ID",
 ];
 
 // Log warnings for missing environment variables
-const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
+const missingEnvVars = requiredEnvVars.filter(
+  (varName) => !process.env[varName]
+);
 if (missingEnvVars.length > 0) {
-  console.warn(`Missing required environment variables: ${missingEnvVars.join(', ')}`);
-  console.warn('Please check your .env file and make sure all required variables are defined.');
+  console.warn(
+    `Missing required environment variables: ${missingEnvVars.join(", ")}`
+  );
+  console.warn(
+    "Please check your .env file and make sure all required variables are defined."
+  );
 }
 
 // Appwrite configuration with fallbacks for development
 export const appwriteConfig = {
-  endpoint: process.env.EXPO_PUBLIC_APPWRITE_ENDPOINT || 'https://cloud.appwrite.io/v1',
-  platform: process.env.EXPO_PUBLIC_APPWRITE_PLATFORM || 'com.profbiney.vault',
-  projectId: process.env.EXPO_PUBLIC_APPWRITE_PROJECT_ID || 'your_project_id',
-  databaseId: process.env.EXPO_PUBLIC_APPWRITE_DATABASE_ID || '688951e80021396d424f',
-  userCollectionId: process.env.EXPO_PUBLIC_APPWRITE_USER_COLLECTION_ID || '688a76c0003178d28a3e',
+  endpoint:
+    process.env.EXPO_PUBLIC_APPWRITE_ENDPOINT || "https://cloud.appwrite.io/v1",
+  platform: process.env.EXPO_PUBLIC_APPWRITE_PLATFORM || "com.profbiney.vault",
+  projectId: process.env.EXPO_PUBLIC_APPWRITE_PROJECT_ID || "your_project_id",
+  databaseId:
+    process.env.EXPO_PUBLIC_APPWRITE_DATABASE_ID || "688951e80021396d424f",
+  userCollectionId:
+    process.env.EXPO_PUBLIC_APPWRITE_USER_COLLECTION_ID ||
+    "688a76c0003178d28a3e",
 };
 
 export const client = new Client();
@@ -60,7 +70,6 @@ export const createUser = async ({
     if (!newAccount) {
       throw new Error("Failed to create account");
     }
-    await signIn(email, password);
 
     const avatarUrl = avatars.getInitialsURL(name);
 

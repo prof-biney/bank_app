@@ -1,7 +1,7 @@
+import { useAlert } from "@/context/AlertContext";
 import React, { useEffect, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { usePaystack } from "react-native-paystack-webview";
-import { useAlert } from "@/context/AlertContext";
 
 const PaystackPayment = () => {
   const { popup } = usePaystack();
@@ -10,12 +10,18 @@ const PaystackPayment = () => {
 
   // Check for required environment variables on component mount
   useEffect(() => {
-    const requiredEnvVars = ['EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY'];
-    const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
-    
+    const requiredEnvVars = ["EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY"];
+    const missingEnvVars = requiredEnvVars.filter(
+      (varName) => !process.env[varName]
+    );
+
     if (missingEnvVars.length > 0) {
-      console.warn(`Missing required Paystack environment variables: ${missingEnvVars.join(', ')}`);
-      console.warn('Please check your .env file and make sure all required variables are defined.');
+      console.warn(
+        `Missing required Paystack environment variables: ${missingEnvVars.join(", ")}`
+      );
+      console.warn(
+        "Please check your .env file and make sure all required variables are defined."
+      );
       setConfigValid(false);
     }
   }, []);
@@ -24,33 +30,36 @@ const PaystackPayment = () => {
     // If configuration is invalid, show an alert and return
     if (!configValid) {
       showAlert(
-        'error',
-        'Paystack is not properly configured. Please check the application logs for details.',
-        'Configuration Error'
+        "error",
+        "Paystack is not properly configured. Please check the application logs for details.",
+        "Configuration Error"
       );
       return;
     }
-    
+
     // Get configuration from environment variables with fallbacks
-    const defaultEmail = process.env.EXPO_PUBLIC_PAYSTACK_DEFAULT_EMAIL || "customer@example.com";
-    const paystackKey = process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY;
-    
+    const defaultEmail =
+      process.env.EXPO_PUBLIC_PAYSTACK_DEFAULT_EMAIL || "abiney1321@gmail.com";
+
     popup.newTransaction({
-      key: paystackKey,
       email: defaultEmail,
       amount: 5000,
       reference: `TXN_${Date.now()}`,
       onSuccess: async () => {
         console.log("Payment successful");
-        showAlert('success', 'Your payment was processed successfully.', 'Payment Successful');
+        showAlert(
+          "success",
+          "Your payment was processed successfully.",
+          "Payment Successful"
+        );
       },
       onCancel: () => {
         console.log("Payment cancelled");
-        showAlert('info', 'Your payment was cancelled.', 'Payment Cancelled');
+        showAlert("info", "Your payment was cancelled.", "Payment Cancelled");
       },
       onError: (err) => {
         console.error("Payment error:", err.message);
-        showAlert('error', `Payment failed: ${err.message}`, 'Payment Error');
+        showAlert("error", `Payment failed: ${err.message}`, "Payment Error");
       },
       onLoad: () => {
         console.log("Paystack webview loading");

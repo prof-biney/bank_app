@@ -9,6 +9,10 @@ import {
   View,
 } from "react-native";
 import { PaystackProvider } from "react-native-paystack-webview";
+import {
+  Currency,
+  PaymentChannels,
+} from "react-native-paystack-webview/production/lib/types";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BankCard } from "../../components/BankCard";
 import { useApp } from "../../context/AppContext";
@@ -17,21 +21,28 @@ export default function CardsScreen() {
   const { cards, activeCard, setActiveCard } = useApp();
 
   // Check for required environment variables
-  const requiredEnvVars = ['EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY'];
-  const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
-  
+  const requiredEnvVars = ["EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY"];
+  const missingEnvVars = requiredEnvVars.filter(
+    (varName) => !process.env[varName]
+  );
+
   if (missingEnvVars.length > 0) {
-    console.warn(`Missing required Paystack environment variables: ${missingEnvVars.join(', ')}`);
-    console.warn('Please check your .env file and make sure all required variables are defined.');
+    console.warn(
+      `Missing required Paystack environment variables: ${missingEnvVars.join(", ")}`
+    );
+    console.warn(
+      "Please check your .env file and make sure all required variables are defined."
+    );
   }
-  
+
   // Get Paystack configuration from environment variables with fallbacks
   const paystackPublicKey = process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY || "";
-  const paystackCurrency = process.env.EXPO_PUBLIC_PAYSTACK_CURRENCY || "GHS";
-  
+  const paystackCurrency =
+    (process.env.EXPO_PUBLIC_PAYSTACK_CURRENCY as Currency) || "GHS";
+
   // Default payment channels
-  const defaultChannels = ["card", "mobile_money", "bank"];
-  
+  const defaultChannels = ["card", "mobile_money", "bank"] as PaymentChannels;
+
   return (
     <PaystackProvider
       debug={process.env.EXPO_PUBLIC_APP_ENV === "development"}
