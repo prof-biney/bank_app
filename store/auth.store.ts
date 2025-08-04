@@ -63,9 +63,6 @@ const useAuthStore = create<AuthState>((set) => ({
   login: async (email: string, password: string) => {
     set({ isLoading: true });
     try {
-      // Clear existing session
-      await account.deleteSession("current");
-
       const session = await signIn(email, password);
       console.log("Session:", session);
 
@@ -82,9 +79,7 @@ const useAuthStore = create<AuthState>((set) => ({
           });
         }
       }
-    } catch (error: any) 
-      Alert.alert("Error", error.message);
-
+    } catch (error: any) {
       console.log("Login error:", error);
       set({
         isAuthenticated: false,
