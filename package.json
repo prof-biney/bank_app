@@ -5,6 +5,8 @@
   "scripts": {
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
+    "test-env": "node ./scripts/test-env.js",
+    "test-appwrite": "node ./scripts/test-appwrite.js",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",

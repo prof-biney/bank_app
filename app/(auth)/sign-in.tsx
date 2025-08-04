@@ -1,7 +1,6 @@
 import { Link, router } from "expo-router";
 import React, { useState } from "react";
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
@@ -13,6 +12,7 @@ import {
 } from "react-native";
 // import { useAuth } from "../../context/AuthContext";
 import useAuthStore from "@/store/auth.store";
+import { useAlert } from "@/context/AlertContext";
 
 export default function SignInScreen() {
   // const [email, setEmail] = useState("");
@@ -21,6 +21,7 @@ export default function SignInScreen() {
   // const { signIn } = useAuth();
 
   const { login } = useAuthStore();
+  const { showAlert } = useAlert();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [form, setForm] = useState({
@@ -28,23 +29,63 @@ export default function SignInScreen() {
     password: "",
   });
 
+  // Email validation function
+  const isValidEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
   const submit = async () => {
     const { email, password } = form;
 
+    // Check if fields are empty
     if (!email || !password) {
-      Alert.alert("Error", "Please fill in all fields");
+      showAlert('error', 'Please fill in all fields', 'Sign In Error');
+      return;
+    }
+
+    // Validate email format
+    if (!isValidEmail(email)) {
+      showAlert('error', 'Please enter a valid email address', 'Sign In Error');
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      // await signIn(email, password);
       await login(email, password);
 
-      router.replace("/");
+      // Show success message before navigation
+      showAlert('success', 'You have successfully signed in.', 'Welcome Back');
+      
+      // Navigate after a short delay to allow the user to see the alert
+      setTimeout(() => {
+        router.replace("/");
+      }, 1000);
     } catch (error: any) {
-      Alert.alert("Error", error.message);
+      // Handle specific error types with more descriptive messages
+      let errorMessage = 'Authentication failed. Please try again.';
+      let errorTitle = 'Sign In Error';
+      
+      if (error.message) {
+        if (error.message.includes('Invalid credentials')) {
+          errorMessage = 'The email or password you entered is incorrect. Please try again.';
+        } else if (error.message.includes('Rate limit')) {
+          errorMessage = 'Too many login attempts. Please try again later.';
+          errorTitle = 'Rate Limit Exceeded';
+        } else if (error.message.includes('User not found')) {
+          errorMessage = 'No account found with this email. Please check your email or sign up.';
+        } else if (error.message.includes('network')) {
+          errorMessage = 'Network error. Please check your internet connection and try again.';
+          errorTitle = 'Connection Error';
+        } else {
+          // Use the original error message if it's available
+          errorMessage = error.message;
+        }
+      }
+      
+      showAlert('error', errorMessage, errorTitle);
+      console.log('Sign in error:', error);
     } finally {
       setIsSubmitting(false);
     }

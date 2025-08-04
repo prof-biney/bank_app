@@ -2,7 +2,6 @@ import { createUser } from "@/lib/appwrite";
 import { Link, router } from "expo-router";
 import React, { useState } from "react";
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
@@ -13,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "../../context/AuthContext";
+import { useAlert } from "@/context/AlertContext";
 
 export default function SignUpScreen() {
   const [name, setName] = useState("");
@@ -20,6 +20,7 @@ export default function SignUpScreen() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const { signUp } = useAuth();
+  const { showAlert } = useAlert();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [form, setForm] = useState({
@@ -28,11 +29,61 @@ export default function SignUpScreen() {
     password: "",
   });
 
+  // Email validation function
+  const isValidEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  // Password strength validation
+  const validatePassword = (password: string): { isValid: boolean; message: string } => {
+    if (password.length < 8) {
+      return { isValid: false, message: 'Password must be at least 8 characters long' };
+    }
+    
+    // Check for at least one number
+    if (!/\d/.test(password)) {
+      return { isValid: false, message: 'Password must contain at least one number' };
+    }
+    
+    // Check for at least one uppercase letter
+    if (!/[A-Z]/.test(password)) {
+      return { isValid: false, message: 'Password must contain at least one uppercase letter' };
+    }
+    
+    // Check for at least one special character
+    if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+      return { isValid: false, message: 'Password must contain at least one special character' };
+    }
+    
+    return { isValid: true, message: '' };
+  };
+
   const submit = async () => {
     const { name, email, password } = form;
 
+    // Check if fields are empty
     if (!name || !email || !password) {
-      Alert.alert("Error", "Please fill in all fields");
+      showAlert('error', 'Please fill in all fields', 'Sign Up Error');
+      return;
+    }
+
+    // Validate email format
+    if (!isValidEmail(email)) {
+      showAlert('error', 'Please enter a valid email address', 'Sign Up Error');
+      return;
+    }
+
+    // Validate password strength
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.isValid) {
+      showAlert('error', passwordValidation.message, 'Password Requirements');
+      return;
+    }
+
+    // Validate name (at least 2 characters)
+    if (name.trim().length < 2) {
+      showAlert('error', 'Name must be at least 2 characters long', 'Sign Up Error');
       return;
     }
 
@@ -41,35 +92,44 @@ export default function SignUpScreen() {
     try {
       await createUser({ email, name, password });
 
-      router.replace("/onboarding");
+      // Show success message before navigation
+      showAlert('success', 'Your account has been created successfully.', 'Welcome!');
+      
+      // Navigate after a short delay to allow the user to see the alert
+      setTimeout(() => {
+        router.replace("/onboarding");
+      }, 1500);
     } catch (error: any) {
-      Alert.alert("Error", error.message);
+      // Handle specific error types with more descriptive messages
+      let errorMessage = 'Failed to create account. Please try again.';
+      let errorTitle = 'Sign Up Error';
+      
+      if (error.message) {
+        if (error.message.includes('email already exists')) {
+          errorMessage = 'An account with this email already exists. Please use a different email or sign in.';
+          errorTitle = 'Email Already Registered';
+        } else if (error.message.includes('invalid email')) {
+          errorMessage = 'The email address format is invalid. Please check and try again.';
+        } else if (error.message.includes('password')) {
+          errorMessage = 'The password does not meet security requirements. Please try a different password.';
+          errorTitle = 'Password Error';
+        } else if (error.message.includes('network')) {
+          errorMessage = 'Network error. Please check your internet connection and try again.';
+          errorTitle = 'Connection Error';
+        } else {
+          // Use the original error message if it's available
+          errorMessage = error.message;
+        }
+      }
+      
+      showAlert('error', errorMessage, errorTitle);
+      console.log('Sign up error:', error);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleSignUp = async () => {
-    if (!name || !email || !password) {
-      Alert.alert("Error", "Please fill in all fields");
-      return;
-    }
-
-    if (password.length < 6) {
-      Alert.alert("Error", "Password must be at least 6 characters");
-      return;
-    }
-
-    setIsLoading(true);
-    const success = await signUp(name, email, password);
-    setIsLoading(false);
-
-    if (success) {
-      router.replace("/onboarding");
-    } else {
-      Alert.alert("Error", "Failed to create account");
-    }
-  };
+  // The handleSignUp function has been removed as it's been replaced by the submit function
 
   return (
     <SafeAreaView style={styles.container}>
