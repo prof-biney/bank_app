@@ -1,5 +1,6 @@
 import { account, getCurrentUser, signIn, signOut } from "@/lib/appwrite";
 import { User } from "@/types";
+import { Alert } from "react-native";
 import { create } from "zustand";
 
 type AuthState = {
@@ -82,7 +83,7 @@ const useAuthStore = create<AuthState>((set) => ({
           });
         }
       }
-    } catch (error: any) 
+    } catch (error: any) {
       Alert.alert("Error", error.message);
 
       console.log("Login error:", error);
