@@ -1,5 +1,5 @@
 import { Link, router } from "expo-router";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -13,6 +13,13 @@ import {
 // import { useAuth } from "../../context/AuthContext";
 import useAuthStore from "@/store/auth.store";
 import { useAlert } from "@/context/AlertContext";
+import { Feather, MaterialIcons } from "@expo/vector-icons";
+// Import reusable form components
+import { 
+  EmailField, 
+  PasswordField,
+  ValidationState
+} from "@/components/form";
 
 export default function SignInScreen() {
   // const [email, setEmail] = useState("");
@@ -24,29 +31,94 @@ export default function SignInScreen() {
   const { showAlert } = useAlert();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [form, setForm] = useState({
     email: "",
     password: "",
   });
+  // Validation states
+  const [validation, setValidation] = useState({
+    email: { isValid: false, isTouched: false, errorMessage: "" },
+    password: { isValid: false, isTouched: false, errorMessage: "" },
+  });
 
-  // Email validation function
-  const isValidEmail = (email: string): boolean => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
+  // Email validation function with enhanced regex
+  const isValidEmail = (email: string): { isValid: boolean; message: string } => {
+    // More comprehensive email regex that checks for proper format
+    const emailRegex = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+    
+    if (!email) {
+      return { isValid: false, message: "Email is required" };
+    }
+    
+    if (!emailRegex.test(email)) {
+      return { isValid: false, message: "Please enter a valid email address" };
+    }
+    
+    return { isValid: true, message: "" };
+  };
+  
+  // Function to handle field reset
+  const resetField = (field: 'email' | 'password') => {
+    setForm(prev => ({ ...prev, [field]: "" }));
+    // Reset validation but keep it as touched
+    setValidation(prev => ({
+      ...prev,
+      [field]: { isValid: false, isTouched: true, errorMessage: "" }
+    }));
+  };
+  
+  // Real-time validation as user types
+  useEffect(() => {
+    if (validation.email.isTouched) {
+      const emailValidation = isValidEmail(form.email);
+      setValidation(prev => ({
+        ...prev,
+        email: { 
+          ...prev.email, 
+          isValid: emailValidation.isValid, 
+          errorMessage: emailValidation.message 
+        }
+      }));
+    }
+  }, [form.email]);
+
+  // Validate all fields and return if the form is valid
+  const validateForm = (): boolean => {
+    const emailValidation = isValidEmail(form.email);
+    
+    // Update validation state for all fields
+    setValidation({
+      email: { 
+        isValid: emailValidation.isValid, 
+        isTouched: true, 
+        errorMessage: emailValidation.message 
+      },
+      password: { 
+        isValid: !!form.password, 
+        isTouched: true, 
+        errorMessage: form.password ? "" : "Password is required" 
+      }
+    });
+    
+    // Form is valid if all fields are valid
+    return emailValidation.isValid && !!form.password;
   };
 
   const submit = async () => {
     const { email, password } = form;
 
-    // Check if fields are empty
-    if (!email || !password) {
-      showAlert('error', 'Please fill in all fields', 'Sign In Error');
-      return;
-    }
-
-    // Validate email format
-    if (!isValidEmail(email)) {
-      showAlert('error', 'Please enter a valid email address', 'Sign In Error');
+    // Validate all fields
+    if (!validateForm()) {
+      // Show alert for the first error found
+      if (!validation.email.isValid) {
+        showAlert('error', validation.email.errorMessage, 'Sign In Error');
+        return;
+      }
+      if (!validation.password.isValid) {
+        showAlert('error', 'Please enter your password', 'Sign In Error');
+        return;
+      }
       return;
     }
 
@@ -121,32 +193,39 @@ export default function SignInScreen() {
           </View>
 
           <View style={styles.form}>
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Email</Text>
-              <TextInput
-                style={styles.input}
-                value={form.email}
-                onChangeText={(text) =>
-                  setForm((prev) => ({ ...prev, email: text }))
-                }
-                placeholder="Enter your email"
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
-            </View>
+            <EmailField
+              label="Email"
+              value={form.email}
+              onChangeText={(text) => setForm((prev) => ({ ...prev, email: text }))}
+              validation={validation.email as ValidationState}
+              onValidationChange={(newValidation) => 
+                setValidation(prev => ({
+                  ...prev,
+                  email: newValidation
+                }))
+              }
+              resetField={() => resetField('email')}
+              placeholder="Enter your email"
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
 
-            <View style={styles.inputContainer}>
-              <Text style={styles.label}>Password</Text>
-              <TextInput
-                style={styles.input}
-                value={form.password}
-                onChangeText={(text) =>
-                  setForm((prev) => ({ ...prev, password: text }))
-                }
-                placeholder="Enter your password"
-                secureTextEntry
-              />
-            </View>
+            <PasswordField
+              label="Password"
+              value={form.password}
+              onChangeText={(text) => setForm((prev) => ({ ...prev, password: text }))}
+              validation={validation.password as ValidationState}
+              onValidationChange={(newValidation) => 
+                setValidation(prev => ({
+                  ...prev,
+                  password: newValidation
+                }))
+              }
+              resetField={() => resetField('password')}
+              placeholder="Enter your password"
+              enableValidation={false}
+              showStrengthMeter={false}
+            />
 
             <TouchableOpacity
               style={[styles.button, isSubmitting && styles.buttonDisabled]}
@@ -229,7 +308,13 @@ const styles = StyleSheet.create({
     color: "#374151",
     marginBottom: 8,
   },
+  inputWrapper: {
+    position: "relative",
+    flexDirection: "row",
+    alignItems: "center",
+  },
   input: {
+    flex: 1,
     borderWidth: 1,
     borderColor: "#D1D5DB",
     borderRadius: 8,
@@ -237,6 +322,33 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 16,
     backgroundColor: "#F9FAFB",
+    paddingRight: 40, // Space for the icons
+  },
+  validInput: {
+    borderColor: "#10B981", // Green border for valid input
+  },
+  invalidInput: {
+    borderColor: "#EF4444", // Red border for invalid input
+  },
+  resetButton: {
+    position: "absolute",
+    right: 31, // Moved 5px to the right from the original position (was 36)
+    padding: 4,
+  },
+  visibilityToggle: {
+    position: "absolute",
+    right: 10, // Positioned to the right of the cross icon
+    padding: 4,
+  },
+  validationIcon: {
+    position: "absolute",
+    right: 12,
+  },
+  errorText: {
+    color: "#EF4444",
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 4,
   },
   button: {
     backgroundColor: "#0F766E",
