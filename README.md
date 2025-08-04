@@ -154,7 +154,7 @@ Then edit the `.env` file and replace the placeholder values with your actual co
 # Appwrite Configuration
 EXPO_PUBLIC_APPWRITE_ENDPOINT=https://cloud.appwrite.io/v1
 EXPO_PUBLIC_APPWRITE_PROJECT_ID=your_actual_project_id
-EXPO_PUBLIC_APPWRITE_PLATFORM=com.profbiney.vault
+EXPO_PUBLIC_APPWRITE_PLATFORM=com.user.extension
 EXPO_PUBLIC_APPWRITE_DATABASE_ID=your_database_id
 EXPO_PUBLIC_APPWRITE_USER_COLLECTION_ID=your_user_collection_id
 
@@ -181,7 +181,7 @@ To properly configure Appwrite for this application:
 2. **Register the Android Platform**:
    - Go to Project Settings > Platforms
    - Click "Add Platform" > Select "Android"
-   - Enter the package name: `com.profbiney.vault`
+   - Enter the package name: `com.user.extension`
    - Save the platform
 
 3. **Create Database and Collections**:
@@ -267,7 +267,7 @@ If you see this error:
 
 This means the Android platform isn't registered in your Appwrite project:
 - Go to your Appwrite dashboard > Project Settings > Platforms
-- Add a new Android platform with the package name `com.profbiney.vault`
+- Add a new Android platform with the package name `com.user.extension`
 - Make sure the package name matches exactly what's in your `.env` file
 
 ## 💡 Usage Examples
@@ -278,7 +278,7 @@ The application provides a secure authentication system with email/password logi
 
 1. **Sign Up**:
    - Navigate to the Sign Up screen
-   - Enter your name, email, and password
+   - Enter your name, email, phone number, password, and confirm password
    - The system validates your input (email format, password strength)
    - Upon successful registration, you'll be redirected to the onboarding screen
 
