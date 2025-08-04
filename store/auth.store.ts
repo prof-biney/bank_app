@@ -84,8 +84,7 @@ const useAuthStore = create<AuthState>((set) => ({
         }
       }
     } catch (error: any) {
-      Alert.alert("Error", error.message);
-
+      // Removed Alert.alert to prevent scheduling updates during render phase
       console.log("Login error:", error);
       set({
         isAuthenticated: false,
