@@ -59,10 +59,12 @@ export const createUser = async ({
   name,
   email,
   password,
+  phoneNumber,
 }: {
   name: string;
   email: string;
   password: string;
+  phoneNumber?: string; // Make it optional for backward compatibility
 }) => {
   try {
     const newAccount = await account.create(ID.unique(), email, password, name);
@@ -81,10 +83,12 @@ export const createUser = async ({
         accountId: newAccount.$id,
         name,
         email,
+        phoneNumber, // Include phone number in the document
         avatar: avatarUrl,
       }
     );
   } catch (error) {
+    console.error("Create user error:", error);
     throw error;
   }
 };
@@ -94,6 +98,7 @@ export const signIn = async (email: string, password: string) => {
     const session = await account.createEmailPasswordSession(email, password);
     return session;
   } catch (error) {
+    console.error("Sign in error:", error);
     throw error;
   }
 };
@@ -102,6 +107,7 @@ export const signOut = async () => {
   try {
     await account.deleteSession("current");
   } catch (error) {
+    console.error("Sign out error:", error);
     throw error;
   }
 };
@@ -127,6 +133,7 @@ export const getCurrentUser = async () => {
     // return the user
     return currentUser.documents[0];
   } catch (error) {
+    console.error("Get current user error:", error);
     throw new Error(error as string);
   }
 };
