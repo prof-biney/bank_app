@@ -1,25 +1,20 @@
 import { Link, router } from "expo-router";
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 // import { useAuth } from "../../context/AuthContext";
-import useAuthStore from "@/store/auth.store";
 import { useAlert } from "@/context/AlertContext";
-import { Feather, MaterialIcons } from "@expo/vector-icons";
+import useAuthStore from "@/store/auth.store";
+
 // Import reusable form components
-import { 
-  EmailField, 
-  PasswordField,
-  ValidationState
-} from "@/components/form";
+import { EmailField, PasswordField, ValidationState } from "@/components/form";
 
 export default function SignInScreen() {
   // const [email, setEmail] = useState("");
@@ -31,7 +26,7 @@ export default function SignInScreen() {
   const { showAlert } = useAlert();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+
   const [form, setForm] = useState({
     email: "",
     password: "",
@@ -43,64 +38,67 @@ export default function SignInScreen() {
   });
 
   // Email validation function with enhanced regex
-  const isValidEmail = (email: string): { isValid: boolean; message: string } => {
+  const isValidEmail = (
+    email: string
+  ): { isValid: boolean; message: string } => {
     // More comprehensive email regex that checks for proper format
-    const emailRegex = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
-    
+    const emailRegex =
+      /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+
     if (!email) {
       return { isValid: false, message: "Email is required" };
     }
-    
+
     if (!emailRegex.test(email)) {
       return { isValid: false, message: "Please enter a valid email address" };
     }
-    
+
     return { isValid: true, message: "" };
   };
-  
+
   // Function to handle field reset
-  const resetField = (field: 'email' | 'password') => {
-    setForm(prev => ({ ...prev, [field]: "" }));
+  const resetField = (field: "email" | "password") => {
+    setForm((prev) => ({ ...prev, [field]: "" }));
     // Reset validation but keep it as touched
-    setValidation(prev => ({
+    setValidation((prev) => ({
       ...prev,
-      [field]: { isValid: false, isTouched: true, errorMessage: "" }
+      [field]: { isValid: false, isTouched: true, errorMessage: "" },
     }));
   };
-  
+
   // Real-time validation as user types
   useEffect(() => {
     if (validation.email.isTouched) {
       const emailValidation = isValidEmail(form.email);
-      setValidation(prev => ({
+      setValidation((prev) => ({
         ...prev,
-        email: { 
-          ...prev.email, 
-          isValid: emailValidation.isValid, 
-          errorMessage: emailValidation.message 
-        }
+        email: {
+          ...prev.email,
+          isValid: emailValidation.isValid,
+          errorMessage: emailValidation.message,
+        },
       }));
     }
-  }, [form.email]);
+  }, [form.email, validation.email.isTouched]);
 
   // Validate all fields and return if the form is valid
   const validateForm = (): boolean => {
     const emailValidation = isValidEmail(form.email);
-    
+
     // Update validation state for all fields
     setValidation({
-      email: { 
-        isValid: emailValidation.isValid, 
-        isTouched: true, 
-        errorMessage: emailValidation.message 
+      email: {
+        isValid: emailValidation.isValid,
+        isTouched: true,
+        errorMessage: emailValidation.message,
       },
-      password: { 
-        isValid: !!form.password, 
-        isTouched: true, 
-        errorMessage: form.password ? "" : "Password is required" 
-      }
+      password: {
+        isValid: !!form.password,
+        isTouched: true,
+        errorMessage: form.password ? "" : "Password is required",
+      },
     });
-    
+
     // Form is valid if all fields are valid
     return emailValidation.isValid && !!form.password;
   };
@@ -112,11 +110,11 @@ export default function SignInScreen() {
     if (!validateForm()) {
       // Show alert for the first error found
       if (!validation.email.isValid) {
-        showAlert('error', validation.email.errorMessage, 'Sign In Error');
+        showAlert("error", validation.email.errorMessage, "Sign In Error");
         return;
       }
       if (!validation.password.isValid) {
-        showAlert('error', 'Please enter your password', 'Sign In Error');
+        showAlert("error", "Please enter your password", "Sign In Error");
         return;
       }
       return;
@@ -128,36 +126,39 @@ export default function SignInScreen() {
       await login(email, password);
 
       // Show success message before navigation
-      showAlert('success', 'You have successfully signed in.', 'Welcome Back');
-      
+      showAlert("success", "You have successfully signed in.", "Welcome Back");
+
       // Navigate after a short delay to allow the user to see the alert
       setTimeout(() => {
         router.replace("/");
       }, 1000);
     } catch (error: any) {
       // Handle specific error types with more descriptive messages
-      let errorMessage = 'Authentication failed. Please try again.';
-      let errorTitle = 'Sign In Error';
-      
+      let errorMessage = "Authentication failed. Please try again.";
+      let errorTitle = "Sign In Error";
+
       if (error.message) {
-        if (error.message.includes('Invalid credentials')) {
-          errorMessage = 'The email or password you entered is incorrect. Please try again.';
-        } else if (error.message.includes('Rate limit')) {
-          errorMessage = 'Too many login attempts. Please try again later.';
-          errorTitle = 'Rate Limit Exceeded';
-        } else if (error.message.includes('User not found')) {
-          errorMessage = 'No account found with this email. Please check your email or sign up.';
-        } else if (error.message.includes('network')) {
-          errorMessage = 'Network error. Please check your internet connection and try again.';
-          errorTitle = 'Connection Error';
+        if (error.message.includes("Invalid credentials")) {
+          errorMessage =
+            "The email or password you entered is incorrect. Please try again.";
+        } else if (error.message.includes("Rate limit")) {
+          errorMessage = "Too many login attempts. Please try again later.";
+          errorTitle = "Rate Limit Exceeded";
+        } else if (error.message.includes("User not found")) {
+          errorMessage =
+            "No account found with this email. Please check your email or sign up.";
+        } else if (error.message.includes("network")) {
+          errorMessage =
+            "Network error. Please check your internet connection and try again.";
+          errorTitle = "Connection Error";
         } else {
           // Use the original error message if it's available
           errorMessage = error.message;
         }
       }
-      
-      showAlert('error', errorMessage, errorTitle);
-      console.log('Sign in error:', error);
+
+      showAlert("error", errorMessage, errorTitle);
+      console.log("Sign in error:", error);
     } finally {
       setIsSubmitting(false);
     }
@@ -196,15 +197,17 @@ export default function SignInScreen() {
             <EmailField
               label="Email"
               value={form.email}
-              onChangeText={(text) => setForm((prev) => ({ ...prev, email: text }))}
+              onChangeText={(text) =>
+                setForm((prev) => ({ ...prev, email: text }))
+              }
               validation={validation.email as ValidationState}
-              onValidationChange={(newValidation) => 
-                setValidation(prev => ({
+              onValidationChange={(newValidation) =>
+                setValidation((prev) => ({
                   ...prev,
-                  email: newValidation
+                  email: newValidation,
                 }))
               }
-              resetField={() => resetField('email')}
+              resetField={() => resetField("email")}
               placeholder="Enter your email"
               keyboardType="email-address"
               autoCapitalize="none"
@@ -213,15 +216,17 @@ export default function SignInScreen() {
             <PasswordField
               label="Password"
               value={form.password}
-              onChangeText={(text) => setForm((prev) => ({ ...prev, password: text }))}
+              onChangeText={(text) =>
+                setForm((prev) => ({ ...prev, password: text }))
+              }
               validation={validation.password as ValidationState}
-              onValidationChange={(newValidation) => 
-                setValidation(prev => ({
+              onValidationChange={(newValidation) =>
+                setValidation((prev) => ({
                   ...prev,
-                  password: newValidation
+                  password: newValidation,
                 }))
               }
-              resetField={() => resetField('password')}
+              resetField={() => resetField("password")}
               placeholder="Enter your password"
               enableValidation={false}
               showStrengthMeter={false}
