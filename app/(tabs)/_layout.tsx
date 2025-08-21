@@ -1,6 +1,6 @@
 import useAuthStore from "@/store/auth.store";
 import { Redirect, Tabs } from "expo-router";
-import { Activity, CreditCard, House, User } from "lucide-react-native";
+import { Activity, CreditCard, House, User, Wallet } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function TabLayout() {
@@ -58,6 +58,15 @@ export default function TabLayout() {
           title: "Activity",
           tabBarIcon: ({ size, color }) => (
             <Activity size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="payments"
+        options={{
+          title: "Payments",
+          tabBarIcon: ({ size, color }) => (
+            <Wallet size={size} color={color} />
           ),
         }}
       />
