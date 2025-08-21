@@ -1,7 +1,7 @@
 import PaystackPayment from "@/components/PaystackPayment";
 import { useAlert } from "@/context/AlertContext";
 import React from "react";
-import {
+import { 
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -9,6 +9,7 @@ import {
   Text,
   View,
   TouchableOpacity,
+  Alert,
 } from "react-native";
 import { PaystackProvider, usePaystack } from "react-native-paystack-webview";
 import {
@@ -18,61 +19,100 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BankCard } from "../../components/BankCard";
 import { useApp } from "../../context/AppContext";
+import useAuthStore from "@/store/auth.store";
+
+import AddCardModal from "@/components/modals/AddCardModal";
 
 function AddCardButton() {
   const { showAlert } = useAlert();
   const { addCard } = useApp();
-  const { popup } = usePaystack();
+  const { user } = useAuthStore();
 
-  const defaultEmail =
-    process.env.EXPO_PUBLIC_PAYSTACK_DEFAULT_EMAIL || "example@example.com";
+  const apiBase = process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:3000";
+  const deriveCardsUrl = () => {
+    try {
+      const u = new URL(apiBase);
+      // Android emulator special host if using localhost/127.0.0.1
+      const isLocalHost = ["localhost", "127.0.0.1"].includes(u.hostname);
+      // eslint-disable-next-line no-undef
+      const isAndroid = Platform.OS === 'android';
+      if (isLocalHost && isAndroid) {
+        u.hostname = '10.0.2.2';
+      }
+      u.pathname = u.pathname.replace(/\/$/, "");
+      u.pathname = `${u.pathname}/v1/cards`;
+      return u.toString();
+    } catch {
+      return `${apiBase.replace(/\/$/, "")}/v1/cards`;
+    }
+  };
+  const cardsUrl = deriveCardsUrl();
 
-  const handleAddCard = () => {
-    // Use a small verification transaction to tokenize card with Paystack
-    popup.newTransaction({
-      email: defaultEmail,
-      amount: 100, // minimal amount in kobo/pesewas depending on currency
-      reference: `CARD_ADD_${Date.now()}`,
-      onSuccess: async () => {
-        // Since this demo has no backend to verify and fetch authorization data,
-        // we simulate card metadata creation here.
-        const last4 = Math.floor(1000 + Math.random() * 9000).toString();
-        const masked = `•••• •••• •••• ${last4}`;
+  const [visible, setVisible] = React.useState(false);
+  const open = () => setVisible(true);
+  const close = () => setVisible(false);
 
-        addCard({
-          userId: "user1",
-          cardNumber: masked,
-          cardHolderName: "Card Holder",
-          expiryDate: "12/29",
-          cardType: "visa",
-          cardColor: "#1F2937",
-          balance: 0,
-        });
-        showAlert(
-          "success",
-          "Card added successfully. (Demo: tokenization simulated)",
-          "Card Added"
-        );
-      },
-      onCancel: () => {
-        showAlert("info", "Card addition was cancelled.", "Cancelled");
-      },
-      onError: (err) => {
-        showAlert("error", `Failed to add card: ${err.message}`, "Error");
-      },
-      onLoad: () => {},
-    });
+  const handleSubmit = async (payload: { number: string; name: string; exp_month: string; exp_year: string; cvc: string }) => {
+    try {
+      // Obtain Appwrite JWT from your auth layer if available
+      const jwt = (global as any).__APPWRITE_JWT__ || undefined;
+      const res = await fetch(cardsUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}),
+        },
+        body: JSON.stringify({
+          number: payload.number.replace(/\s+/g, ""),
+          name: payload.name,
+          exp_month: Number(payload.exp_month),
+          exp_year: Number(payload.exp_year),
+          cvc: payload.cvc,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        const msg = data?.error === "validation_error" ? JSON.stringify(data.details) : (data?.error || `HTTP ${res.status}`);
+        throw new Error(msg);
+      }
+      const last4 = data?.authorization?.last4 || "0000";
+      const brand = (data?.authorization?.brand || "visa").toLowerCase();
+      const expMonth = String(data?.authorization?.exp_month || payload.exp_month).padStart(2, "0");
+      const expYear = String(data?.authorization?.exp_year || payload.exp_year).slice(-2);
+      const masked = `•••• •••• •••• ${last4}`;
+      const holder = data?.customer?.name || payload.name || "Card Holder";
+
+      addCard({
+        userId: (user as any)?.accountId || (user as any)?.$id || "",
+        cardNumber: masked,
+        cardHolderName: holder,
+        expiryDate: `${expMonth}/${expYear}`,
+        cardType: brand,
+        cardColor: "#1F2937",
+      });
+      showAlert("success", "Card added successfully.", "Card Added");
+      close();
+    } catch (e: any) {
+      showAlert("error", e?.message || "Failed to add card", "Error");
+    }
   };
 
   return (
-    <TouchableOpacity style={styles.addButton} onPress={handleAddCard}>
-      <Text style={styles.addButtonText}>+ Add Card</Text>
-    </TouchableOpacity>
+    <>
+      <TouchableOpacity style={styles.addButton} onPress={open}>
+        <Text style={styles.addButtonText}>+ Add Card</Text>
+      </TouchableOpacity>
+      <AddCardModal visible={visible} onClose={close} onSubmit={handleSubmit} />
+    </>
   );
 }
 
+import ConfirmDialog from "@/components/modals/ConfirmDialog";
+
 export default function CardsScreen() {
   const { cards, activeCard, setActiveCard, removeCard } = useApp();
+  const [confirmVisible, setConfirmVisible] = React.useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = React.useState<string | null>(null);
   const { showAlert } = useAlert();
 
   // Check for required environment variables
@@ -97,10 +137,9 @@ export default function CardsScreen() {
 
   // Default payment channels
   const defaultChannels = ["card", "mobile_money", "bank"] as PaymentChannels;
-
   const handleDelete = (id: string) => {
-    removeCard(id);
-    showAlert("success", "Card removed successfully.", "Card Deleted");
+    setPendingDeleteId(id);
+    setConfirmVisible(true);
   };
 
   return (
@@ -131,17 +170,29 @@ export default function CardsScreen() {
                   card={card}
                   selected={activeCard?.id === card.id}
                   onPress={() => setActiveCard(card)}
+                  onDelete={() => handleDelete(card.id)}
                 />
-                <TouchableOpacity
-                  style={styles.deleteButton}
-                  onPress={() => handleDelete(card.id)}
-                >
-                  <Text style={styles.deleteButtonText}>Delete</Text>
-                </TouchableOpacity>
               </View>
             ))}
           </ScrollView>
         </KeyboardAvoidingView>
+      <ConfirmDialog
+        visible={confirmVisible}
+        title="Remove card"
+        message="Are you sure you want to remove this card? This action cannot be undone."
+        confirmText="Remove"
+        cancelText="Cancel"
+        tone="danger"
+        onCancel={() => { setConfirmVisible(false); setPendingDeleteId(null); }}
+        onConfirm={() => {
+          if (pendingDeleteId) {
+            removeCard(pendingDeleteId);
+            showAlert('success', 'Card removed successfully.', 'Card Deleted');
+          }
+          setConfirmVisible(false);
+          setPendingDeleteId(null);
+        }}
+      />
       </SafeAreaView>
     </PaystackProvider>
   );
@@ -189,16 +240,5 @@ const styles = StyleSheet.create({
   cardWrapper: {
     alignItems: "center",
     marginBottom: 20,
-  },
-  deleteButton: {
-    marginTop: 8,
-    backgroundColor: "#FEE2E2",
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-  },
-  deleteButtonText: {
-    color: "#B91C1C",
-    fontWeight: "600",
   },
 });

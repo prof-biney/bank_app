@@ -22,23 +22,6 @@ import { ActivityEvent } from "@/types/activity";
 type Payment = { id: string; status: string; amount?: number; currency?: string; created?: string };
 
 export default function ActivityScreen() {
-  const handleCreatePayment = async () => {
-    try {
-      const apiBase = process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:3000";
-      const url = `${apiBase.replace(/\/$/, "")}/v1/payments`;
-      const jwt = (global as any).__APPWRITE_JWT__ || undefined;
-      const headers: any = { 'Content-Type': 'application/json' };
-      if (jwt) headers['Authorization'] = `Bearer ${jwt}`;
-      headers['Idempotency-Key'] = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify({ amount: 1000, currency: 'GHS', source: 'tok_demo', description: 'Demo payment' }) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-      // prepend for UX
-      setPayments((prev) => [{ id: data.id, status: data.status, amount: data.amount, currency: data.currency, created: data.created }, ...prev]);
-    } catch (e) {
-      // no-op for brevity; could show alert
-    }
-  };
 
   const handleCapture = async (id: string) => {
     try {
@@ -341,13 +324,6 @@ export default function ActivityScreen() {
               </View>
             ))}
           </ScrollView>
-        </View>
-
-        {/* Quick create payment (demo) */}
-        <View style={{ paddingHorizontal: 20, paddingBottom: 10 }}>
-          <TouchableOpacity onPress={handleCreatePayment} style={{ backgroundColor: '#1D4ED8', paddingVertical: 10, borderRadius: 8, alignItems: 'center' }}>
-            <Text style={{ color: '#fff', fontWeight: '700' }}>Create Test Payment</Text>
-          </TouchableOpacity>
         </View>
 
         <DateFilterModal
