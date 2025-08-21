@@ -157,6 +157,8 @@ v1.post('/payments', appwriteAuth, async (c) => {
   const parse = PaymentCreate.safeParse(await c.req.json().catch(() => ({})));
   if (!parse.success) return c.json({ error: 'validation_error', details: parse.error.flatten() }, 400);
   const { amount, currency, source, description } = parse.data;
+  // Extra guard in case clients send lowercase 'ghs' or other values in future
+  if ((currency || '').toUpperCase() !== 'GHS') return c.json({ error: 'unsupported_currency', expected: 'GHS' }, 400);
   const { databases } = createDb();
   const databaseId = process.env.APPWRITE_DATABASE_ID!;
   const txCol = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID!;
