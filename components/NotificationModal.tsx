@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useTheme } from "@/context/ThemeContext";
 
 interface NotificationModalProps {
   visible: boolean;
@@ -45,6 +46,7 @@ export function NotificationModal({
   visible,
   onClose,
 }: NotificationModalProps) {
+  const { colors } = useTheme();
   const getNotificationIcon = (type: string) => {
     switch (type) {
       case "payment":
@@ -63,11 +65,11 @@ export function NotificationModal({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Notifications</Text>
-          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <X color="#374151" size={24} />
+      <View style={[styles.container, { backgroundColor: colors.background }] }>
+        <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>Notifications</Text>
+          <TouchableOpacity onPress={onClose} style={[styles.closeButton, { backgroundColor: colors.background }]}>
+            <X color={colors.textPrimary} size={24} />
           </TouchableOpacity>
         </View>
 
@@ -78,22 +80,22 @@ export function NotificationModal({
           {mockNotifications.map((notification) => (
             <TouchableOpacity
               key={notification.id}
-              style={styles.notificationItem}
+              style={[styles.notificationItem, { backgroundColor: colors.card }]}
             >
-              <View style={styles.notificationIcon}>
+              <View style={[styles.notificationIcon, { backgroundColor: colors.background }]}>
                 {getNotificationIcon(notification.type)}
               </View>
               <View style={styles.notificationContent}>
                 <View style={styles.notificationHeader}>
-                  <Text style={styles.notificationTitle}>
+                  <Text style={[styles.notificationTitle, { color: colors.textPrimary }]}>
                     {notification.title}
                   </Text>
                   {notification.unread && <View style={styles.unreadDot} />}
                 </View>
-                <Text style={styles.notificationMessage}>
+                <Text style={[styles.notificationMessage, { color: colors.textSecondary }]}>
                   {notification.message}
                 </Text>
-                <Text style={styles.notificationTime}>{notification.time}</Text>
+                <Text style={[styles.notificationTime, { color: colors.textSecondary }]}>{notification.time}</Text>
               </View>
             </TouchableOpacity>
           ))}

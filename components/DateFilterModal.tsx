@@ -1,6 +1,7 @@
 import { Check } from "lucide-react-native";
 import React from "react";
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useTheme } from "@/context/ThemeContext";
 
 interface DateFilterModalProps {
   visible: boolean;
@@ -22,6 +23,8 @@ export function DateFilterModal({
   selectedFilter,
   onFilterSelect,
 }: DateFilterModalProps) {
+  const { colors } = useTheme();
+
   const handleFilterSelect = (filter: string) => {
     onFilterSelect(filter);
     onClose();
@@ -35,8 +38,8 @@ export function DateFilterModal({
       onRequestClose={onClose}
     >
       <TouchableOpacity style={styles.overlay} onPress={onClose}>
-        <View style={styles.modal}>
-          <Text style={styles.title}>Filter Transactions</Text>
+        <View style={[styles.modal, { backgroundColor: colors.card }]}>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>Filter Transactions</Text>
 
           {filterOptions.map((option) => (
             <TouchableOpacity
@@ -44,7 +47,7 @@ export function DateFilterModal({
               style={styles.option}
               onPress={() => handleFilterSelect(option.key)}
             >
-              <Text style={styles.optionText}>{option.label}</Text>
+              <Text style={[styles.optionText, { color: colors.textSecondary }]}>{option.label}</Text>
               {selectedFilter === option.key && (
                 <Check color="#0F766E" size={20} />
               )}

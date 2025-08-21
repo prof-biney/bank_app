@@ -9,6 +9,7 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import "./global.css";
 import { Alert } from "@/components/Alert";
+import { ThemeProvider } from "@/context/ThemeContext";
 
 function RootLayoutContent() {
   const { isLoading, fetchAuthenticatedUser } = useAuthStore();
@@ -58,10 +59,12 @@ export default function RootLayout() {
     <>
       <AlertProvider>
         <AuthProvider>
-          <AppProvider>
-            <RootLayoutContent />
-            <Alert />
-          </AppProvider>
+          <ThemeProvider>
+            <AppProvider>
+              <RootLayoutContent />
+              <Alert />
+            </AppProvider>
+          </ThemeProvider>
         </AuthProvider>
       </AlertProvider>
 

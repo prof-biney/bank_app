@@ -7,12 +7,14 @@ import {
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Transaction } from "../types/index";
+import { useTheme } from "@/context/ThemeContext";
 
 interface TransactionItemProps {
   transaction: Transaction;
 }
 
 export function TransactionItem({ transaction }: TransactionItemProps) {
+  const { colors } = useTheme();
   const getTransactionIcon = () => {
     switch (transaction.type) {
       case "deposit":
@@ -41,12 +43,12 @@ export function TransactionItem({ transaction }: TransactionItemProps) {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
       <View style={styles.iconContainer}>{getTransactionIcon()}</View>
 
       <View style={styles.details}>
-        <Text style={styles.description}>{transaction.description}</Text>
-        <Text style={styles.category}>{transaction.category}</Text>
+        <Text style={[styles.description, { color: colors.textPrimary }]}>{transaction.description}</Text>
+        <Text style={[styles.category, { color: colors.textSecondary }]}>{transaction.category}</Text>
       </View>
 
       <View style={styles.amountContainer}>
@@ -54,7 +56,7 @@ export function TransactionItem({ transaction }: TransactionItemProps) {
           {transaction.amount > 0 ? "+" : ""}$
           {Math.abs(transaction.amount).toFixed(2)}
         </Text>
-        <Text style={styles.date}>{formatDate(transaction.date)}</Text>
+        <Text style={[styles.date, { color: colors.textSecondary }]}>{formatDate(transaction.date)}</Text>
       </View>
     </View>
   );

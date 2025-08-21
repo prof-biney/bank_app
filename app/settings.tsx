@@ -1,34 +1,42 @@
 import { router } from "expo-router";
 import { ArrowLeft, Bell, Globe, Moon, Shield } from "lucide-react-native";
 import React, { useState } from "react";
+import { useTheme } from "@/context/ThemeContext";
 import { StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function SettingsScreen() {
+  // Theme toggler state could be persisted or sourced from a ThemeContext
+  const { isDark, colors, setDarkMode } = useTheme();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [darkModeEnabled, setDarkModeEnabled] = useState(false);
   const [biometricEnabled, setBiometricEnabled] = useState(true);
 
+  const backgroundColor = colors.background;
+  const cardColor = colors.card;
+  const textPrimary = colors.textPrimary;
+  const textSecondary = colors.textSecondary;
+  const iconColor = colors.textSecondary;
+
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => router.back()}
           style={styles.backButton}
         >
-          <ArrowLeft color="#374151" size={24} />
+          <ArrowLeft color={iconColor} size={24} />
         </TouchableOpacity>
-        <Text style={styles.title}>Settings</Text>
+        <Text style={[styles.title, { color: textPrimary }]}>Settings</Text>
         <View style={styles.placeholder} />
       </View>
 
       <View style={styles.content}>
-        <View style={styles.section}>
+        <View style={[styles.section, { backgroundColor: colors.card }]}>
           <Text style={styles.sectionTitle}>Notifications</Text>
           <View style={styles.settingItem}>
             <View style={styles.settingLeft}>
-              <Bell color="#374151" size={20} />
-              <Text style={styles.settingText}>Push Notifications</Text>
+              <Bell color={iconColor} size={20} />
+              <Text style={[styles.settingText, { color: textSecondary }]}>Push Notifications</Text>
             </View>
             <Switch
               value={notificationsEnabled}
@@ -39,28 +47,28 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        <View style={styles.section}>
+        <View style={[styles.section, { backgroundColor: colors.card }]}>
           <Text style={styles.sectionTitle}>Appearance</Text>
           <View style={styles.settingItem}>
             <View style={styles.settingLeft}>
-              <Moon color="#374151" size={20} />
-              <Text style={styles.settingText}>Dark Mode</Text>
+              <Moon color={iconColor} size={20} />
+              <Text style={[styles.settingText, { color: textSecondary }]}>Dark Mode</Text>
             </View>
             <Switch
-              value={darkModeEnabled}
-              onValueChange={setDarkModeEnabled}
+              value={isDark}
+              onValueChange={setDarkMode}
               trackColor={{ false: "#D1D5DB", true: "#0F766E" }}
-              thumbColor={darkModeEnabled ? "#ffffff" : "#ffffff"}
+              thumbColor={isDark ? "#ffffff" : "#ffffff"}
             />
           </View>
         </View>
 
-        <View style={styles.section}>
+        <View style={[styles.section, { backgroundColor: colors.card }]}>
           <Text style={styles.sectionTitle}>Security</Text>
           <View style={styles.settingItem}>
             <View style={styles.settingLeft}>
-              <Shield color="#374151" size={20} />
-              <Text style={styles.settingText}>Biometric Authentication</Text>
+              <Shield color={iconColor} size={20} />
+              <Text style={[styles.settingText, { color: textSecondary }]}>Biometric Authentication</Text>
             </View>
             <Switch
               value={biometricEnabled}
@@ -71,14 +79,14 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        <View style={styles.section}>
+        <View style={[styles.section, { backgroundColor: colors.card }]}>
           <Text style={styles.sectionTitle}>General</Text>
           <TouchableOpacity style={styles.settingItem}>
             <View style={styles.settingLeft}>
-              <Globe color="#374151" size={20} />
-              <Text style={styles.settingText}>Language</Text>
+              <Globe color={iconColor} size={20} />
+              <Text style={[styles.settingText, { color: textSecondary }]}>Language</Text>
             </View>
-            <Text style={styles.settingValue}>English</Text>
+            <Text style={[styles.settingValue, { color: textSecondary }]}>English</Text>
           </TouchableOpacity>
         </View>
       </View>

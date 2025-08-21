@@ -25,6 +25,8 @@ import { QuickAction } from "../../components/QuickAction";
 import { TransactionItem } from "../../components/TransactionItem";
 import { useApp } from "../../context/AppContext";
 
+import { useTheme } from "@/context/ThemeContext";
+
 export default function HomeScreen() {
   const { cards, activeCard, setActiveCard, transactions } = useApp();
   const [showNotifications, setShowNotifications] = React.useState(false);
@@ -84,8 +86,10 @@ export default function HomeScreen() {
     router.push("/transfer");
   };
 
+  const { colors } = useTheme();
+
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -93,8 +97,8 @@ export default function HomeScreen() {
         <ScrollView showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
             <View>
-              <Text style={styles.greeting}>Welcome back!</Text>
-              <Text style={styles.userName}>{user?.name}</Text>
+            <Text style={[styles.greeting, { color: colors.textSecondary }]}>Welcome back!</Text>
+              <Text style={[styles.userName, { color: colors.textPrimary }]}>{user?.name}</Text>
             </View>
             <TouchableOpacity
               style={styles.notificationButton}
@@ -145,7 +149,7 @@ export default function HomeScreen() {
             />
           </View>
 
-          <View style={styles.transactionsSection}>
+          <View style={[styles.transactionsSection, { backgroundColor: colors.card }]}>
             <View style={styles.sectionHeader}>
               <TouchableOpacity onPress={() => setShowDateFilter(true)}>
                 <Text style={styles.sectionTitle}>{getDateFilterLabel()}</Text>

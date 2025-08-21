@@ -198,6 +198,24 @@ To properly configure Appwrite for this application:
 
 For more detailed information about the Appwrite setup, refer to the [API Documentation](API.md).
 
+## 🧪 Paystack Verify Mock (Optional)
+
+You can run a lightweight local verify endpoint to simulate Paystack card authorization retrieval. This is useful while your backend is not yet implemented.
+
+- Start the mock server (requires Bun):
+  - bun run scripts/mock-paystack-verify.ts
+  - Or via package script: bun run mock:verify
+
+- Configure the app to use it by setting in your .env:
+  - EXPO_PUBLIC_PAYSTACK_VERIFY_URL=http://localhost:8787/verify
+
+- What it does:
+  - Exposes POST /verify which accepts JSON: { "reference": "..." }
+  - Returns JSON: { authorization: { last4, brand, exp_month, exp_year }, customer: { name }, reference, verified: true }
+  - The values are deterministic based on the reference so you get consistent masked cards for the same reference.
+
+- In production, replace EXPO_PUBLIC_PAYSTACK_VERIFY_URL with your real backend endpoint that verifies the transaction using Paystack’s server-side API and returns sanitized card authorization details needed by the app.
+
 ### Paystack Setup
 
 To set up Paystack for payment processing:

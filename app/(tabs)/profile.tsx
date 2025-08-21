@@ -18,6 +18,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { useTheme } from "@/context/ThemeContext";
+
 export default function ProfileScreen() {
   const { user, logout } = useAuthStore();
 
@@ -43,25 +45,27 @@ export default function ProfileScreen() {
     router.push("/help-support");
   };
 
+  const { colors } = useTheme();
+
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <View style={styles.header}>
-          <Text style={styles.title}>Profile</Text>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>Profile</Text>
         </View>
 
-        <View style={styles.userSection}>
+        <View style={[styles.userSection, { backgroundColor: colors.card }]}>
           <View style={styles.avatar}>
             <UserIcon color="#0F766E" size={32} />
           </View>
-          <Text style={styles.userName}>{user?.name}</Text>
-          <Text style={styles.userEmail}>{user?.email}</Text>
+          <Text style={[styles.userName, { color: colors.textPrimary }]}>{user?.name}</Text>
+          <Text style={[styles.userEmail, { color: colors.textSecondary }]}>{user?.email}</Text>
         </View>
 
-        <View style={styles.menuSection}>
+        <View style={[styles.menuSection, { backgroundColor: colors.card }]}>
           <TouchableOpacity style={styles.menuItem} onPress={handleSettings}>
             <View style={styles.menuItemLeft}>
               <Settings color="#374151" size={20} />

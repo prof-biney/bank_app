@@ -1,4 +1,4 @@
-import { CreditCard, Wifi } from "lucide-react-native";
+import { CreditCard, Wifi, Trash2 } from "lucide-react-native";
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Card } from "../types/index";
@@ -7,9 +7,10 @@ interface BankCardProps {
   card: Card;
   onPress?: () => void;
   selected?: boolean;
+  onDelete?: () => void;
 }
 
-export function BankCard({ card, onPress, selected }: BankCardProps) {
+export function BankCard({ card, onPress, selected, onDelete }: BankCardProps) {
   return (
     <TouchableOpacity
       style={[
@@ -19,7 +20,21 @@ export function BankCard({ card, onPress, selected }: BankCardProps) {
       ]}
       onPress={onPress}
       disabled={!onPress}
+      activeOpacity={0.9}
     >
+      {onDelete && (
+        <TouchableOpacity
+          onPress={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          style={styles.deleteFab}
+          accessibilityLabel="Delete card"
+        >
+          <Trash2 color="#B91C1C" size={18} />
+        </TouchableOpacity>
+      )}
+
       <View style={styles.cardHeader}>
         <CreditCard color="white" size={24} />
         <Wifi color="white" size={20} />
@@ -71,6 +86,18 @@ const styles = StyleSheet.create({
   selectedCard: {
     borderWidth: 2,
     borderColor: "#0F766E",
+  },
+  deleteFab: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    zIndex: 2,
+    backgroundColor: "#FEE2E2",
+    borderRadius: 16,
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
   },
   cardHeader: {
     flexDirection: "row",

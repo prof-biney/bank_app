@@ -116,12 +116,21 @@ const useAuthStore = create<AuthState>((set) => ({
             isAuthenticated: true,
             user: user as unknown as User,
           });
+          // Obtain an Appwrite JWT for server API calls and stash globally
+          try {
+            const jwt = await account.createJWT();
+            (global as any).__APPWRITE_JWT__ = jwt?.jwt;
+          } catch (e) {
+            // Non-fatal if JWT cannot be created
+            (global as any).__APPWRITE_JWT__ = undefined;
+          }
         }
       } else {
         set({
           isAuthenticated: false,
           user: null,
         });
+        (global as any).__APPWRITE_JWT__ = undefined;
       }
     } catch (error) {
       console.log("fetchAuthenticatedUser error", error);
@@ -130,6 +139,7 @@ const useAuthStore = create<AuthState>((set) => ({
         isAuthenticated: false,
         user: null,
       });
+      (global as any).__APPWRITE_JWT__ = undefined;
     } finally {
       set({ isLoading: false });
     }
@@ -159,6 +169,13 @@ const useAuthStore = create<AuthState>((set) => ({
             isAuthenticated: true,
             user: user as unknown as User,
           });
+          // Obtain and cache Appwrite JWT for server API calls
+          try {
+            const jwt = await account.createJWT();
+            (global as any).__APPWRITE_JWT__ = jwt?.jwt;
+          } catch (e) {
+            (global as any).__APPWRITE_JWT__ = undefined;
+          }
         }
       }
     } catch (error: any) {
@@ -168,6 +185,7 @@ const useAuthStore = create<AuthState>((set) => ({
         isAuthenticated: false,
         user: null,
       });
+      (global as any).__APPWRITE_JWT__ = undefined;
       throw error;
     } finally {
       set({ isLoading: false });
@@ -195,6 +213,7 @@ const useAuthStore = create<AuthState>((set) => ({
         user: null,
       });
     } finally {
+      (global as any).__APPWRITE_JWT__ = undefined;
       set({ isLoading: false });
     }
   },
