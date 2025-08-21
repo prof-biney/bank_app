@@ -7,39 +7,48 @@ import {
   Query,
 } from "react-native-appwrite";
 
-// Check for required environment variables
-const requiredEnvVars = [
-  "EXPO_PUBLIC_APPWRITE_ENDPOINT",
-  "EXPO_PUBLIC_APPWRITE_PROJECT_ID",
-  "EXPO_PUBLIC_APPWRITE_PLATFORM",
-  "EXPO_PUBLIC_APPWRITE_DATABASE_ID",
-  "EXPO_PUBLIC_APPWRITE_USER_COLLECTION_ID",
+// Helper to resolve env vars with fallback names (supports bank/.env APPWRITE_* keys)
+const env = (keys: string[], def?: string) => {
+  for (const k of keys) {
+    const v = (process.env as any)?.[k];
+    if (typeof v === 'string' && v.length > 0) return v;
+  }
+  return def;
+};
+
+// Check for required environment variables (accept either EXPO_PUBLIC_* or APPWRITE_* forms)
+const requiredPairs: [string, string][] = [
+  ["EXPO_PUBLIC_APPWRITE_ENDPOINT", "APPWRITE_ENDPOINT"],
+  ["EXPO_PUBLIC_APPWRITE_PROJECT_ID", "APPWRITE_PROJECT_ID"],
+  ["EXPO_PUBLIC_APPWRITE_PLATFORM", "APPWRITE_PLATFORM"],
+  ["EXPO_PUBLIC_APPWRITE_DATABASE_ID", "APPWRITE_DATABASE_ID"],
+  ["EXPO_PUBLIC_APPWRITE_USER_COLLECTION_ID", "APPWRITE_USER_COLLECTION_ID"],
 ];
 
-// Log warnings for missing environment variables
-const missingEnvVars = requiredEnvVars.filter(
-  (varName) => !process.env[varName]
-);
+const missingEnvVars = requiredPairs
+  .filter(([a, b]) => !process.env[a] && !process.env[b])
+  .map(([a, b]) => `${a} (or ${b})`);
+
 if (missingEnvVars.length > 0) {
   console.warn(
     `Missing required environment variables: ${missingEnvVars.join(", ")}`
   );
   console.warn(
-    "Please check your .env file and make sure all required variables are defined."
+    "Please check your .env (Expo) or bank/.env (server-style) and make sure all required variables are defined."
   );
 }
 
-// Appwrite configuration with fallbacks for development
+// Appwrite configuration with fallbacks (EXPO_PUBLIC_* first, then APPWRITE_*)
 export const appwriteConfig = {
-  endpoint:
-    process.env.EXPO_PUBLIC_APPWRITE_ENDPOINT || "https://cloud.appwrite.io/v1",
-  platform: process.env.EXPO_PUBLIC_APPWRITE_PLATFORM || "com.profbiney.vault",
-  projectId: process.env.EXPO_PUBLIC_APPWRITE_PROJECT_ID || "your_project_id",
-  databaseId:
-    process.env.EXPO_PUBLIC_APPWRITE_DATABASE_ID || "688951e80021396d424f",
-  userCollectionId:
-    process.env.EXPO_PUBLIC_APPWRITE_USER_COLLECTION_ID ||
-    "688a76c0003178d28a3e",
+  endpoint: env(["EXPO_PUBLIC_APPWRITE_ENDPOINT", "APPWRITE_ENDPOINT"], "https://cloud.appwrite.io/v1"),
+  platform: env(["EXPO_PUBLIC_APPWRITE_PLATFORM", "APPWRITE_PLATFORM"], "com.profbiney.vault"),
+  projectId: env(["EXPO_PUBLIC_APPWRITE_PROJECT_ID", "APPWRITE_PROJECT_ID"], "your_project_id"),
+  databaseId: env(["EXPO_PUBLIC_APPWRITE_DATABASE_ID", "APPWRITE_DATABASE_ID"], "688951e80021396d424f"),
+  userCollectionId: env(["EXPO_PUBLIC_APPWRITE_USER_COLLECTION_ID", "APPWRITE_USER_COLLECTION_ID"], "688a76c0003178d28a3e"),
+  // Optional collections for realtime activity
+  transactionsCollectionId: env(["EXPO_PUBLIC_APPWRITE_TRANSACTIONS_COLLECTION_ID", "APPWRITE_TRANSACTIONS_COLLECTION_ID"]),
+  cardsCollectionId: env(["EXPO_PUBLIC_APPWRITE_CARDS_COLLECTION_ID", "APPWRITE_CARDS_COLLECTION_ID"]),
+  accountUpdatesCollectionId: env(["EXPO_PUBLIC_APPWRITE_ACCOUNT_UPDATES_COLLECTION_ID", "APPWRITE_ACCOUNT_UPDATES_COLLECTION_ID"]),
 };
 
 export const client = new Client();
@@ -135,5 +144,58 @@ export const getCurrentUser = async () => {
   } catch (error) {
     console.error("Get current user error:", error);
     throw new Error(error as string);
+  }
+};
+
+// ---------------- Card Event Logging ----------------
+export type CardEventStatus = "added" | "removed";
+export type CardEventInput = {
+  cardId: string;
+  userId?: string;
+  last4?: string;
+  brand?: string;
+  cardHolderName?: string;
+  expiryDate?: string; // MM/YY
+  status: CardEventStatus;
+  title?: string;
+  description?: string;
+  // Optional extras for activity mapping
+  accountId?: string;
+};
+
+/**
+ * Persist a card event (added/removed) to Appwrite in the cards collection.
+ * This is designed to power the activity timeline via Realtime subscriptions.
+ * If the cards collection id is not configured, this will no-op.
+ */
+export const logCardEvent = async (input: CardEventInput) => {
+  const { cardsCollectionId, databaseId } = appwriteConfig;
+  if (!databaseId || !cardsCollectionId) {
+    // Silently skip if not configured
+    return null;
+  }
+
+  try {
+    const payload: Record<string, any> = {
+      type: "card.event",
+      status: input.status,
+      cardId: input.cardId,
+      userId: input.userId,
+      last4: input.last4,
+      brand: input.brand,
+      cardHolderName: input.cardHolderName,
+      expiryDate: input.expiryDate,
+      title: input.title || (input.status === "added" ? "Card added" : "Card removed"),
+      description: input.description,
+      accountId: input.accountId,
+      category: "card",
+      timestamp: new Date().toISOString(),
+    };
+
+    return await databases.createDocument(databaseId, cardsCollectionId, ID.unique(), payload);
+  } catch (error) {
+    console.error("logCardEvent error:", error);
+    // Do not throw to avoid breaking UI flows; just report
+    return null;
   }
 };
