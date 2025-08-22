@@ -1,7 +1,8 @@
-import { Check } from "lucide-react-native";
 import React from "react";
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useTheme } from "@/context/ThemeContext";
+import CustomButton from "@/components/CustomButton";
+import { getBadgeVisuals } from "@/theme/badge-utils";
 
 interface DateFilterModalProps {
   visible: boolean;
@@ -12,9 +13,10 @@ interface DateFilterModalProps {
 
 const filterOptions = [
   { key: "today", label: "Today" },
-  { key: "week", label: "This Week" },
-  { key: "month", label: "This Month" },
-  { key: "all", label: "All Time" },
+  { key: "week", label: "Week" },
+  { key: "month", label: "Month" },
+  { key: "year", label: "Year" },
+  { key: "all", label: "All" },
 ];
 
 export function DateFilterModal({
@@ -41,18 +43,24 @@ export function DateFilterModal({
         <View style={[styles.modal, { backgroundColor: colors.card }]}>
           <Text style={[styles.title, { color: colors.textPrimary }]}>Filter Transactions</Text>
 
-          {filterOptions.map((option) => (
-            <TouchableOpacity
-              key={option.key}
-              style={styles.option}
-              onPress={() => handleFilterSelect(option.key)}
-            >
-              <Text style={[styles.optionText, { color: colors.textSecondary }]}>{option.label}</Text>
-              {selectedFilter === option.key && (
-                <Check color="#0F766E" size={20} />
-              )}
-            </TouchableOpacity>
-          ))}
+          <View style={styles.chipRow}>
+            {filterOptions.map((option) => {
+              const tone = option.key === 'today' ? 'accent' : option.key === 'week' ? 'success' : option.key === 'month' ? 'warning' : option.key === 'year' ? 'accent' : 'neutral';
+              const v = getBadgeVisuals(colors, { tone: tone as any, selected: selectedFilter === option.key, size: 'sm' });
+              return (
+                <View key={option.key} style={styles.chipItem}>
+                  <CustomButton
+                    onPress={() => handleFilterSelect(option.key)}
+                    title={option.label}
+                    size="sm"
+                    variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
+                    style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5, marginRight: 5 }}
+                    textStyle={{ color: v.textColor }}
+                  />
+                </View>
+              );
+            })}
+          </View>
         </View>
       </TouchableOpacity>
     </Modal>
@@ -68,7 +76,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   modal: {
-    backgroundColor: "white",
     borderRadius: 16,
     padding: 20,
     width: "100%",
@@ -77,7 +84,6 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: "bold",
-    color: "#1F2937",
     marginBottom: 16,
     textAlign: "center",
   },
@@ -87,10 +93,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
   },
   optionText: {
     fontSize: 16,
-    color: "#374151",
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 0,
+    paddingVertical: 4,
+  },
+  chipItem: {
+    marginBottom: 8,
   },
 });
