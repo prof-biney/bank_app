@@ -13,18 +13,15 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BankCard } from "../components/BankCard";
-import { RecipientItem } from "../components/RecipientItem";
 import { useApp } from "../context/AppContext";
 import { useAlert } from "../context/AlertContext";
-import { mockRecipients } from "../lib/mockdata";
 import { Recipient } from "../types/index";
 
 export default function TransferScreen() {
   const { cards, activeCard, setActiveCard, addTransaction } = useApp();
   const { showAlert } = useAlert();
-  const [selectedRecipient, setSelectedRecipient] = useState<Recipient | null>(
-    null
-  );
+const [selectedRecipient, setSelectedRecipient] = useState<Recipient | null>(null);
+  const [recipientName, setRecipientName] = useState("");
   const [amount, setAmount] = useState("");
   const [step, setStep] = useState<
     "select-card" | "select-recipient" | "enter-amount"
@@ -35,7 +32,13 @@ export default function TransferScreen() {
     setStep("select-recipient");
   };
 
-  const handleRecipientSelect = (recipient: Recipient) => {
+const handleRecipientSelect = (name: string) => {
+    const recipient: Recipient = {
+      id: `manual.${Date.now()}`,
+      name,
+      avatar: "",
+      accountNumber: "",
+    };
     setSelectedRecipient(recipient);
     setStep("enter-amount");
   };
@@ -60,7 +63,7 @@ export default function TransferScreen() {
 
     try {
       addTransaction({
-        userId: "user1",
+        userId: activeCard.userId,
         cardId: activeCard.id,
         type: "transfer",
         amount: -transferAmount,
@@ -134,32 +137,29 @@ export default function TransferScreen() {
           </View>
         )}
 
-        {step === "select-recipient" && (
+{step === "select-recipient" && (
           <View style={styles.content}>
-            <Text style={styles.sectionTitle}>Choose recipients</Text>
+            <Text style={styles.sectionTitle}>Enter recipient name</Text>
 
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.recipientsScroll}
-            >
-              {mockRecipients.map((recipient) => (
-                <RecipientItem
-                  key={recipient.id}
-                  recipient={recipient}
-                  selected={selectedRecipient?.id === recipient.id}
-                  onPress={() => handleRecipientSelect(recipient)}
+            <View style={styles.amountSection}>
+              <Text style={styles.amountLabel}>Recipient</Text>
+              <View style={styles.amountInputContainer}>
+                <TextInput
+                  style={styles.amountInput}
+                  value={recipientName}
+                  onChangeText={setRecipientName}
+                  placeholder="Full name"
                 />
-              ))}
-            </ScrollView>
+              </View>
+            </View>
 
             <TouchableOpacity
               style={[
                 styles.continueButton,
-                !selectedRecipient && styles.continueButtonDisabled,
+                !recipientName && styles.continueButtonDisabled,
               ]}
-              onPress={() => setStep("enter-amount")}
-              disabled={!selectedRecipient}
+              onPress={() => handleRecipientSelect(recipientName.trim())}
+              disabled={!recipientName.trim()}
             >
               <Text style={styles.continueButtonText}>Continue</Text>
             </TouchableOpacity>

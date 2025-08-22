@@ -11,8 +11,6 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "mock:verify": "bun run scripts/mock-paystack-verify.ts",
-    "server:dev": "bun --cwd server run dev",
     "env:print": "node -e \"console.log({\n  ENDPOINT: process.env.EXPO_PUBLIC_APPWRITE_ENDPOINT || process.env.APPWRITE_ENDPOINT,\n  PROJECT: process.env.EXPO_PUBLIC_APPWRITE_PROJECT_ID || process.env.APPWRITE_PROJECT_ID,\n  PLATFORM: process.env.EXPO_PUBLIC_APPWRITE_PLATFORM || process.env.APPWRITE_PLATFORM,\n  DB: process.env.EXPO_PUBLIC_APPWRITE_DATABASE_ID || process.env.APPWRITE_DATABASE_ID,\n  USERS: process.env.EXPO_PUBLIC_APPWRITE_USER_COLLECTION_ID || process.env.APPWRITE_USER_COLLECTION_ID\n});\""
   },
   "dependencies": {
@@ -45,7 +43,6 @@
     "react-native": "0.79.5",
     "react-native-appwrite": "^0.11.0",
     "react-native-gesture-handler": "~2.24.0",
-    "react-native-paystack-webview": "^5.0.1",
     "react-native-reanimated": "~3.17.4",
     "react-native-safe-area-context": "5.4.0",
     "react-native-screens": "~4.11.1",
