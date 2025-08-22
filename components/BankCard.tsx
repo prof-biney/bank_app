@@ -54,8 +54,7 @@ export function BankCard({ card, onPress, selected, onDelete }: BankCardProps) {
         <View>
           <Text style={[styles.balanceLabel, { color: subTextOnCard }]}>Balance</Text>
           <Text style={[styles.balanceAmount, { color: textOnCard }]}>
-            $
-            {card.balance.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+            GHS {card.balance.toLocaleString("en-US", { minimumFractionDigits: 2 })}
           </Text>
         </View>
         <View style={styles.cardInfo}>

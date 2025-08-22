@@ -20,26 +20,26 @@ async function main() {
   let cursor: string | null = null;
   let updated = 0, scanned = 0;
   for (;;) {
-    const queries: any[] = [Query.limit(100), Query.orderAsc()];
+    const queries: any[] = [Query.limit(100), Query.orderAsc('$id')];
     if (cursor) queries.push(Query.cursorAfter(cursor));
     const res: any = await db.listDocuments(databaseId, cardsCol, queries);
     const docs: any[] = res.documents || [];
     if (docs.length === 0) break;
     for (const d of docs) {
       scanned++;
-      const needsStart = typeof d.startingBalance !== number;
-      const needsBalance = typeof d.balance !== number;
+      const needsStart = typeof d.startingBalance !== 'number';
+      const needsBalance = typeof d.balance !== 'number';
       const needsCurrency = !d.currency;
       if (needsStart || needsBalance || needsCurrency) {
-        await db.updateDocument(databaseId, cardsCol, d., {
+        await db.updateDocument(databaseId, cardsCol, d.$id, {
           startingBalance: needsStart ? DEFAULT : d.startingBalance,
-          balance: needsBalance ? (typeof d.startingBalance === number ? d.startingBalance : DEFAULT) : d.balance,
-          currency: needsCurrency ? GHS : d.currency,
+          balance: needsBalance ? (typeof d.startingBalance === 'number' ? d.startingBalance : DEFAULT) : d.balance,
+          currency: needsCurrency ? 'GHS' : d.currency,
         }).catch(() => {});
         updated++;
       }
     }
-    cursor = docs[docs.length - 1].;
+    cursor = docs[docs.length - 1].$id;
   }
   console.log(JSON.stringify({ ok: true, scanned, updated }));
 }

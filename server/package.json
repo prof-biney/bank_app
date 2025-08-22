@@ -7,7 +7,8 @@
     "dev": "bun ./src/index.ts",
     "start": "bun ./src/index.ts",
     "build": "echo 'Bun runtime - no build step'",
-    "check:appwrite": "bun scripts/check-appwrite.ts"
+    "check:appwrite": "bun scripts/check-appwrite.ts",
+    "migrate:card-balances": "bun scripts/migrate-card-balances.ts"
   },
   "dependencies": {
     "hono": "^4.6.8",
