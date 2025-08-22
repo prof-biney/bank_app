@@ -73,6 +73,9 @@ function AddCardButton() {
       const masked = `•••• •••• •••• ${last4}`;
       const holder = data?.customer?.name || payload.name || "Card Holder";
 
+      // Default starting balance GHS 40,000
+      const startingBalance = 40000;
+
       addCard({
         userId: (user as any)?.accountId || (user as any)?.$id || "",
         cardNumber: masked,
@@ -80,6 +83,7 @@ function AddCardButton() {
         expiryDate: `${expMonth}/${expYear}`,
         cardType: brand,
         cardColor: "#1F2937",
+        balance: startingBalance,
       });
       showAlert("success", "Card added successfully.", "Card Added");
       close();

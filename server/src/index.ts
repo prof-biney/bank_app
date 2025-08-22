@@ -52,6 +52,8 @@ const CardCreate = z.object({
   name: z.string().min(1).max(128)
 });
 
+const DEFAULT_CARD_BALANCE = 40000; // GHS 40,000 starting balance
+
 const PaymentCreate = z.object({
   amount: z.number().positive().max(1_000_000_000),
   currency: z.literal('GHS'),
@@ -95,6 +97,9 @@ v1.post('/cards', appwriteAuth, async (c) => {
     exp_year,
     token,
     fingerprint,
+    currency: 'GHS',
+    startingBalance: DEFAULT_CARD_BALANCE,
+    balance: DEFAULT_CARD_BALANCE,
     createdAt: new Date().toISOString(),
     type: 'card'
   });
@@ -117,7 +122,25 @@ v1.get('/cards', appwriteAuth, async (c) => {
   const databaseId = process.env.APPWRITE_DATABASE_ID!;
   const cardsCollectionId = process.env.APPWRITE_CARDS_COLLECTION_ID!;
   const res = await databases.listDocuments(databaseId, cardsCollectionId, [Query.equal('userId', user.$id)]);
-  return c.json({ data: res.documents });
+  const list = res.documents || [];
+  const data = list.map((d: any) => {
+    const mm = String(d.exp_month || 1).padStart(2, '0');
+    const yy = String(d.exp_year || 0).toString().slice(-2);
+    return {
+      id: d.$id,
+      userId: d.userId,
+      cardNumber: `•••• •••• •••• ${d.last4 || '0000'}`,
+      cardHolderName: d.holder || 'Card Holder',
+      expiryDate: `${mm}/${yy}`,
+      balance: typeof d.balance === 'number' ? d.balance : (typeof d.startingBalance === 'number' ? d.startingBalance : DEFAULT_CARD_BALANCE),
+      cardType: (d.brand || 'visa').toLowerCase(),
+      isActive: true,
+      cardColor: '#1F2937',
+      currency: d.currency || 'GHS',
+      token: d.token,
+    };
+  });
+  return c.json({ data });
 });
 
 // Cards: delete
@@ -218,12 +241,29 @@ v1.post('/payments/:id/capture', appwriteAuth, async (c) => {
   const { databases } = createDb();
   const databaseId = process.env.APPWRITE_DATABASE_ID!;
   const txCol = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID!;
+  const cardsCol = process.env.APPWRITE_CARDS_COLLECTION_ID!;
   const doc: any = await databases.getDocument(databaseId, txCol, id).catch(() => null);
   if (!doc) return c.json({ error: 'not_found' }, 404);
   if (doc.userId !== user.$id) return c.json({ error: 'forbidden' }, 403);
   if (doc.status === 'captured') return c.json({ id: doc.$id, status: 'captured' });
   if (doc.status !== 'authorized') return c.json({ error: `invalid_status:${doc.status}` }, 409);
   const updated = await databases.updateDocument(databaseId, txCol, id, { status: 'captured', capturedAt: new Date().toISOString() });
+
+  // Adjust card balance: subtract amount from card with matching token
+  try {
+    const token = doc.source;
+    if (token && cardsCol) {
+      const list = await databases.listDocuments(databaseId, cardsCol, [Query.equal('token', token), Query.equal('userId', user.$id), Query.limit(1)]);
+      const card = (list.documents || [])[0] as any;
+      if (card) {
+        const start = typeof card.startingBalance === 'number' ? card.startingBalance : DEFAULT_CARD_BALANCE;
+        const prev = typeof card.balance === 'number' ? card.balance : start;
+        const next = Math.max(prev - Number(doc.amount || 0), 0);
+        await databases.updateDocument(databaseId, cardsCol, card.$id, { balance: next });
+      }
+    }
+  } catch {}
+
   return c.json({ id: updated.$id, status: 'captured' });
 });
 
@@ -234,12 +274,29 @@ v1.post('/payments/:id/refund', appwriteAuth, async (c) => {
   const { databases } = createDb();
   const databaseId = process.env.APPWRITE_DATABASE_ID!;
   const txCol = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID!;
+  const cardsCol = process.env.APPWRITE_CARDS_COLLECTION_ID!;
   const doc: any = await databases.getDocument(databaseId, txCol, id).catch(() => null);
   if (!doc) return c.json({ error: 'not_found' }, 404);
   if (doc.userId !== user.$id) return c.json({ error: 'forbidden' }, 403);
   if (doc.status === 'refunded') return c.json({ id: doc.$id, status: 'refunded' });
   if (doc.status !== 'captured' && doc.status !== 'authorized') return c.json({ error: `invalid_status:${doc.status}` }, 409);
   const updated = await databases.updateDocument(databaseId, txCol, id, { status: 'refunded', refundedAt: new Date().toISOString() });
+
+  // Adjust card balance: add amount back to card (clamp to startingBalance)
+  try {
+    const token = doc.source;
+    if (token && cardsCol) {
+      const list = await databases.listDocuments(databaseId, cardsCol, [Query.equal('token', token), Query.equal('userId', user.$id), Query.limit(1)]);
+      const card = (list.documents || [])[0] as any;
+      if (card) {
+        const start = typeof card.startingBalance === 'number' ? card.startingBalance : DEFAULT_CARD_BALANCE;
+        const prev = typeof card.balance === 'number' ? card.balance : start;
+        const next = Math.min(prev + Number(doc.amount || 0), start);
+        await databases.updateDocument(databaseId, cardsCol, card.$id, { balance: next });
+      }
+    }
+  } catch {}
+
   return c.json({ id: updated.$id, status: 'refunded' });
 });
 

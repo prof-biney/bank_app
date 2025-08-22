@@ -164,11 +164,10 @@ const removeCard: AppContextType["removeCard"] = (cardId) => {
         });
         if (!res.ok) return; // no-op
         const data = await res.json();
-        if (Array.isArray(data)) {
-          // Expecting an array of cards from server
-          setCards(data as Card[]);
-          setActiveCard((data as Card[])[0] || null);
-        }
+        // Server returns { data: Card[] }
+        const list = Array.isArray((data as any)?.data) ? (data as any).data : (Array.isArray(data) ? data : []);
+        setCards(list as Card[]);
+        setActiveCard((list as Card[])[0] || null);
       } catch {}
       finally {
         setIsLoadingCards(false);
