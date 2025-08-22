@@ -201,7 +201,7 @@ export function NotificationModal({
                 ]
               );
             }} style={[styles.markAllButton, { backgroundColor: colors.background, borderColor: colors.border }]}> 
-              <Text style={{ color: '#ef4444', fontWeight: '600' }}>Clear all</Text>
+              <Trash2 color={'#ef4444'} size={18} />
             </TouchableOpacity>
             <TouchableOpacity onPress={onClose} style={[styles.closeButton, { backgroundColor: colors.background }]}>
               <X color={colors.textPrimary} size={24} />
