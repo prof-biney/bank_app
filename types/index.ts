@@ -36,3 +36,13 @@ export interface Recipient {
   avatar: string;
   accountNumber: string;
 }
+
+export interface Notification {
+  id: string;
+  userId?: string;
+  title: string;
+  message: string;
+  type?: 'payment' | 'transaction' | 'statement' | 'system';
+  unread?: boolean;
+  createdAt?: string; // ISO timestamp
+}

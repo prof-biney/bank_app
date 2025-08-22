@@ -34,8 +34,8 @@ export default function HomeScreen() {
   const [dateFilter, setDateFilter] = React.useState("all");
 
   const { user } = useAuthStore();
-
-  console.log("AuthStore", user);
+  const { notifications } = useApp();
+  const unreadCount = React.useMemo(() => notifications.filter(n => n.unread).length, [notifications]);
 
   const getFilteredTransactions = () => {
     const now = new Date();
@@ -68,6 +68,31 @@ export default function HomeScreen() {
   };
 
   const recentTransactions = getFilteredTransactions();
+
+  const getFilteredTransactionsCount = () => {
+    const now = new Date();
+    let filtered = transactions;
+    switch (dateFilter) {
+      case "today":
+        filtered = transactions.filter((t) => new Date(t.date).toDateString() === now.toDateString());
+        break;
+      case "week":
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        filtered = transactions.filter((t) => new Date(t.date) >= weekAgo);
+        break;
+      case "month":
+        const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        filtered = transactions.filter((t) => new Date(t.date) >= monthAgo);
+        break;
+      default:
+        filtered = transactions;
+    }
+    return filtered.length;
+  };
+  const filteredCountDisplay = (() => {
+    const n = getFilteredTransactionsCount();
+    return n > 99 ? '99+' : String(n);
+  })();
 
   const getDateFilterLabel = () => {
     switch (dateFilter) {
@@ -105,7 +130,11 @@ export default function HomeScreen() {
               onPress={() => setShowNotifications(true)}
             >
               <Bell color="#374151" size={24} />
-              <View style={styles.notificationBadge} />
+              {unreadCount > 0 && (
+                <View style={styles.notificationBadgeCount}>
+                  <Text style={styles.notificationBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                </View>
+              )}
             </TouchableOpacity>
           </View>
 
@@ -151,12 +180,18 @@ export default function HomeScreen() {
 
           <View style={[styles.transactionsSection, { backgroundColor: colors.card }]}>
             <View style={styles.sectionHeader}>
-              <TouchableOpacity onPress={() => setShowDateFilter(true)}>
-                <Text style={styles.sectionTitle}>{getDateFilterLabel()}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => router.push("/(tabs)/activity")}>
-                <Text style={styles.seeAllText}>All transactions</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <TouchableOpacity onPress={() => setShowDateFilter(true)}>
+                  <Text style={styles.sectionTitle}>{getDateFilterLabel()}</Text>
+                </TouchableOpacity>
+                <View style={styles.filteredChip}><Text style={styles.filteredChipText}>Filtered: {filteredCountDisplay}</Text></View>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <TouchableOpacity onPress={() => router.push("/(tabs)/activity")}>
+                  <Text style={styles.seeAllText}>All transactions</Text>
+                </TouchableOpacity>
+                <View style={styles.countBadge}><Text style={styles.countBadgeText}>{filteredCountDisplay}</Text></View>
+              </View>
             </View>
 
             <View style={styles.transactionsList}>
@@ -238,6 +273,23 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: "#EF4444",
   },
+  notificationBadgeCount: {
+    position: "absolute",
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    backgroundColor: "#EF4444",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  notificationBadgeText: {
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: "700",
+  },
   cardSection: {
     flex: 1,
     paddingHorizontal: 20,
@@ -275,6 +327,33 @@ const styles = StyleSheet.create({
     color: "#0F766E",
     fontSize: 14,
     fontWeight: "500",
+  },
+  countBadge: {
+    marginLeft: 8,
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 6,
+    backgroundColor: '#0F766E',
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  filteredChip: {
+    marginLeft: 8,
+    backgroundColor: '#0F766E',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  filteredChipText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
   },
   transactionsList: {
     flex: 1,
