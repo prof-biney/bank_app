@@ -3,7 +3,7 @@ Bank App Server (Bun + Hono)
 Overview
 - Secure mock/payments API replacing Paystack
 - Uses Appwrite for storage and Appwrite JWT for auth
-- Deployable on Railway
+- Deployable on Railway or Fly.io
 
 Endpoints
 - GET /healthz

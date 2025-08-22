@@ -3,11 +3,13 @@ FROM oven/bun:1 as base
 WORKDIR /app
 
 # Install only server dependencies (copy from repo root)
-COPY server/package.json server/bun.lockb* server/bun.lock* ./
+COPY server/package.json ./package.json
+COPY server/bun.lockb* server/bun.lock* ./
 RUN bun install --frozen-lockfile || bun install
 
-# Copy server source (from repo root)
-COPY server/. .
+# Copy server source explicitly
+COPY server/src ./src
+COPY server/tsconfig.json ./tsconfig.json
 
 # Ensure the same port Fly routes to
 EXPOSE 3000
