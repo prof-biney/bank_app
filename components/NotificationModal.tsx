@@ -1,4 +1,4 @@
-import { Bell, CreditCard, TrendingUp, X, Mail, MailOpen, Trash2 } from "lucide-react-native";
+import { Bell, CreditCard, TrendingUp, X, Mail, MailOpen, Trash2, Eraser } from "lucide-react-native";
 import React from "react";
 import {
   Modal,
@@ -201,7 +201,7 @@ export function NotificationModal({
                 ]
               );
             }} style={[styles.markAllButton, { backgroundColor: colors.background, borderColor: colors.border }]}> 
-              <Trash2 color={'#ef4444'} size={18} />
+              <Eraser color={'#ef4444'} size={18} />
             </TouchableOpacity>
             <TouchableOpacity onPress={onClose} style={[styles.closeButton, { backgroundColor: colors.background }]}>
               <X color={colors.textPrimary} size={24} />
