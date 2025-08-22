@@ -1,4 +1,4 @@
-import { Bell, CreditCard, TrendingUp, X, Mail, MailOpen } from "lucide-react-native";
+import { Bell, CreditCard, TrendingUp, X, Mail, MailOpen, Trash2 } from "lucide-react-native";
 import React from "react";
 import {
   Modal,
@@ -238,7 +238,7 @@ export function NotificationModal({
                       {notification.unread ? <MailOpen color="#fff" size={18} /> : <Mail color="#fff" size={18} />}
                     </TouchableOpacity>
                     <TouchableOpacity onPress={async () => { setItems(prev => prev.filter(n => n.id !== notification.id)); await deleteOne(notification.id); }} style={[styles.swipeAction, { backgroundColor: '#ef4444' }]}> 
-                      <Text style={styles.swipeActionText}>Delete</Text>
+                      <Trash2 color="#fff" size={18} />
                     </TouchableOpacity>
                   </View>
                 )}
