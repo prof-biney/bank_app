@@ -2,16 +2,18 @@
 FROM oven/bun:1 as base
 WORKDIR /app
 
-# Install only server dependencies
-COPY package.json bun.lockb* bun.lock* ./
+# Install only server dependencies (copy from repo root)
+COPY server/package.json server/bun.lockb* server/bun.lock* ./
 RUN bun install --frozen-lockfile || bun install
 
-# Copy server source
-COPY . .
+# Copy server source (from repo root)
+COPY server/. .
 
 # Ensure the same port Fly routes to
 EXPOSE 3000
 
-# Run the Bun server directly to avoid relying on package.json scripts
-CMD ["bun", "src/index.ts"]
+# Override entrypoint to bypass image's default 'bun run start'
+ENTRYPOINT ["bun"]
+# Run the Bun server directly
+CMD ["/app/src/index.ts"]
 
