@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-"dev": "bun src/index.ts",
-    "start": "bun run src/index.ts",
-"build": "echo 'Bun runtime - no build step'",
+    "dev": "bun src/index.ts",
+    "start": "bun src/index.ts",
+    "build": "echo 'Bun runtime - no build step'",
     "check:appwrite": "bun scripts/check-appwrite.ts"
   },
   "dependencies": {
