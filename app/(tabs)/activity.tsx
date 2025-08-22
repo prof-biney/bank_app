@@ -6,8 +6,9 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
+  Pressable,
+  TouchableOpacity,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -15,6 +16,10 @@ import { DateFilterModal } from "../../components/DateFilterModal";
 import ActivityLogItem from "@/components/activity/ActivityLogItem";
 import ActivityDetailModal from "@/components/activity/ActivityDetailModal";
 import { useTheme } from "@/context/ThemeContext";
+import { getChipStyles } from "@/theme/variants";
+import { withAlpha } from "@/theme/color-utils";
+import CustomButton from "@/components/CustomButton";
+import { getBadgeVisuals } from "@/theme/badge-utils";
 import { TransactionItem } from "../../components/TransactionItem";
 import { useApp } from "../../context/AppContext";
 import { ActivityEvent } from "@/types/activity";
@@ -232,8 +237,12 @@ export default function ActivityScreen() {
         filtered = filtered.filter((t) => new Date(t.date) >= weekAgo);
         break;
       case "month":
-        const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        filtered = filtered.filter((t) => new Date(t.date) >= monthAgo);
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        filtered = filtered.filter((t) => new Date(t.date) >= startOfMonth);
+        break;
+      case "year":
+        const startOfYear = new Date(now.getFullYear(), 0, 1);
+        filtered = filtered.filter((t) => new Date(t.date) >= startOfYear);
         break;
     }
 
@@ -277,7 +286,9 @@ export default function ActivityScreen() {
         case "week":
           return d >= new Date(now2.getTime() - 7 * 24 * 60 * 60 * 1000);
         case "month":
-          return d >= new Date(now2.getTime() - 30 * 24 * 60 * 60 * 1000);
+          return d >= new Date(now2.getFullYear(), now2.getMonth(), 1);
+        case "year":
+          return d >= new Date(now2.getFullYear(), 0, 1);
         default:
           return true;
       }
@@ -303,119 +314,131 @@ export default function ActivityScreen() {
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <TouchableOpacity
-              style={[styles.filterButton, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}
+              style={[styles.filterButton, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, marginRight: 10 }]}
               onPress={() => setShowDateFilter(true)}
             >
               <Filter color={colors.textSecondary} size={20} />
             </TouchableOpacity>
-            <TouchableOpacity
-              style={{ marginLeft: 8, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }}
+            <Pressable
+              android_ripple={{ color: withAlpha(colors.tintPrimary, 0.12) }}
               onPress={() => { setFilters({ income: true, expense: true, account: true, card: true }); setTypeFilter({ deposit: true, transfer: true, withdraw: true, payment: true }); setStatusFilter({ completed: true, pending: true, failed: true, reversed: true }); setDateFilter('all'); }}
+              style={({ pressed }) => [
+                { marginLeft: 0 },
+                getChipStyles(colors, { tone: 'neutral', size: 'md' }).container,
+                pressed && { opacity: 0.9 },
+              ]}
             >
-              <Text style={{ color: colors.textSecondary, fontWeight: '600' }}>Reset</Text>
-            </TouchableOpacity>
+              <Text style={[getChipStyles(colors, { tone: 'neutral', size: 'md' }).text]}>Reset</Text>
+            </Pressable>
           </View>
         </View>
 
         <View style={styles.filterTabs}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScrollContent}>
-          <TouchableOpacity
-            style={[
-              styles.filterTab,
-              { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 },
-]}
-            onPress={setAllOn}
-          >
-              <Text
-                style={[
-                  styles.filterTabText,
-                  { color: colors.textSecondary },
-                ]}
-              >
-              All
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.filterTab,
-              { backgroundColor: filters.income ? colors.tintPrimary : colors.card, borderColor: colors.border, borderWidth: 1 },
-            ]}
-            onPress={() => toggleFilter('income')}
-          >
-            <Text
-              style={[
-                styles.filterTabText,
-                { color: filters.income ? '#FFFFFF' : colors.textSecondary },
-]}
-            >
-              <ArrowDownLeft size={14} color={filters.income ? '#FFFFFF' : colors.textSecondary} /> Income
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.filterTab,
-              { backgroundColor: filters.expense ? colors.tintPrimary : colors.card, borderColor: colors.border, borderWidth: 1 },
-            ]}
-            onPress={() => toggleFilter('expense')}
-          >
-            <Text
-              style={[
-                styles.filterTabText,
-                { color: filters.expense ? '#FFFFFF' : colors.textSecondary },
-]}
-            >
-              <ArrowUpRight size={14} color={filters.expense ? '#FFFFFF' : colors.textSecondary} /> Expense
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.filterTab,
-              { backgroundColor: filters.account ? colors.tintPrimary : colors.card, borderColor: colors.border, borderWidth: 1 },
-            ]}
-            onPress={() => toggleFilter('account')}
-          >
-            <Text
-              style={[
-                styles.filterTabText,
-                { color: filters.account ? '#FFFFFF' : colors.textSecondary },
-]}
-            >
-              <User size={14} color={filters.account ? '#FFFFFF' : colors.textSecondary} /> Account
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.filterTab,
-              { backgroundColor: filters.card ? colors.tintPrimary : colors.card, borderColor: colors.border, borderWidth: 1 },
-            ]}
-            onPress={() => toggleFilter('card')}
-          >
-            <Text
-              style={[
-                styles.filterTabText,
-                { color: filters.card ? '#FFFFFF' : colors.textSecondary },
-]}
-            >
-              <CardIcon size={14} color={filters.card ? '#FFFFFF' : colors.textSecondary} /> Cards
-            </Text>
-          </TouchableOpacity>
+            {(() => {
+              const v = getBadgeVisuals(colors, { tone: 'neutral', size: 'md' });
+              return (
+                <View style={{ marginRight: 5 }}>
+                  <CustomButton
+                    title="All"
+                    size="sm"
+                    variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
+                    onPress={setAllOn}
+                    style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5 }}
+                    textStyle={{ color: v.textColor }}
+                  />
+                </View>
+              );
+            })()}
+
+            {(() => {
+              const v = getBadgeVisuals(colors, { tone: 'success', selected: filters.income, size: 'md' });
+              return (
+                <View style={{ marginRight: 5 }}>
+                  <CustomButton
+                    size="sm"
+                    variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
+                    onPress={() => toggleFilter('income')}
+                    title="Income"
+                    leftIcon={<ArrowDownLeft size={14} color={v.textColor as string} />}
+                    style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5 }}
+                    textStyle={{ color: v.textColor }}
+                  />
+                </View>
+              );
+            })()}
+
+            {(() => {
+              const v = getBadgeVisuals(colors, { tone: 'danger', selected: filters.expense, size: 'md' });
+              return (
+                <View style={{ marginRight: 5 }}>
+                  <CustomButton
+                    size="sm"
+                    variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
+                    onPress={() => toggleFilter('expense')}
+                    title="Expense"
+                    leftIcon={<ArrowUpRight size={14} color={v.textColor as string} />}
+                    style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5 }}
+                    textStyle={{ color: v.textColor }}
+                  />
+                </View>
+              );
+            })()}
+
+            {(() => {
+              const v = getBadgeVisuals(colors, { tone: 'accent', selected: filters.account, size: 'md' });
+              return (
+                <View style={{ marginRight: 5 }}>
+                  <CustomButton
+                    size="sm"
+                    variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
+                    onPress={() => toggleFilter('account')}
+                    title="Account"
+                    leftIcon={<User size={14} color={v.textColor as string} />}
+                    style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5 }}
+                    textStyle={{ color: v.textColor }}
+                  />
+                </View>
+              );
+            })()}
+
+            {(() => {
+              const v = getBadgeVisuals(colors, { tone: 'accent', selected: filters.card, size: 'md' });
+              return (
+                <View style={{ marginRight: 5 }}>
+                  <CustomButton
+                    size="sm"
+                    variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
+                    onPress={() => toggleFilter('card')}
+                    title="Cards"
+                    leftIcon={<CardIcon size={14} color={v.textColor as string} />}
+                    style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5 }}
+                    textStyle={{ color: v.textColor }}
+                  />
+                </View>
+              );
+            })()}
           </ScrollView>
         </View>
 
 
         {/* Transaction Status Filters */}
         <View style={[styles.categoryChips, { paddingBottom: 4 }] }>
-          {(['completed','pending','failed','reversed'] as const).map(key => (
-            <TouchableOpacity
-              key={key}
-              style={[styles.categoryChip, statusFilter[key] ? styles.categoryChipActive : {}, { borderColor: colors.border, backgroundColor: statusFilter[key] ? '#0F766E' : colors.card }]}
-              onPress={() => toggleStatus(key)}
-            >
-              <Text style={[styles.categoryChipText, statusFilter[key] ? styles.categoryChipTextActive : {}, { color: statusFilter[key] ? '#fff' : '#374151' }]}>
-                {key[0].toUpperCase() + key.slice(1)}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          {(['completed','pending','failed','reversed'] as const).map(key => {
+            const tone = key === 'completed' ? 'success' : key === 'failed' ? 'danger' : 'warning';
+            const v = getBadgeVisuals(colors, { tone: tone as any, selected: statusFilter[key], size: 'sm' });
+            const title = key[0].toUpperCase() + key.slice(1);
+            return (
+              <View key={key} style={{ marginRight: 5 }}>
+                <CustomButton size="sm" variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
+                  onPress={() => toggleStatus(key)}
+                  title={title}
+                  style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5 }}
+                  textStyle={{ color: v.textColor }}
+                />
+              </View>
+            );
+          })}
         </View>
 
         <View style={styles.transactionsContainer}>
@@ -448,21 +471,21 @@ export default function ActivityScreen() {
               <Text style={{ padding: 16, color: colors.textSecondary }}>Loading payments…</Text>
             )}
             {error && (
-              <Text style={{ padding: 16, color: '#ef4444' }}>{error}</Text>
+              <Text style={{ padding: 16, color: colors.negative }}>{error}</Text>
             )}
             {payments.map((p) => (
-              <View key={p.id} style={{ paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }}>
+              <View key={p.id} style={{ paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.card }}>
                 <Text style={{ fontWeight: '600', color: colors.textPrimary }}>Payment {p.id.slice(-6)}</Text>
                 <Text style={{ color: colors.textSecondary }}>{p.status.toUpperCase()} • {p.amount ?? '-'} {p.currency ?? ''}</Text>
                 <Text style={{ color: colors.textSecondary }}>{p.created ? new Date(p.created).toLocaleString() : ''}</Text>
                 <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
                   {p.status === 'authorized' && (
-                    <TouchableOpacity onPress={() => handleCapture(p.id)} style={{ backgroundColor: '#0F766E', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6 }}>
+                    <TouchableOpacity onPress={() => handleCapture(p.id)} style={{ backgroundColor: colors.tintPrimary, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6 }}>
                       <Text style={{ color: '#fff', fontWeight: '600' }}>Capture</Text>
                     </TouchableOpacity>
                   )}
                   {(p.status === 'authorized' || p.status === 'captured') && (
-                    <TouchableOpacity onPress={() => handleRefund(p.id)} style={{ backgroundColor: '#ef4444', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6 }}>
+                    <TouchableOpacity onPress={() => handleRefund(p.id)} style={{ backgroundColor: colors.negative, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6 }}>
                       <Text style={{ color: '#fff', fontWeight: '600' }}>Refund</Text>
                     </TouchableOpacity>
                   )}
@@ -471,7 +494,7 @@ export default function ActivityScreen() {
             ))}
             {nextPaymentsCursor && (
               <View style={{ padding: 16, alignItems: 'center' }}>
-                <TouchableOpacity disabled={loadingMore} onPress={loadMorePayments} style={{ backgroundColor: '#0F766E', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8, opacity: loadingMore ? 0.8 : 1 }}>
+                <TouchableOpacity disabled={loadingMore} onPress={loadMorePayments} style={{ backgroundColor: colors.tintPrimary, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8, opacity: loadingMore ? 0.8 : 1 }}>
                   <Text style={{ color: '#fff', fontWeight: '700' }}>{loadingMore ? 'Loading…' : 'Load more payments'}</Text>
                 </TouchableOpacity>
               </View>
@@ -495,7 +518,6 @@ export default function ActivityScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
   },
   keyboardContainer: {
     flex: 1,
@@ -511,13 +533,11 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: "bold",
-    color: "#1F2937",
   },
   filterButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "white",
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     justifyContent: "center",
     alignItems: "center",
     shadowColor: "#000",
@@ -531,59 +551,47 @@ const styles = StyleSheet.create({
   },
   filterTabs: {
     flexDirection: "row",
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     marginBottom: 12,
   },
   filterScrollContent: {
-    paddingRight: 20,
+    paddingRight: 16,
   },
   filterTab: {
     paddingHorizontal: 20,
     paddingVertical: 8,
     borderRadius: 20,
     marginRight: 10,
-    backgroundColor: "white",
   },
-  filterTabActive: {
-    backgroundColor: "#0F766E",
-  },
+  filterTabActive: {},
   filterTabText: {
-    color: "#6B7280",
     fontSize: 14,
     fontWeight: "500",
   },
-  filterTabTextActive: {
-    color: "white",
-  },
+  filterTabTextActive: {},
   categoryChips: {
     flexDirection: "row",
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     marginBottom: 8,
+    gap: 0,
   },
   categoryChip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 14,
     marginRight: 8,
-    backgroundColor: "white",
     borderWidth: 1,
-    borderColor: "#E5E7EB",
   },
-  categoryChipActive: {
-    backgroundColor: "#0F766E",
-    borderColor: "#0F766E",
-  },
+  categoryChipActive: {},
   categoryChipText: {
-    color: "#374151",
     fontSize: 12,
     fontWeight: "600",
   },
-  categoryChipTextActive: {
-    color: "#fff",
-  },
+  categoryChipTextActive: {},
   transactionsContainer: {
     flex: 1,
-    backgroundColor: "white",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     marginTop: 8,
@@ -596,22 +604,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
-    backgroundColor: "white",
   },
   activityTitle: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#111827",
   },
   activitySubtitle: {
     fontSize: 12,
-    color: "#4B5563",
     marginTop: 2,
   },
   activityMeta: {
     fontSize: 11,
-    color: "#9CA3AF",
     marginTop: 4,
   },
 });

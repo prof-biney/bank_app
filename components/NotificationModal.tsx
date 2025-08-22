@@ -1,4 +1,5 @@
 import { Bell, CreditCard, TrendingUp, X, Mail, MailOpen, Trash2, Eraser } from "lucide-react-native";
+import ConfirmDialog from '@/components/modals/ConfirmDialog';
 import React from "react";
 import {
   Modal,
@@ -10,7 +11,12 @@ import {
   Alert,
 } from "react-native";
 import { useTheme } from "@/context/ThemeContext";
+import { withAlpha } from "@/theme/color-utils";
+import { getChipStyles } from "@/theme/variants";
 import { ScrollView as GHScrollView, Swipeable } from 'react-native-gesture-handler';
+import { Pressable } from 'react-native';
+import CustomButton from "@/components/CustomButton";
+import { getBadgeVisuals } from "@/theme/badge-utils";
 
 interface NotificationModalProps {
   visible: boolean;
@@ -38,6 +44,7 @@ export function NotificationModal({
   const [loading, setLoading] = React.useState(false);
   const [loadingMore, setLoadingMore] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [confirm, setConfirm] = React.useState<{ visible: boolean; title: string; message: string; tone?: 'default' | 'danger' | 'success'; onConfirm?: () => void } | null>(null);
 
   const [filter, setFilter] = React.useState<'all' | 'unread' | 'payment' | 'transaction' | 'statement' | 'system'>('all');
   const filtered = React.useMemo(() => {
@@ -109,11 +116,11 @@ export function NotificationModal({
   const getNotificationIcon = (type: string) => {
     switch (type) {
       case "payment":
-        return <TrendingUp color="#10B981" size={20} />;
+        return <TrendingUp color={colors.tintPrimary} size={20} />;
       case "transaction":
-        return <CreditCard color="#0F766E" size={20} />;
+        return <CreditCard color={colors.tintPrimary} size={20} />;
       default:
-        return <Bell color="#6B7280" size={20} />;
+        return <Bell color={colors.textSecondary} size={20} />;
     }
   };
 
@@ -142,66 +149,87 @@ export function NotificationModal({
         <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
           <Text style={[styles.title, { color: colors.textPrimary }]}>Notifications</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <TouchableOpacity onPress={async () => {
-              try {
-                const apiBase = getApiBase();
-                const jwt = (global as any).__APPWRITE_JWT__ || undefined;
-                await fetch(`${apiBase.replace(/\/$/, '')}/v1/notifications/mark-all`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) },
-                  body: JSON.stringify({ unread: false })
-                }).then(async (r) => { await r.json().catch(() => ({})); });
-              } catch {}
-              setItems(prev => prev.map(n => ({ ...n, unread: false })));
+            <TouchableOpacity onPress={() => {
+              setConfirm({
+                visible: true,
+                title: 'Mark all as read?',
+                message: 'This will mark your latest notifications as read.',
+                onConfirm: async () => {
+                  try {
+                    const apiBase = getApiBase();
+                    const jwt = (global as any).__APPWRITE_JWT__ || undefined;
+                    await fetch(`${apiBase.replace(/\/$/, '')}/v1/notifications/mark-all`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) },
+                      body: JSON.stringify({ unread: false })
+                    }).then(async (r) => { await r.json().catch(() => ({})); });
+                  } catch {}
+                  setItems(prev => prev.map(n => ({ ...n, unread: false })));
+                }
+              });
             }} style={[styles.markAllButton, { backgroundColor: colors.background, borderColor: colors.border }]}> 
               <MailOpen color={colors.textSecondary} size={18} />
             </TouchableOpacity>
             {process.env.EXPO_PUBLIC_APP_ENV !== 'production' && (
-              <TouchableOpacity onPress={async () => {
-                try {
-                  const apiBase = getApiBase();
-                  const jwt = (global as any).__APPWRITE_JWT__ || undefined;
-                  await fetch(`${apiBase.replace(/\/$/, '')}/v1/notifications/mark-all`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) },
-                    body: JSON.stringify({ unread: true })
-                  }).then(async (r) => { await r.json().catch(() => ({})); });
-                } catch {}
-                setItems(prev => prev.map(n => ({ ...n, unread: true })));
+              <TouchableOpacity onPress={() => {
+                setConfirm({
+                  visible: true,
+                  title: 'Mark all as unread?',
+                  message: 'This will mark your latest notifications as unread.',
+                  onConfirm: async () => {
+                    try {
+                      const apiBase = getApiBase();
+                      const jwt = (global as any).__APPWRITE_JWT__ || undefined;
+                      await fetch(`${apiBase.replace(/\/$/, '')}/v1/notifications/mark-all`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) },
+                        body: JSON.stringify({ unread: true })
+                      }).then(async (r) => { await r.json().catch(() => ({})); });
+                    } catch {}
+                    setItems(prev => prev.map(n => ({ ...n, unread: true })));
+                  }
+                });
               }} style={[styles.markAllButton, { backgroundColor: colors.background, borderColor: colors.border }]}> 
                 <Mail color={colors.textSecondary} size={18} />
               </TouchableOpacity>
             )}
-            <TouchableOpacity onPress={async () => {
-              try {
-                const apiBase = getApiBase();
-                const jwt = (global as any).__APPWRITE_JWT__ || undefined;
-                await fetch(`${apiBase.replace(/\/$/, '')}/v1/notifications/delete-read`, { method: 'POST', headers: { ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) } }).then(async (r) => { await r.json().catch(() => ({})); });
-              } catch {}
-              setItems(prev => prev.filter(n => n.unread));
+            <TouchableOpacity onPress={() => {
+              setConfirm({
+                visible: true,
+                title: 'Delete all read notifications?',
+                message: 'This will permanently delete all read notifications.',
+                tone: 'danger',
+                onConfirm: async () => {
+                  try {
+                    const apiBase = getApiBase();
+                    const jwt = (global as any).__APPWRITE_JWT__ || undefined;
+                    await fetch(`${apiBase.replace(/\/$/, '')}/v1/notifications/delete-read`, { method: 'POST', headers: { ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) } }).then(async (r) => { await r.json().catch(() => ({})); });
+                  } catch {}
+                  setItems(prev => prev.filter(n => n.unread));
+                }
+              });
             }} style={[styles.markAllButton, { backgroundColor: colors.background, borderColor: colors.border }]}> 
-              <Trash2 color={'#ef4444'} size={18} />
+              <Trash2 color={colors.negative} size={18} />
             </TouchableOpacity>
             <TouchableOpacity onPress={() => {
-              Alert.alert(
-                'Clear all notifications?',
-                'This will permanently delete all notifications for your account.',
-                [
-                  { text: 'Cancel', style: 'cancel' },
-                  { text: 'Clear all', style: 'destructive', onPress: async () => {
-                    try {
-                      const apiBase = getApiBase();
-                      const jwt = (global as any).__APPWRITE_JWT__ || undefined;
-                      const res = await fetch(`${apiBase.replace(/\/$/, '')}/v1/notifications/clear`, { method: 'POST', headers: { ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) } });
-                      await res.json().catch(() => ({}));
-                    } catch {}
-                    setItems([]);
-                    setNextCursor(null);
-                  } },
-                ]
-              );
+              setConfirm({
+                visible: true,
+                title: 'Clear all notifications?',
+                message: 'This will permanently delete all notifications for your account.',
+                tone: 'danger',
+                onConfirm: async () => {
+                  try {
+                    const apiBase = getApiBase();
+                    const jwt = (global as any).__APPWRITE_JWT__ || undefined;
+                    const res = await fetch(`${apiBase.replace(/\/$/, '')}/v1/notifications/clear`, { method: 'POST', headers: { ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) } });
+                    await res.json().catch(() => ({}));
+                  } catch {}
+                  setItems([]);
+                  setNextCursor(null);
+                },
+              });
             }} style={[styles.markAllButton, { backgroundColor: colors.background, borderColor: colors.border }]}> 
-              <Eraser color={'#ef4444'} size={18} />
+              <Eraser color={colors.negative} size={18} />
             </TouchableOpacity>
             <TouchableOpacity onPress={onClose} style={[styles.closeButton, { backgroundColor: colors.background }]}>
               <X color={colors.textPrimary} size={24} />
@@ -209,12 +237,29 @@ export function NotificationModal({
           </View>
         </View>
 
-        <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 10 }}>
-          {(['all','unread','payment','transaction','statement','system'] as const).map(key => (
-            <TouchableOpacity key={key} onPress={() => setFilter(key)} style={[styles.filterChip, { backgroundColor: filter === key ? '#0F766E' : colors.card, borderColor: colors.border }] }>
-              <Text style={{ color: filter === key ? '#fff' : colors.textSecondary, fontWeight: '600', fontSize: 12 }}>{key[0].toUpperCase() + key.slice(1)}</Text>
-            </TouchableOpacity>
-          ))}
+        <View style={{ flexDirection: 'row', gap: 0, paddingHorizontal: 16, paddingVertical: 8, flexWrap: 'wrap' }}>
+          {(['all','unread','payment','transaction','statement','system'] as const).map(key => {
+            const tone = key === 'all' ? 'neutral' :
+                          key === 'unread' ? 'accent' :
+                          key === 'payment' ? 'success' :
+                          key === 'transaction' ? 'accent' :
+                          key === 'statement' ? 'neutral' :
+                          'warning';
+            const v = getBadgeVisuals(colors, { tone: tone as any, selected: filter === key, size: 'sm' });
+            const label = key[0].toUpperCase() + key.slice(1);
+            return (
+              <View key={key} style={{ marginRight: 5, marginBottom: 5 }}>
+                <CustomButton
+                  onPress={() => setFilter(key)}
+                  title={label}
+                  size="sm"
+                  variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
+                  style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5 }}
+                  textStyle={{ color: v.textColor }}
+                />
+              </View>
+            );
+          })}
         </View>
 
         <ScrollView
@@ -234,10 +279,20 @@ export function NotificationModal({
                 key={notification.id}
                 renderRightActions={() => (
                   <View style={{ flexDirection: 'row', alignItems: 'stretch' }}>
-                    <TouchableOpacity onPress={async () => { const nowUnread = !notification.unread; setItems(prev => prev.map(n => n.id === notification.id ? { ...n, unread: nowUnread } : n)); await patchUnread(notification.id, nowUnread); }} style={[styles.swipeAction, { backgroundColor: '#0F766E' }]}> 
+                    <TouchableOpacity onPress={async () => { const nowUnread = !notification.unread; setItems(prev => prev.map(n => n.id === notification.id ? { ...n, unread: nowUnread } : n)); await patchUnread(notification.id, nowUnread); }} style={[styles.swipeAction, { backgroundColor: colors.tintPrimary }]}> 
                       {notification.unread ? <MailOpen color="#fff" size={18} /> : <Mail color="#fff" size={18} />}
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={async () => { setItems(prev => prev.filter(n => n.id !== notification.id)); await deleteOne(notification.id); }} style={[styles.swipeAction, { backgroundColor: '#ef4444' }]}> 
+                    <TouchableOpacity onPress={() => {
+                      setConfirm({
+                        visible: true,
+                        title: 'Delete this notification?',
+                        message: 'This item will be permanently removed.',
+                        onConfirm: async () => {
+                          setItems(prev => prev.filter(n => n.id !== notification.id));
+                          await deleteOne(notification.id);
+                        }
+                      });
+                    }} style={[styles.swipeAction, { backgroundColor: colors.negative }]}> 
                       <Trash2 color="#fff" size={18} />
                     </TouchableOpacity>
                   </View>
@@ -256,7 +311,7 @@ export function NotificationModal({
                       <Text style={[styles.notificationTitle, { color: colors.textPrimary }]}>
                         {notification.title}
                       </Text>
-                      {notification.unread && <View style={styles.unreadDot} />}
+                      {notification.unread && <View style={[styles.unreadDot, { backgroundColor: colors.tintPrimary }]} />}
                     </View>
                     <Text style={[styles.notificationMessage, { color: colors.textSecondary }]}>
                       {notification.message}
@@ -287,12 +342,23 @@ export function NotificationModal({
                 } finally {
                   setLoadingMore(false);
                 }
-              }} style={{ backgroundColor: '#0F766E', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8, opacity: loadingMore ? 0.8 : 1 }}>
+              }} style={{ backgroundColor: colors.tintPrimary, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8, opacity: loadingMore ? 0.8 : 1 }}>
                 <Text style={{ color: '#fff', fontWeight: '700' }}>{loadingMore ? 'Loading…' : 'Load more'}</Text>
               </TouchableOpacity>
             </View>
           )}
         </ScrollView>
+        {/* Confirm Dialog */}
+        <ConfirmDialog
+          visible={Boolean(confirm?.visible)}
+          title={confirm?.title || ''}
+          message={confirm?.message || ''}
+          confirmText="Confirm"
+          cancelText="Cancel"
+          tone={confirm?.tone || 'default'}
+          onConfirm={() => { try { confirm?.onConfirm?.(); } finally { setConfirm(null); } }}
+          onCancel={() => setConfirm(null)}
+        />
       </View>
     </Modal>
   );
@@ -301,7 +367,6 @@ export function NotificationModal({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
   },
   header: {
     flexDirection: "row",
@@ -310,20 +375,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 24,
-    backgroundColor: "white",
     borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
   },
   title: {
     fontSize: 20,
     fontWeight: "bold",
-    color: "#1F2937",
   },
   closeButton: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "#F3F4F6",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -346,11 +407,9 @@ const styles = StyleSheet.create({
   },
   notificationItem: {
     flexDirection: "row",
-    backgroundColor: "white",
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
-    shadowColor: "#000",
     shadowOffset: {
       width: 0,
       height: 1,
@@ -374,7 +433,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "#F9FAFB",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
@@ -390,22 +448,18 @@ const styles = StyleSheet.create({
   notificationTitle: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#1F2937",
     flex: 1,
   },
   unreadDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "#0F766E",
   },
   notificationMessage: {
     fontSize: 14,
-    color: "#6B7280",
     marginBottom: 4,
   },
   notificationTime: {
     fontSize: 12,
-    color: "#9CA3AF",
   },
 });
