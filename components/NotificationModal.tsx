@@ -1,4 +1,4 @@
-import { Bell, CreditCard, TrendingUp, X } from "lucide-react-native";
+import { Bell, CreditCard, TrendingUp, X, Mail, MailOpen } from "lucide-react-native";
 import React from "react";
 import {
   Modal,
@@ -234,11 +234,9 @@ export function NotificationModal({
                 key={notification.id}
                 renderRightActions={() => (
                   <View style={{ flexDirection: 'row', alignItems: 'stretch' }}>
-                    {notification.unread && (
-                      <TouchableOpacity onPress={async () => { setItems(prev => prev.map(n => n.id === notification.id ? { ...n, unread: false } : n)); await patchUnread(notification.id, false); }} style={[styles.swipeAction, { backgroundColor: '#0F766E' }]}> 
-                        <Text style={styles.swipeActionText}>Mark read</Text>
-                      </TouchableOpacity>
-                    )}
+                    <TouchableOpacity onPress={async () => { const nowUnread = !notification.unread; setItems(prev => prev.map(n => n.id === notification.id ? { ...n, unread: nowUnread } : n)); await patchUnread(notification.id, nowUnread); }} style={[styles.swipeAction, { backgroundColor: '#0F766E' }]}> 
+                      {notification.unread ? <MailOpen color="#fff" size={18} /> : <Mail color="#fff" size={18} />}
+                    </TouchableOpacity>
                     <TouchableOpacity onPress={async () => { setItems(prev => prev.filter(n => n.id !== notification.id)); await deleteOne(notification.id); }} style={[styles.swipeAction, { backgroundColor: '#ef4444' }]}> 
                       <Text style={styles.swipeActionText}>Delete</Text>
                     </TouchableOpacity>

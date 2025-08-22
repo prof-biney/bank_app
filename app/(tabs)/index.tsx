@@ -69,30 +69,6 @@ export default function HomeScreen() {
 
   const recentTransactions = getFilteredTransactions();
 
-  const getFilteredTransactionsCount = () => {
-    const now = new Date();
-    let filtered = transactions;
-    switch (dateFilter) {
-      case "today":
-        filtered = transactions.filter((t) => new Date(t.date).toDateString() === now.toDateString());
-        break;
-      case "week":
-        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        filtered = transactions.filter((t) => new Date(t.date) >= weekAgo);
-        break;
-      case "month":
-        const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        filtered = transactions.filter((t) => new Date(t.date) >= monthAgo);
-        break;
-      default:
-        filtered = transactions;
-    }
-    return filtered.length;
-  };
-  const filteredCountDisplay = (() => {
-    const n = getFilteredTransactionsCount();
-    return n > 99 ? '99+' : String(n);
-  })();
 
   const getDateFilterLabel = () => {
     switch (dateFilter) {
@@ -184,13 +160,11 @@ export default function HomeScreen() {
                 <TouchableOpacity onPress={() => setShowDateFilter(true)}>
                   <Text style={styles.sectionTitle}>{getDateFilterLabel()}</Text>
                 </TouchableOpacity>
-                <View style={styles.filteredChip}><Text style={styles.filteredChipText}>Filtered: {filteredCountDisplay}</Text></View>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <TouchableOpacity onPress={() => router.push("/(tabs)/activity")}>
                   <Text style={styles.seeAllText}>All transactions</Text>
                 </TouchableOpacity>
-                <View style={styles.countBadge}><Text style={styles.countBadgeText}>{filteredCountDisplay}</Text></View>
               </View>
             </View>
 
@@ -327,33 +301,6 @@ const styles = StyleSheet.create({
     color: "#0F766E",
     fontSize: 14,
     fontWeight: "500",
-  },
-  countBadge: {
-    marginLeft: 8,
-    minWidth: 20,
-    height: 20,
-    paddingHorizontal: 6,
-    backgroundColor: '#0F766E',
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  countBadgeText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  filteredChip: {
-    marginLeft: 8,
-    backgroundColor: '#0F766E',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  filteredChipText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '700',
   },
   transactionsList: {
     flex: 1,

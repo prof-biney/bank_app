@@ -290,7 +290,6 @@ export default function ActivityScreen() {
   const [showDetail, setShowDetail] = useState(false);
 
   const filteredTransactions = getFilteredTransactions();
-  const filteredTxCount = filteredTransactions.length;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -301,9 +300,6 @@ export default function ActivityScreen() {
         <View style={styles.header}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <Text style={[styles.title, { color: colors.textPrimary }]}>Activity</Text>
-            <View style={{ marginLeft: 8, backgroundColor: '#0F766E', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 }}>
-              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>Filtered: {filteredTxCount}</Text>
-            </View>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <TouchableOpacity
@@ -406,20 +402,6 @@ export default function ActivityScreen() {
           </ScrollView>
         </View>
 
-        {/* Transaction Type Filters */}
-        <View style={[styles.categoryChips, { paddingTop: 4 }] }>
-          {(['deposit','transfer','withdraw','payment'] as const).map(key => (
-            <TouchableOpacity
-              key={key}
-              style={[styles.categoryChip, typeFilter[key] ? styles.categoryChipActive : {}, { borderColor: colors.border, backgroundColor: typeFilter[key] ? '#0F766E' : colors.card }]}
-              onPress={() => toggleType(key)}
-            >
-              <Text style={[styles.categoryChipText, typeFilter[key] ? styles.categoryChipTextActive : {}, { color: typeFilter[key] ? '#fff' : '#374151' }]}>
-                {key[0].toUpperCase() + key.slice(1)}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
 
         {/* Transaction Status Filters */}
         <View style={[styles.categoryChips, { paddingBottom: 4 }] }>
