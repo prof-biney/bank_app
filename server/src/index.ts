@@ -73,46 +73,62 @@ v1.post('/cards', appwriteAuth, async (c) => {
     if (cached) return c.json(cached.body, cached.status);
   }
 
-  const parse = CardCreate.safeParse(await c.req.json().catch(() => ({})));
-  if (!parse.success) return c.json({ error: 'validation_error', details: parse.error.flatten() }, 400);
-  const { number, exp_month, exp_year, cvc, name } = parse.data;
+  try {
+    const parse = CardCreate.safeParse(await c.req.json().catch(() => ({})));
+    if (!parse.success) return c.json({ error: 'validation_error', details: parse.error.flatten() }, 400);
+    const { number, exp_month, exp_year, cvc, name } = parse.data;
 
-  const normalized = number.replace(/\s+/g, '');
-  if (!luhnValid(normalized)) return c.json({ error: 'invalid_card_number' }, 400);
-  const brand = detectBrand(normalized);
-  const last4 = normalized.slice(-4);
-  const token = `tok_${crypto.randomUUID()}`;
-  const fingerprint = `fp_${Buffer.from(normalized).toString('base64url').slice(-16)}`;
+    const normalized = number.replace(/\s+/g, '');
+    if (!luhnValid(normalized)) return c.json({ error: 'invalid_card_number' }, 400);
+    const brand = detectBrand(normalized);
+    const last4 = normalized.slice(-4);
+    const token = `tok_${crypto.randomUUID()}`;
+    const fingerprint = `fp_${Buffer.from(normalized).toString('base64url').slice(-16)}`;
 
-  const { databases } = createDb();
-  const databaseId = process.env.APPWRITE_DATABASE_ID!;
-  const cardsCollectionId = process.env.APPWRITE_CARDS_COLLECTION_ID!;
+    const { databases } = createDb();
+    const databaseId = process.env.APPWRITE_DATABASE_ID!;
+    const cardsCollectionId = process.env.APPWRITE_CARDS_COLLECTION_ID!;
 
-  const doc = await databases.createDocument(databaseId, cardsCollectionId, ID.unique(), {
-    userId: user.$id,
-    holder: name,
-    last4,
-    brand,
-    exp_month,
-    exp_year,
-    token,
-    fingerprint,
-    currency: 'GHS',
-    startingBalance: DEFAULT_CARD_BALANCE,
-    balance: DEFAULT_CARD_BALANCE,
-    createdAt: new Date().toISOString(),
-    type: 'card'
-  });
+    // Log non-sensitive diagnostics
+    const hasApiKey = Boolean(process.env.APPWRITE_API_KEY);
+    console.log('[cards.create] begin', { userId: user.$id, hasApiKey, databaseIdPresent: Boolean(databaseId), cardsCollectionPresent: Boolean(cardsCollectionId) });
 
-  const body = {
-    authorization: { last4, brand, exp_month, exp_year },
-    customer: { name },
-    token,
-    id: doc.$id,
-    created: doc.$createdAt
-  };
-  if (idemKey) idem.set(`${user.$id}:${idemKey}`, { status: 200, body, expiresAt: Date.now() + IDEM_TTL_MS });
-  return c.json(body);
+    const doc = await databases.createDocument(databaseId, cardsCollectionId, ID.unique(), {
+      userId: user.$id,
+      holder: name,
+      last4,
+      brand,
+      exp_month,
+      exp_year,
+      token,
+      fingerprint,
+      currency: 'GHS',
+      startingBalance: DEFAULT_CARD_BALANCE,
+      balance: DEFAULT_CARD_BALANCE,
+      createdAt: new Date().toISOString(),
+      type: 'card'
+    });
+
+    const body = {
+      authorization: { last4, brand, exp_month, exp_year },
+      customer: { name },
+      token,
+      id: doc.$id,
+      created: doc.$createdAt
+    };
+    if (idemKey) idem.set(`${user.$id}:${idemKey}`, { status: 200, body, expiresAt: Date.now() + IDEM_TTL_MS });
+    console.log('[cards.create] success', { userId: user.$id, docId: doc.$id });
+    return c.json(body);
+  } catch (e: any) {
+    const errInfo = {
+      message: e?.message,
+      code: e?.code,
+      type: e?.type,
+      response: e?.response || undefined,
+    };
+    console.error('[cards.create] error', { userId: (c.get('user') as any)?.$id, ...errInfo });
+    return c.json({ error: 'server_error', ...errInfo }, 500);
+  }
 });
 
 // Cards: list
