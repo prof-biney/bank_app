@@ -268,6 +268,7 @@ export function NotificationModal({
                 </Text>
               </View>
             </TouchableOpacity>
+          </Swipeable>
           ))}
           )}
           {nextCursor && (
