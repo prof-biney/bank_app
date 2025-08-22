@@ -1,8 +1,9 @@
 import React, { createContext, ReactNode, useContext, useEffect, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Card, Transaction } from "../constants/index";
-import { mockCards, mockTransactions } from "../lib/mockdata";
+import type { Notification } from "@/types";
 import { ActivityEvent } from "@/types/activity";
-import { appwriteConfig, client, logCardEvent } from "@/lib/appwrite";
+import { appwriteConfig, client, logCardEvent, databases } from "@/lib/appwrite";
 
 interface AppContextType {
   cards: Card[];
@@ -12,20 +13,32 @@ interface AppContextType {
   addCard: (card: Omit<Card, "id" | "balance"> & Partial<Pick<Card, "balance">>) => void;
   removeCard: (cardId: string) => void;
   addTransaction: (transaction: Omit<Transaction, "id" | "date">) => void;
+  isLoadingCards: boolean;
   // Activity events
   activity: ActivityEvent[];
   pushActivity: (evt: ActivityEvent) => void;
   setActivity: React.Dispatch<React.SetStateAction<ActivityEvent[]>>;
+  // Notifications
+  notifications: Notification[];
+  setNotifications: React.Dispatch<React.SetStateAction<Notification[]>>;
+  markNotificationRead: (id: string) => Promise<void>;
+  deleteNotification: (id: string) => Promise<void>;
+  markAllNotificationsRead: () => Promise<void>;
+  deleteAllReadNotifications: () => Promise<void>;
+  toggleNotificationRead: (id: string) => Promise<void>;
+  markAllNotificationsUnread: () => Promise<void>;
+  clearAllNotifications: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [cards, setCards] = useState<Card[]>(mockCards);
-  const [transactions, setTransactions] =
-    useState<Transaction[]>(mockTransactions);
-  const [activeCard, setActiveCard] = useState<Card | null>(mockCards[0]);
+  const [cards, setCards] = useState<Card[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [activeCard, setActiveCard] = useState<Card | null>(null);
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
+  const [isLoadingCards, setIsLoadingCards] = useState<boolean>(true);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
 const pushActivity: AppContextType["pushActivity"] = (evt) => {
     setActivity((prev) => [evt, ...prev]);
@@ -136,17 +149,97 @@ const removeCard: AppContextType["removeCard"] = (cardId) => {
     } catch {}
   };
 
+  // Initial load from server for cards (optional; no mock data)
+  useEffect(() => {
+    const { getApiBase } = require('../lib/api');
+    const loadCards = async () => {
+      setIsLoadingCards(true);
+      try {
+        const jwt = (global as any).__APPWRITE_JWT__ || undefined;
+        const url = `${getApiBase()}/v1/cards`;
+        const res = await fetch(url, {
+          headers: {
+            ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}),
+          },
+        });
+        if (!res.ok) return; // no-op
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          // Expecting an array of cards from server
+          setCards(data as Card[]);
+          setActiveCard((data as Card[])[0] || null);
+        }
+      } catch {}
+      finally {
+        setIsLoadingCards(false);
+      }
+    };
+    loadCards();
+  }, []);
+
+  // Load notifications from storage first, then fetch from Appwrite
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem('notifications');
+        if (raw) {
+          const parsed: Notification[] = JSON.parse(raw);
+          setNotifications(parsed);
+        }
+      } catch {}
+    })();
+  }, []);
+
+  // Initial load of notifications (if configured)
+  useEffect(() => {
+    const loadNotifications = async () => {
+      try {
+        const dbId = appwriteConfig.databaseId;
+        const notifCol = (appwriteConfig as any).notificationsCollectionId as string | undefined;
+        if (!dbId || !notifCol) return;
+        const resp: any = await databases.listDocuments(dbId, notifCol);
+        const docs = Array.isArray(resp?.documents) ? resp.documents : [];
+        const fetched: Notification[] = docs.map((d: any) => ({
+          id: d.$id,
+          userId: d.userId,
+          title: d.title,
+          message: d.message,
+          type: d.type,
+          unread: d.unread,
+          createdAt: d.$createdAt || d.createdAt,
+        }));
+        // Merge with any local notifications (prefer fetched)
+        setNotifications(prev => {
+          const map = new Map<string, Notification>();
+          for (const n of prev) map.set(n.id, n);
+          for (const n of fetched) map.set(n.id, n);
+          const merged = Array.from(map.values());
+          merged.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+          return merged;
+        });
+      } catch {}
+    };
+    loadNotifications();
+  }, []);
+
+  // Persist notifications to storage
+  useEffect(() => {
+    AsyncStorage.setItem('notifications', JSON.stringify(notifications)).catch(() => {});
+  }, [notifications]);
+
   // Appwrite Realtime subscription
   useEffect(() => {
     const dbId = appwriteConfig.databaseId;
     const txCol = appwriteConfig.transactionsCollectionId;
     const cardCol = appwriteConfig.cardsCollectionId;
     const acctCol = appwriteConfig.accountUpdatesCollectionId;
+    const notifCol = (appwriteConfig as any).notificationsCollectionId as string | undefined;
 
     const channels: string[] = [];
     if (dbId && txCol) channels.push(`databases.${dbId}.collections.${txCol}.documents`);
     if (dbId && cardCol) channels.push(`databases.${dbId}.collections.${cardCol}.documents`);
     if (dbId && acctCol) channels.push(`databases.${dbId}.collections.${acctCol}.documents`);
+    if (dbId && notifCol) channels.push(`databases.${dbId}.collections.${notifCol}.documents`);
 
     if (channels.length === 0) return;
 
@@ -155,7 +248,23 @@ const removeCard: AppContextType["removeCard"] = (cardId) => {
         const { events, payload } = message as { events: string[]; payload: any };
         const eventStr = events?.[0] || '';
         const ts = new Date().toISOString();
-        // Determine category by collection in event string
+
+        // Notifications: handle separately
+        if (notifCol && eventStr.includes(`collections.${notifCol}.`)) {
+          const n: Notification = {
+            id: payload?.$id || `rt.${Date.now()}`,
+            userId: payload?.userId,
+            title: payload?.title || 'Notification',
+            message: payload?.message || '',
+            type: payload?.type,
+            unread: typeof payload?.unread === 'boolean' ? payload.unread : true,
+            createdAt: payload?.$createdAt || ts,
+          };
+          setNotifications((prev) => [n, ...prev]);
+          return;
+        }
+
+        // Determine category by collection in event string (for activity timeline)
         let category: ActivityEvent['category'] = 'account';
         if (txCol && eventStr.includes(`collections.${txCol}.`)) category = 'transaction';
         else if (cardCol && eventStr.includes(`collections.${cardCol}.`)) category = 'card';
@@ -193,6 +302,139 @@ const removeCard: AppContextType["removeCard"] = (cardId) => {
     };
   }, []);
 
+  const markNotificationRead: AppContextType['markNotificationRead'] = async (id) => {
+    const dbId = appwriteConfig.databaseId;
+    const notifCol = (appwriteConfig as any).notificationsCollectionId as string | undefined;
+    if (!dbId || !notifCol) return;
+    // Optimistic update
+    let prev: Notification[] | null = null;
+    setNotifications(cur => {
+      prev = cur;
+      return cur.map(n => (n.id === id ? { ...n, unread: false } : n));
+    });
+    try {
+      await databases.updateDocument(dbId, notifCol, id, { unread: false });
+    } catch (e) {
+      // Revert on failure
+      if (prev) setNotifications(prev);
+    }
+  };
+
+  const deleteNotification: AppContextType['deleteNotification'] = async (id) => {
+    const dbId = appwriteConfig.databaseId;
+    const notifCol = (appwriteConfig as any).notificationsCollectionId as string | undefined;
+    if (!dbId || !notifCol) return;
+    let prev: Notification[] | null = null;
+    setNotifications(cur => {
+      prev = cur;
+      return cur.filter(n => n.id !== id);
+    });
+    try {
+      await databases.deleteDocument(dbId, notifCol, id);
+    } catch (e) {
+      if (prev) setNotifications(prev);
+    }
+  };
+
+  const markAllNotificationsRead: AppContextType['markAllNotificationsRead'] = async () => {
+    const dbId = appwriteConfig.databaseId;
+    const notifCol = (appwriteConfig as any).notificationsCollectionId as string | undefined;
+    if (!dbId || !notifCol) return;
+    const unread = notifications.filter(n => n.unread).map(n => n.id);
+    if (unread.length === 0) return;
+    // Optimistic
+    const prev = notifications;
+    setNotifications(cur => cur.map(n => ({ ...n, unread: false })));
+    try {
+      // Fire updates sequentially to keep it simple; could be parallel
+      for (const id of unread) {
+        // eslint-disable-next-line no-await-in-loop
+        await databases.updateDocument(dbId, notifCol, id, { unread: false });
+      }
+    } catch (e) {
+      setNotifications(prev);
+    }
+  };
+
+  const deleteAllReadNotifications: AppContextType['deleteAllReadNotifications'] = async () => {
+    const dbId = appwriteConfig.databaseId;
+    const notifCol = (appwriteConfig as any).notificationsCollectionId as string | undefined;
+    if (!dbId || !notifCol) return;
+    const toDelete = notifications.filter(n => !n.unread).map(n => n.id);
+    if (toDelete.length === 0) return;
+    const prev = notifications;
+    // Optimistic: remove read items
+    setNotifications(cur => cur.filter(n => n.unread));
+    try {
+      for (const id of toDelete) {
+        // eslint-disable-next-line no-await-in-loop
+        await databases.deleteDocument(dbId, notifCol, id);
+      }
+    } catch (e) {
+      setNotifications(prev);
+    }
+  };
+
+  const toggleNotificationRead: AppContextType['toggleNotificationRead'] = async (id) => {
+    const dbId = appwriteConfig.databaseId;
+    const notifCol = (appwriteConfig as any).notificationsCollectionId as string | undefined;
+    if (!dbId || !notifCol) return;
+    let prev: Notification[] | null = null;
+    let nextUnread = true;
+    setNotifications(cur => {
+      prev = cur;
+      const updated = cur.map(n => {
+        if (n.id === id) {
+          nextUnread = !n.unread;
+          return { ...n, unread: !n.unread };
+        }
+        return n;
+      });
+      return updated;
+    });
+    try {
+      await databases.updateDocument(dbId, notifCol, id, { unread: nextUnread });
+    } catch (e) {
+      if (prev) setNotifications(prev);
+    }
+  };
+
+  const markAllNotificationsUnread: AppContextType['markAllNotificationsUnread'] = async () => {
+    const dbId = appwriteConfig.databaseId;
+    const notifCol = (appwriteConfig as any).notificationsCollectionId as string | undefined;
+    if (!dbId || !notifCol) return;
+    const readIds = notifications.filter(n => !n.unread).map(n => n.id);
+    if (readIds.length === 0) return;
+    const prev = notifications;
+    setNotifications(cur => cur.map(n => ({ ...n, unread: true })));
+    try {
+      for (const id of readIds) {
+        // eslint-disable-next-line no-await-in-loop
+        await databases.updateDocument(dbId, notifCol, id, { unread: true });
+      }
+    } catch (e) {
+      setNotifications(prev);
+    }
+  };
+
+  const clearAllNotifications: AppContextType['clearAllNotifications'] = async () => {
+    try {
+      const { getApiBase } = require('../lib/api');
+      const url = `${getApiBase()}/v1/notifications/clear`;
+      const jwt = (global as any).__APPWRITE_JWT__ || undefined;
+      const headers: any = { 'Content-Type': 'application/json' };
+      if (jwt) headers['Authorization'] = `Bearer ${jwt}`;
+      const res = await fetch(url, { method: 'POST', headers });
+      if (!res.ok) {
+        console.warn('Failed to clear notifications (server)');
+        return;
+      }
+      setNotifications([]);
+    } catch (e) {
+      console.warn('clearAllNotifications error', e);
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -203,9 +445,19 @@ const removeCard: AppContextType["removeCard"] = (cardId) => {
         addCard,
         removeCard,
         addTransaction,
+        isLoadingCards,
         activity,
         pushActivity,
         setActivity,
+        notifications,
+        setNotifications,
+        markNotificationRead,
+        deleteNotification,
+        markAllNotificationsRead,
+        deleteAllReadNotifications,
+        toggleNotificationRead,
+        markAllNotificationsUnread,
+        clearAllNotifications,
       }}
     >
       {children}

@@ -25,7 +25,8 @@ export default function ActivityScreen() {
 
   const handleCapture = async (id: string) => {
     try {
-      const apiBase = process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:3000";
+      const { getApiBase } = require('../../lib/api');
+      const apiBase = getApiBase();
       const url = `${apiBase.replace(/\/$/, "")}/v1/payments/${id}/capture`;
       const jwt = (global as any).__APPWRITE_JWT__ || undefined;
       const headers: any = {};
@@ -39,7 +40,8 @@ export default function ActivityScreen() {
 
   const handleRefund = async (id: string) => {
     try {
-      const apiBase = process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:3000";
+      const { getApiBase } = require('../../lib/api');
+      const apiBase = getApiBase();
       const url = `${apiBase.replace(/\/$/, "")}/v1/payments/${id}/refund`;
       const jwt = (global as any).__APPWRITE_JWT__ || undefined;
       const headers: any = {};
@@ -51,33 +53,99 @@ export default function ActivityScreen() {
     } catch (e) {}
   };
   const { transactions, activity } = useApp();
+  const { getApiBase } = require('../../lib/api');
   const [payments, setPayments] = React.useState<Payment[]>([]);
   const [loading, setLoading] = React.useState(false);
+  const [loadingMore, setLoadingMore] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const PAY_PAGE_SIZE = 10;
+  const [nextPaymentsCursor, setNextPaymentsCursor] = React.useState<string | null>(null);
+
+  // Maps Activity screen status chips to payment statuses
+  const paymentStatusMap: Record<string, string> = {
+    completed: 'captured',
+    pending: 'authorized',
+    failed: 'failed',
+    reversed: 'refunded',
+  };
+
+  const buildPaymentsQuery = (limit: number, cursor?: string) => {
+    const apiBase = getApiBase();
+    const types = Object.keys(typeFilter).filter((k) => (typeFilter as any)[k]);
+    const statuses = Object.keys(statusFilter)
+      .filter((k) => (statusFilter as any)[k])
+      .map((k) => paymentStatusMap[k] || '')
+      .filter(Boolean);
+    const params = new URLSearchParams();
+    params.set('limit', String(limit));
+    if (types.length) params.set('type', types.join(','));
+    if (statuses.length) params.set('status', statuses.join(','));
+    if (cursor) params.set('cursor', cursor);
+    return `${apiBase.replace(/\/$/, "")}/v1/payments?${params.toString()}`;
+  };
+
+  const fetchPayments = async (reset: boolean) => {
+    try {
+      if (reset) {
+        setLoading(true);
+        setPayments([]);
+        setNextPaymentsCursor(null);
+      }
+      const jwt = (global as any).__APPWRITE_JWT__ || undefined;
+      const url = buildPaymentsQuery(PAY_PAGE_SIZE);
+      const res = await fetch(url, { headers: { ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) } });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      const list: Payment[] = Array.isArray(data?.data) ? data.data : [];
+      setPayments(list);
+      setNextPaymentsCursor(data?.nextCursor ?? null);
+    } catch (e: any) {
+      setError(e?.message || "Failed to load payments");
+    } finally {
+      if (reset) setLoading(false);
+    }
+  };
 
   React.useEffect(() => {
-    const apiBase = process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:3000";
-    const url = `${apiBase.replace(/\/$/, "")}/v1/payments`;
-    async function run() {
-      try {
-        setLoading(true);
-        const jwt = (global as any).__APPWRITE_JWT__ || undefined;
-        const res = await fetch(url, { headers: { ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) } });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-        setPayments(Array.isArray(data?.data) ? data.data : []);
-      } catch (e: any) {
-        setError(e?.message || "Failed to load payments");
-      } finally {
-        setLoading(false);
-      }
-    }
-    run();
+    fetchPayments(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typeFilter, statusFilter]);
+
+  React.useEffect(() => {
+    // initial load
+    fetchPayments(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const loadMorePayments = async () => {
+    if (!nextPaymentsCursor || loadingMore) return;
+    try {
+      setLoadingMore(true);
+      const jwt = (global as any).__APPWRITE_JWT__ || undefined;
+      const url = buildPaymentsQuery(PAY_PAGE_SIZE, nextPaymentsCursor);
+      const res = await fetch(url, { headers: { ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) } });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      const list: Payment[] = Array.isArray(data?.data) ? data.data : [];
+      setPayments(prev => {
+        const seen = new Set(prev.map(p => p.id));
+        const merged = [...prev];
+        for (const item of list) if (!seen.has(item.id)) merged.push(item);
+        return merged;
+      });
+      setNextPaymentsCursor(data?.nextCursor ?? null);
+    } catch (e: any) {
+      setError(e?.message || "Failed to load more payments");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
   const { colors } = useTheme();
   const [showDateFilter, setShowDateFilter] = useState(false);
   const [dateFilter, setDateFilter] = useState("all");
   const [filters, setFilters] = useState({ income: true, expense: true, account: true, card: true });
+  const [typeFilter, setTypeFilter] = useState({ deposit: true, transfer: true, withdraw: true, payment: true });
+  const [statusFilter, setStatusFilter] = useState({ completed: true, pending: true, failed: true, reversed: true });
 
   React.useEffect(() => {
     (async () => {
@@ -95,12 +163,49 @@ export default function ActivityScreen() {
     AsyncStorage.setItem('activityFilters', JSON.stringify(filters)).catch(() => {});
   }, [filters]);
 
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const t = await AsyncStorage.getItem('txTypeFilter');
+        if (t) setTypeFilter(prev => ({ ...prev, ...JSON.parse(t) }));
+        const s = await AsyncStorage.getItem('txStatusFilter');
+        if (s) setStatusFilter(prev => ({ ...prev, ...JSON.parse(s) }));
+      } catch {}
+    })();
+  }, []);
+  React.useEffect(() => {
+    AsyncStorage.setItem('txTypeFilter', JSON.stringify(typeFilter)).catch(() => {});
+  }, [typeFilter]);
+  React.useEffect(() => {
+    AsyncStorage.setItem('txStatusFilter', JSON.stringify(statusFilter)).catch(() => {});
+  }, [statusFilter]);
+
   const toggleFilter = (key: keyof typeof filters) => {
     setFilters(prev => {
       const next = { ...prev, [key]: !prev[key] };
       // Enforce at least one on
       if (!next.income && !next.expense && !next.account && !next.card) {
         return prev; // ignore toggle that would turn all off
+      }
+      return next;
+    });
+  };
+
+  const toggleType = (key: keyof typeof typeFilter) => {
+    setTypeFilter(prev => {
+      const next = { ...prev, [key]: !prev[key] };
+      if (!next.deposit && !next.transfer && !next.withdraw && !next.payment) {
+        return prev;
+      }
+      return next;
+    });
+  };
+
+  const toggleStatus = (key: keyof typeof statusFilter) => {
+    setStatusFilter(prev => {
+      const next = { ...prev, [key]: !prev[key] };
+      if (!next.completed && !next.pending && !next.failed && !next.reversed) {
+        return prev;
       }
       return next;
     });
@@ -138,6 +243,12 @@ export default function ActivityScreen() {
       if (transaction.amount < 0) return filters.expense;
       return true;
     });
+
+    // Apply type filter
+    filtered = filtered.filter((t) => (typeFilter as any)[t.type]);
+
+    // Apply status filter
+    filtered = filtered.filter((t) => (statusFilter as any)[t.status]);
 
     return filtered;
   };
@@ -179,6 +290,7 @@ export default function ActivityScreen() {
   const [showDetail, setShowDetail] = useState(false);
 
   const filteredTransactions = getFilteredTransactions();
+  const filteredTxCount = filteredTransactions.length;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -187,13 +299,26 @@ export default function ActivityScreen() {
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <View style={styles.header}>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Activity</Text>
-          <TouchableOpacity
-            style={[styles.filterButton, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}
-            onPress={() => setShowDateFilter(true)}
-          >
-            <Filter color={colors.textSecondary} size={20} />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={[styles.title, { color: colors.textPrimary }]}>Activity</Text>
+            <View style={{ marginLeft: 8, backgroundColor: '#0F766E', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 }}>
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>Filtered: {filteredTxCount}</Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <TouchableOpacity
+              style={[styles.filterButton, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}
+              onPress={() => setShowDateFilter(true)}
+            >
+              <Filter color={colors.textSecondary} size={20} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ marginLeft: 8, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }}
+              onPress={() => { setFilters({ income: true, expense: true, account: true, card: true }); setTypeFilter({ deposit: true, transfer: true, withdraw: true, payment: true }); setStatusFilter({ completed: true, pending: true, failed: true, reversed: true }); setDateFilter('all'); }}
+            >
+              <Text style={{ color: colors.textSecondary, fontWeight: '600' }}>Reset</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.filterTabs}>
@@ -281,12 +406,51 @@ export default function ActivityScreen() {
           </ScrollView>
         </View>
 
+        {/* Transaction Type Filters */}
+        <View style={[styles.categoryChips, { paddingTop: 4 }] }>
+          {(['deposit','transfer','withdraw','payment'] as const).map(key => (
+            <TouchableOpacity
+              key={key}
+              style={[styles.categoryChip, typeFilter[key] ? styles.categoryChipActive : {}, { borderColor: colors.border, backgroundColor: typeFilter[key] ? '#0F766E' : colors.card }]}
+              onPress={() => toggleType(key)}
+            >
+              <Text style={[styles.categoryChipText, typeFilter[key] ? styles.categoryChipTextActive : {}, { color: typeFilter[key] ? '#fff' : '#374151' }]}>
+                {key[0].toUpperCase() + key.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Transaction Status Filters */}
+        <View style={[styles.categoryChips, { paddingBottom: 4 }] }>
+          {(['completed','pending','failed','reversed'] as const).map(key => (
+            <TouchableOpacity
+              key={key}
+              style={[styles.categoryChip, statusFilter[key] ? styles.categoryChipActive : {}, { borderColor: colors.border, backgroundColor: statusFilter[key] ? '#0F766E' : colors.card }]}
+              onPress={() => toggleStatus(key)}
+            >
+              <Text style={[styles.categoryChipText, statusFilter[key] ? styles.categoryChipTextActive : {}, { color: statusFilter[key] ? '#fff' : '#374151' }]}>
+                {key[0].toUpperCase() + key.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
         <View style={styles.transactionsContainer}>
           <ScrollView
             style={styles.transactionsList}
             showsVerticalScrollIndicator={false}
           >
+            {/* Empty state when there are no activities/payments/transactions */}
+            {!loading && !error && activityCards.length === 0 && filteredTransactions.length === 0 && payments.length === 0 && (
+              <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 48 }}>
+                <Text style={{ fontSize: 18, fontWeight: '700', color: colors.textPrimary }}>No activities yet</Text>
+                <Text style={{ marginTop: 8, color: colors.textSecondary, textAlign: 'center', paddingHorizontal: 32 }}>
+                  Once you add cards, make payments, or perform transfers, your activity will appear here.
+                </Text>
+              </View>
+            )}
+
             {/* Activity timeline events (account, card, and transaction summaries) */}
             {activityCards.map((evt) => (
                 <ActivityLogItem key={evt.id} event={evt} themeColors={colors} onPress={(e) => { setSelected(e); setShowDetail(true); }} />
@@ -323,6 +487,13 @@ export default function ActivityScreen() {
                 </View>
               </View>
             ))}
+            {nextPaymentsCursor && (
+              <View style={{ padding: 16, alignItems: 'center' }}>
+                <TouchableOpacity disabled={loadingMore} onPress={loadMorePayments} style={{ backgroundColor: '#0F766E', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8, opacity: loadingMore ? 0.8 : 1 }}>
+                  <Text style={{ color: '#fff', fontWeight: '700' }}>{loadingMore ? 'Loading…' : 'Load more payments'}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </ScrollView>
         </View>
 

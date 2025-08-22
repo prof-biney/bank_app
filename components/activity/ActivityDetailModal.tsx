@@ -53,13 +53,13 @@ export default function ActivityDetailModal({
       if (event.category !== 'transaction' || !event.transactionId) return;
       try {
         setLoading(true);
-        const apiBase = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:3000';
-        const url = `${apiBase.replace(/\/$/, '')}/v1/payments`;
+        const { getApiBase } = require('../../lib/api');
+        const url = `${getApiBase()}/v1/payments`;
         const jwt = (global as any).__APPWRITE_JWT__ || undefined;
         const res = await fetch(url, { headers: { ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) } });
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-        const found = Array.isArray(data?.data) ? data.data.find((p: any) => p.$id === event.transactionId) : null;
+const found = Array.isArray(data?.data) ? data.data.find((p: any) => p.id === event.transactionId) : null;
         setPayment(found || null);
       } catch (e: any) {
         setErr(e?.message || 'Failed to load payment');

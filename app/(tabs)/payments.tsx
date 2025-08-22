@@ -9,8 +9,9 @@ export default function PaymentsScreen() {
   const [items, setItems] = useState<any[]>([]);
 
   useEffect(() => {
-    const apiBase = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:3000';
-    const url = `${apiBase.replace(/\/$/, '')}/v1/payments`;
+    const { getApiBase } = require('../../lib/api');
+    const apiBase = getApiBase();
+    const url = `${apiBase}/v1/payments`;
     (async () => {
       try {
         const jwt = (global as any).__APPWRITE_JWT__ || undefined;
@@ -33,8 +34,9 @@ export default function PaymentsScreen() {
     }
     setSubmitting(true);
     try {
-      const apiBase = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:3000';
-      const url = `${apiBase.replace(/\/$/, '')}/v1/payments`;
+      const { getApiBase } = require('../../lib/api');
+      const apiBase = getApiBase();
+      const url = `${apiBase}/v1/payments`;
       const jwt = (global as any).__APPWRITE_JWT__ || undefined;
       const headers: any = { 'Content-Type': 'application/json' };
       if (jwt) headers['Authorization'] = `Bearer ${jwt}`;
@@ -54,8 +56,9 @@ export default function PaymentsScreen() {
 
   const action = async (id: string, kind: 'capture' | 'refund') => {
     try {
-      const apiBase = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:3000';
-      const url = `${apiBase.replace(/\/$/, '')}/v1/payments/${id}/${kind}`;
+      const { getApiBase } = require('../../lib/api');
+      const apiBase = getApiBase();
+      const url = `${apiBase}/v1/payments/${id}/${kind}`;
       const jwt = (global as any).__APPWRITE_JWT__ || undefined;
       const headers: any = {};
       if (jwt) headers['Authorization'] = `Bearer ${jwt}`;
@@ -93,27 +96,36 @@ export default function PaymentsScreen() {
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Recent Payments</Text>
-          {items.map((p) => (
-            <View key={p.id} style={styles.item}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontWeight: '600' }}>Payment {p.id.slice(-6)}</Text>
-                <Text style={{ color: '#6B7280' }}>{p.status.toUpperCase()} • {p.amount ?? '-'} {p.currency ?? ''}</Text>
-                <Text style={{ color: '#6B7280' }}>{p.created ? new Date(p.created).toLocaleString() : ''}</Text>
-              </View>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                {p.status === 'authorized' && (
-                  <TouchableOpacity onPress={() => action(p.id, 'capture')} style={styles.buttonSmallPrimary}>
-                    <Text style={styles.buttonText}>Capture</Text>
-                  </TouchableOpacity>
-                )}
-                {(p.status === 'authorized' || p.status === 'captured') && (
-                  <TouchableOpacity onPress={() => action(p.id, 'refund')} style={styles.buttonSmallDanger}>
-                    <Text style={styles.buttonText}>Refund</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+          {items.length === 0 ? (
+            <View style={{ paddingVertical: 16, alignItems: 'center' }}>
+              <Text style={{ color: '#6B7280' }}>No payments yet</Text>
+              <Text style={{ color: '#9CA3AF', marginTop: 4, textAlign: 'center' }}>
+                Create your first payment above to see it here.
+              </Text>
             </View>
-          ))}
+          ) : (
+            items.map((p) => (
+              <View key={p.id} style={styles.item}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontWeight: '600' }}>Payment {p.id.slice(-6)}</Text>
+                  <Text style={{ color: '#6B7280' }}>{p.status.toUpperCase()} • {p.amount ?? '-'} {p.currency ?? ''}</Text>
+                  <Text style={{ color: '#6B7280' }}>{p.created ? new Date(p.created).toLocaleString() : ''}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  {p.status === 'authorized' && (
+                    <TouchableOpacity onPress={() => action(p.id, 'capture')} style={styles.buttonSmallPrimary}>
+                      <Text style={styles.buttonText}>Capture</Text>
+                    </TouchableOpacity>
+                  )}
+                  {(p.status === 'authorized' || p.status === 'captured') && (
+                    <TouchableOpacity onPress={() => action(p.id, 'refund')} style={styles.buttonSmallDanger}>
+                      <Text style={styles.buttonText}>Refund</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            ))
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>

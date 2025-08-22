@@ -1,7 +1,6 @@
-import PaystackPayment from "@/components/PaystackPayment";
 import { useAlert } from "@/context/AlertContext";
 import React from "react";
-import { 
+import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -9,44 +8,23 @@ import {
   Text,
   View,
   TouchableOpacity,
-  Alert,
+  ActivityIndicator,
 } from "react-native";
-import { PaystackProvider, usePaystack } from "react-native-paystack-webview";
-import {
-  Currency,
-  PaymentChannels,
-} from "react-native-paystack-webview/production/lib/types";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BankCard } from "../../components/BankCard";
 import { useApp } from "../../context/AppContext";
 import useAuthStore from "@/store/auth.store";
 
 import AddCardModal from "@/components/modals/AddCardModal";
+import ConfirmDialog from "@/components/modals/ConfirmDialog";
 
 function AddCardButton() {
   const { showAlert } = useAlert();
   const { addCard } = useApp();
   const { user } = useAuthStore();
 
-  const apiBase = process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:3000";
-  const deriveCardsUrl = () => {
-    try {
-      const u = new URL(apiBase);
-      // Android emulator special host if using localhost/127.0.0.1
-      const isLocalHost = ["localhost", "127.0.0.1"].includes(u.hostname);
-      // eslint-disable-next-line no-undef
-      const isAndroid = Platform.OS === 'android';
-      if (isLocalHost && isAndroid) {
-        u.hostname = '10.0.2.2';
-      }
-      u.pathname = u.pathname.replace(/\/$/, "");
-      u.pathname = `${u.pathname}/v1/cards`;
-      return u.toString();
-    } catch {
-      return `${apiBase.replace(/\/$/, "")}/v1/cards`;
-    }
-  };
-  const cardsUrl = deriveCardsUrl();
+  const { getApiBase } = require('../../lib/api');
+  const cardsUrl = `${getApiBase()}/v1/cards`;
 
   const [visible, setVisible] = React.useState(false);
   const open = () => setVisible(true);
@@ -107,75 +85,62 @@ function AddCardButton() {
   );
 }
 
-import ConfirmDialog from "@/components/modals/ConfirmDialog";
-
 export default function CardsScreen() {
-  const { cards, activeCard, setActiveCard, removeCard } = useApp();
+  const { cards, activeCard, setActiveCard, removeCard, isLoadingCards } = useApp();
   const [confirmVisible, setConfirmVisible] = React.useState(false);
   const [pendingDeleteId, setPendingDeleteId] = React.useState<string | null>(null);
   const { showAlert } = useAlert();
 
-  // Check for required environment variables
-  const requiredEnvVars = ["EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY"];
-  const missingEnvVars = requiredEnvVars.filter(
-    (varName) => !process.env[varName]
-  );
-
-  if (missingEnvVars.length > 0) {
-    console.warn(
-      `Missing required Paystack environment variables: ${missingEnvVars.join(", ")}`
-    );
-    console.warn(
-      "Please check your .env file and make sure all required variables are defined."
-    );
-  }
-
-  // Get Paystack configuration from environment variables with fallbacks
-  const paystackPublicKey = process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY || "";
-  const paystackCurrency =
-    (process.env.EXPO_PUBLIC_PAYSTACK_CURRENCY as Currency) || "GHS";
-
-  // Default payment channels
-  const defaultChannels = ["card", "mobile_money", "bank"] as PaymentChannels;
   const handleDelete = (id: string) => {
     setPendingDeleteId(id);
     setConfirmVisible(true);
   };
 
   return (
-    <PaystackProvider
-      debug={process.env.EXPO_PUBLIC_APP_ENV === "development"}
-      publicKey={paystackPublicKey}
-      currency={paystackCurrency}
-      defaultChannels={defaultChannels}
-    >
-      <SafeAreaView style={styles.container}>
-        <KeyboardAvoidingView
-          style={styles.keyboardContainer}
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-        >
-          <View style={styles.header}>
-            <Text style={styles.title}>My Cards</Text>
-            <Text style={styles.subtitle}>Manage your payment cards</Text>
-            <AddCardButton />
-          </View>
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView
+        style={styles.keyboardContainer}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <View style={styles.header}>
+          <Text style={styles.title}>My Cards</Text>
+          <Text style={styles.subtitle}>Manage your payment cards</Text>
+          {cards.length > 0 && <AddCardButton />}
+        </View>
 
           <ScrollView
             style={styles.cardsContainer}
             showsVerticalScrollIndicator={false}
           >
-            {cards.map((card) => (
-              <View key={card.id} style={styles.cardWrapper}>
-                <BankCard
-                  card={card}
-                  selected={activeCard?.id === card.id}
-                  onPress={() => setActiveCard(card)}
-                  onDelete={() => handleDelete(card.id)}
-                />
+            {isLoadingCards && cards.length === 0 ? (
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 }}>
+                <ActivityIndicator size="large" color="#0F766E" />
+                <Text style={{ marginTop: 12, color: '#6B7280' }}>Loading cards...</Text>
               </View>
-            ))}
+            ) : cards.length === 0 ? (
+              <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 48 }}>
+                <Text style={{ fontSize: 18, fontWeight: '700', color: '#1F2937' }}>No cards yet</Text>
+                <Text style={{ marginTop: 8, color: '#6B7280', textAlign: 'center', paddingHorizontal: 32 }}>
+                  Add your first card to start making payments and tracking activity.
+                </Text>
+                <View style={{ marginTop: 16 }}>
+                  <AddCardButton />
+                </View>
+              </View>
+            ) : (
+              cards.map((card) => (
+                <View key={card.id} style={styles.cardWrapper}>
+                  <BankCard
+                    card={card}
+                    selected={activeCard?.id === card.id}
+                    onPress={() => setActiveCard(card)}
+                    onDelete={() => handleDelete(card.id)}
+                  />
+                </View>
+              ))
+            )}
           </ScrollView>
-        </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
       <ConfirmDialog
         visible={confirmVisible}
         title="Remove card"
@@ -193,8 +158,7 @@ export default function CardsScreen() {
           setPendingDeleteId(null);
         }}
       />
-      </SafeAreaView>
-    </PaystackProvider>
+    </SafeAreaView>
   );
 }
 
