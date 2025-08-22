@@ -154,7 +154,7 @@ export function NotificationModal({
               } catch {}
               setItems(prev => prev.map(n => ({ ...n, unread: false })));
             }} style={[styles.markAllButton, { backgroundColor: colors.background, borderColor: colors.border }]}> 
-              <Text style={{ color: colors.textSecondary, fontWeight: '600' }}>Mark all as read</Text>
+              <MailOpen color={colors.textSecondary} size={18} />
             </TouchableOpacity>
             {process.env.EXPO_PUBLIC_APP_ENV !== 'production' && (
               <TouchableOpacity onPress={async () => {
@@ -169,7 +169,7 @@ export function NotificationModal({
                 } catch {}
                 setItems(prev => prev.map(n => ({ ...n, unread: true })));
               }} style={[styles.markAllButton, { backgroundColor: colors.background, borderColor: colors.border }]}> 
-                <Text style={{ color: colors.textSecondary, fontWeight: '600' }}>Mark all as unread</Text>
+                <Mail color={colors.textSecondary} size={18} />
               </TouchableOpacity>
             )}
             <TouchableOpacity onPress={async () => {
@@ -180,7 +180,7 @@ export function NotificationModal({
               } catch {}
               setItems(prev => prev.filter(n => n.unread));
             }} style={[styles.markAllButton, { backgroundColor: colors.background, borderColor: colors.border }]}> 
-              <Text style={{ color: '#ef4444', fontWeight: '600' }}>Delete read</Text>
+              <Trash2 color={'#ef4444'} size={18} />
             </TouchableOpacity>
             <TouchableOpacity onPress={() => {
               Alert.alert(
