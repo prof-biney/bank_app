@@ -1,6 +1,19 @@
-import cn from "clsx";
 import React from "react";
-import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Text, TouchableOpacity, View, StyleProp, ViewStyle, TextStyle } from "react-native";
+import { useTheme } from "@/context/ThemeContext";
+import { getButtonStyles, ButtonVariant, ButtonSize } from "@/theme/variants";
+
+type Props = {
+  onPress?: () => void;
+  title?: string;
+  style?: StyleProp<ViewStyle>;
+  leftIcon?: React.ReactNode;
+  textStyle?: StyleProp<TextStyle>;
+  isLoading?: boolean;
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  disabled?: boolean;
+};
 
 const CustomButton = ({
   onPress,
@@ -9,22 +22,24 @@ const CustomButton = ({
   textStyle,
   leftIcon,
   isLoading = false,
-}: CustomButtonProps) => {
+  variant = "primary",
+  size = "md",
+  disabled = false,
+}: Props) => {
+  const { colors } = useTheme();
+  const styles = getButtonStyles(colors, { variant, size, disabled: isLoading || disabled });
   return (
     <TouchableOpacity
-      className={cn("custom-btn", style)}
+      style={[styles.container, style]}
       onPress={onPress}
-      disabled={isLoading}
+      disabled={isLoading || disabled}
     >
-      {leftIcon}
-
-      <View className="flex-center flex-row">
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+        {leftIcon ? <View style={{ marginRight: 6 }}>{leftIcon}</View> : null}
         {isLoading ? (
-          <ActivityIndicator size="small" color="white" />
+          <ActivityIndicator size="small" color={styles.text.color as string} />
         ) : (
-          <Text className={cn("text-white-100 paragraph-semibold", textStyle)}>
-            {title}
-          </Text>
+          <Text style={[styles.text, textStyle]}>{title}</Text>
         )}
       </View>
     </TouchableOpacity>
