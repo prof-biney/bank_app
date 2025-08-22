@@ -24,15 +24,17 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const colors = useMemo(
     () => ({
-      background: isDark ? '#121212' : '#F8FAFC',
-      card: isDark ? '#1E1E1E' : '#FFFFFF',
-      textPrimary: isDark ? '#F3F4F6' : '#111827',
-      textSecondary: isDark ? '#C7CBD1' : '#374151',
-      border: isDark ? '#2A2E35' : '#E5E7EB',
-      tintPrimary: '#0F766E',
-      errorBg: isDark ? '#2A1515' : '#FEE2E2',
-      successBg: isDark ? '#0F2A21' : '#ECFDF5',
-      warningBg: isDark ? '#2A2312' : '#FFFBEB',
+      // Dark mode uses a slate/neutral palette for professional contrast and readability
+      background: isDark ? '#0B1220' : '#F8FAFC',   // slate-950-ish vs light
+      card:       isDark ? '#111827' : '#FFFFFF',   // slate-900 vs white
+      textPrimary:   isDark ? '#E5E7EB' : '#111827', // slate-200 vs near-black
+      textSecondary: isDark ? '#9CA3AF' : '#374151', // slate-400 vs slate-700
+      border:     isDark ? '#1F2937' : '#E5E7EB',   // slate-800 vs slate-200
+      tintPrimary: '#0F766E',                       // brand accent (teal-700)
+      // Semantic surfaces for dark mode: subtle tinted backgrounds for status
+      errorBg:   isDark ? '#3A1D1D' : '#FEE2E2',    // deeper than previous for clarity
+      successBg: isDark ? '#102A24' : '#ECFDF5',
+      warningBg: isDark ? '#2A2314' : '#FFFBEB',
     }),
     [isDark]
   );
