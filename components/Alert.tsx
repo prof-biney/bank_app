@@ -9,6 +9,8 @@ import {
   View,
   Dimensions
 } from 'react-native';
+import { useTheme } from '@/context/ThemeContext';
+import { withAlpha } from '@/theme/color-utils';
 
 // Get screen width for positioning
 const { width } = Dimensions.get('window');
@@ -80,43 +82,44 @@ const AlertItem = ({ alert, onHide }: { alert: AlertMessage; onHide: () => void 
     };
   }, [alert.duration, onHide, translateY, opacity]);
 
+  const { colors } = useTheme();
   // Get icon and colors based on alert type
   const getAlertStyles = (type: AlertType) => {
     switch (type) {
       case 'success':
         return {
-          backgroundColor: '#ECFDF5',
-          borderColor: '#10B981',
-          icon: <CheckCircle color="#10B981" size={24} />,
-          textColor: '#065F46',
+          backgroundColor: colors.successBg,
+          borderColor: colors.positive,
+          icon: <CheckCircle color={colors.positive} size={24} />,
+          textColor: colors.positive,
         };
       case 'error':
         return {
-          backgroundColor: '#FEF2F2',
-          borderColor: '#EF4444',
-          icon: <AlertCircle color="#EF4444" size={24} />,
-          textColor: '#991B1B',
+          backgroundColor: colors.errorBg,
+          borderColor: colors.negative,
+          icon: <AlertCircle color={colors.negative} size={24} />,
+          textColor: colors.negative,
         };
       case 'warning':
         return {
-          backgroundColor: '#FFFBEB',
-          borderColor: '#F59E0B',
-          icon: <AlertTriangle color="#F59E0B" size={24} />,
-          textColor: '#92400E',
+          backgroundColor: colors.warningBg,
+          borderColor: colors.warning,
+          icon: <AlertTriangle color={colors.warning} size={24} />,
+          textColor: colors.warning,
         };
       case 'info':
         return {
-          backgroundColor: '#EFF6FF',
-          borderColor: '#3B82F6',
-          icon: <Info color="#3B82F6" size={24} />,
-          textColor: '#1E40AF',
+          backgroundColor: withAlpha(colors.tintPrimary, 0.12),
+          borderColor: colors.tintPrimary,
+          icon: <Info color={colors.tintPrimary} size={24} />,
+          textColor: colors.textPrimary,
         };
       default:
         return {
-          backgroundColor: '#F9FAFB',
-          borderColor: '#6B7280',
-          icon: <Info color="#6B7280" size={24} />,
-          textColor: '#1F2937',
+          backgroundColor: colors.card,
+          borderColor: colors.border,
+          icon: <Info color={colors.textSecondary} size={24} />,
+          textColor: colors.textPrimary,
         };
     }
   };

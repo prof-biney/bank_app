@@ -123,7 +123,7 @@ const found = Array.isArray(data?.data) ? data.data.find((p: any) => p.id === ev
               <Text style={[styles.bodyMeta, { color: colors.textSecondary }]}>Loading payment details…</Text>
             )}
             {err && (
-              <Text style={[styles.bodyMeta, { color: '#EF4444' }]}>Error: {err}</Text>
+              <Text style={[styles.bodyMeta, { color: colors.negative }]}>Error: {err}</Text>
             )}
             {payment && (
               <View style={{ marginTop: 6 }}>

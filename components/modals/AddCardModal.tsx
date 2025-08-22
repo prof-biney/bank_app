@@ -1,6 +1,7 @@
 import React from "react";
 import { Modal, View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform } from "react-native";
 import { useTheme } from "@/context/ThemeContext";
+import { chooseReadableText } from "@/theme/color-utils";
 
 interface AddCardModalProps {
   visible: boolean;
@@ -61,31 +62,31 @@ export default function AddCardModal({ visible, onClose, onSubmit }: AddCardModa
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
       <View style={[styles.backdrop, { backgroundColor: isDark ? 'rgba(0,0,0,0.45)' : 'rgba(17,24,39,0.35)' }]}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={[styles.sheet, { backgroundColor: isDark ? colors.card : '#FFFFFF' }]}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={[styles.sheet, { backgroundColor: colors.card }]}>
           <View style={styles.header}>
             <Text style={[styles.title, { color: colors.textPrimary }]}>Add New Card</Text>
             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Enter Visa card details to add</Text>
           </View>
 
           <View style={styles.body}>
-            <Text style={styles.label}>Cardholder Name</Text>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>Cardholder Name</Text>
             <TextInput
-              style={[styles.input, { backgroundColor: isDark ? '#1f1f1f' : '#FFFFFF', borderColor: colors.border, color: colors.textPrimary }]}
+              style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.textPrimary }]}
               placeholder="John Doe"
-              placeholderTextColor={isDark ? '#9CA3AF' : '#9CA3AF'}
+              placeholderTextColor={colors.textSecondary}
               value={name}
               onChangeText={setName}
               autoCapitalize="words"
             />
 
-            <Text style={styles.label}>Card Number</Text>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>Card Number</Text>
             <TextInput
               style={[
                 styles.input,
-                { backgroundColor: isDark ? '#1f1f1f' : '#FFFFFF', borderColor: colors.border, color: colors.textPrimary }
+                { backgroundColor: colors.background, borderColor: colors.border, color: colors.textPrimary }
               ]}
               placeholder="4111 1111 1111 1111"
-              placeholderTextColor={isDark ? '#9CA3AF' : '#9CA3AF'}
+              placeholderTextColor={colors.textSecondary}
               keyboardType="number-pad"
               value={number}
               onChangeText={handleNumberChange}
@@ -93,14 +94,14 @@ export default function AddCardModal({ visible, onClose, onSubmit }: AddCardModa
 
             <View style={styles.row}>
               <View style={styles.col}>
-                <Text style={styles.label}>Exp. Month</Text>
+                <Text style={[styles.label, { color: colors.textSecondary }]}>Exp. Month</Text>
                 <TextInput
                   style={[
                     styles.input,
-                    { backgroundColor: isDark ? '#1f1f1f' : '#FFFFFF', borderColor: colors.border, color: colors.textPrimary }
+                    { backgroundColor: colors.background, borderColor: colors.border, color: colors.textPrimary }
                   ]}
                   placeholder="MM"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={colors.textSecondary}
                   keyboardType="number-pad"
                   maxLength={2}
                   value={expMonth}
@@ -108,14 +109,14 @@ export default function AddCardModal({ visible, onClose, onSubmit }: AddCardModa
                 />
               </View>
               <View style={styles.col}>
-                <Text style={styles.label}>Exp. Year</Text>
+                <Text style={[styles.label, { color: colors.textSecondary }]}>Exp. Year</Text>
                 <TextInput
                   style={[
                     styles.input,
-                    { backgroundColor: isDark ? '#1f1f1f' : '#FFFFFF', borderColor: colors.border, color: colors.textPrimary }
+                    { backgroundColor: colors.background, borderColor: colors.border, color: colors.textPrimary }
                   ]}
                   placeholder="YYYY"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={colors.textSecondary}
                   keyboardType="number-pad"
                   maxLength={4}
                   value={expYear}
@@ -123,14 +124,14 @@ export default function AddCardModal({ visible, onClose, onSubmit }: AddCardModa
                 />
               </View>
               <View style={styles.col}>
-                <Text style={styles.label}>CVC</Text>
+                <Text style={[styles.label, { color: colors.textSecondary }]}>CVC</Text>
                 <TextInput
                   style={[
                     styles.input,
-                    { backgroundColor: isDark ? '#1f1f1f' : '#FFFFFF', borderColor: colors.border, color: colors.textPrimary }
+                    { backgroundColor: colors.background, borderColor: colors.border, color: colors.textPrimary }
                   ]}
                   placeholder="CVC"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={colors.textSecondary}
                   keyboardType="number-pad"
                   maxLength={4}
                   value={cvc}
@@ -141,11 +142,11 @@ export default function AddCardModal({ visible, onClose, onSubmit }: AddCardModa
           </View>
 
           <View style={styles.footer}>
-            <TouchableOpacity style={[styles.button, { backgroundColor: isDark ? '#262626' : '#F3F4F6' }]} onPress={handleClose}>
-              <Text style={[styles.buttonTextCancel, { color: isDark ? '#E5E7EB' : '#374151' }]}>Cancel</Text>
+            <TouchableOpacity style={[styles.button, { backgroundColor: colors.border }]} onPress={handleClose}>
+              <Text style={[styles.buttonTextCancel, { color: colors.textPrimary }]}>Cancel</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.button, { backgroundColor: '#0F766E' }]} onPress={handleSubmit}>
-              <Text style={styles.buttonText}>Add Card</Text>
+            <TouchableOpacity style={[styles.button, { backgroundColor: colors.tintPrimary }]} onPress={handleSubmit}>
+              <Text style={[styles.buttonText, { color: chooseReadableText(colors.tintPrimary) }]}>Add Card</Text>
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
@@ -161,7 +162,6 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: '#111',
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     padding: 16,
@@ -170,13 +170,11 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   title: {
-    color: '#fff',
     fontSize: 18,
     fontWeight: '700',
     marginBottom: 4,
   },
   subtitle: {
-    color: '#9CA3AF',
     fontSize: 13,
   },
   body: {
@@ -184,15 +182,11 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   label: {
-    color: '#D1D5DB',
     fontSize: 12,
     marginBottom: 4,
   },
   input: {
-    backgroundColor: '#1f1f1f',
-    color: '#fff',
     borderWidth: 1,
-    borderColor: '#2b2b2b',
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -216,17 +210,13 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   cancel: {
-    backgroundColor: '#262626',
   },
   confirm: {
-    backgroundColor: '#0F766E',
   },
   buttonText: {
-    color: '#fff',
     fontWeight: '700',
   },
   buttonTextCancel: {
-    color: '#E5E7EB',
     fontWeight: '600',
   },
 });

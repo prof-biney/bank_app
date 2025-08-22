@@ -18,6 +18,7 @@ import {
   Dimensions,
 } from "react-native";
 import { Feather, MaterialIcons } from "@expo/vector-icons";
+import { useTheme } from "@/context/ThemeContext";
 import { parsePhoneNumberFromString, getCountryCallingCode, getExampleNumber, AsYouType, getCountries } from 'libphonenumber-js';
 import examples from 'libphonenumber-js/examples.mobile.json';
 // Import reusable form components
@@ -80,6 +81,7 @@ const countryData = getCountries()
   .sort((a, b) => a.name.localeCompare(b.name));
 
 export default function SignUpScreen() {
+  const { colors } = useTheme();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [form, setForm] = useState({
     name: "",
@@ -810,7 +812,7 @@ export default function SignUpScreen() {
                 style={styles.modalCloseButton}
                 onPress={() => setShowCountryModal(false)}
               >
-                <Feather name="x" size={24} color="#374151" />
+                <Feather name="x" size={24} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
             
@@ -832,7 +834,7 @@ export default function SignUpScreen() {
                     <Text style={styles.countryCode}>+{getCountryCallingCode(item.code)}</Text>
                   </View>
                   {countryCode === item.code && (
-                    <MaterialIcons name="check" size={20} color="#10B981" />
+                    <MaterialIcons name="check" size={20} color={colors.positive} />
                   )}
                 </TouchableOpacity>
               )}
@@ -969,7 +971,6 @@ export default function SignUpScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0F766E",
   },
   keyboardContainer: {
     flex: 1,
@@ -986,19 +987,16 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: "bold",
-    color: "white",
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
-    color: "rgba(255, 255, 255, 0.8)",
   },
   // Style for input placeholders with reduced font size
   placeholderText: {
     fontSize: 15, // 1pt smaller than the regular input text
   },
   form: {
-    backgroundColor: "white",
     borderRadius: 16,
     padding: 24,
     shadowColor: "#000",
@@ -1016,7 +1014,6 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#374151",
     marginBottom: 8,
   },
   inputWrapper: {
@@ -1027,12 +1024,10 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     borderWidth: 1,
-    borderColor: "#D1D5DB",
     borderRadius: 8,
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 15, // Reduced from 16pt to 15pt for placeholder text
-    backgroundColor: "#F9FAFB",
     paddingRight: 40, // Space for the icons
   },
   // Phone number input styles
@@ -1046,11 +1041,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#D1D5DB",
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 12,
-    backgroundColor: "#F9FAFB",
     marginRight: 8,
     minWidth: 80,
   },
@@ -1072,12 +1065,10 @@ const styles = StyleSheet.create({
   phoneInput: {
     flex: 1,
     borderWidth: 1,
-    borderColor: "#D1D5DB",
     borderRadius: 8,
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 15, // Reduced from 16pt to 15pt for placeholder text
-    backgroundColor: "#F9FAFB",
     paddingRight: 40, // Space for the icons
   },
   // Phone digit count validator styles
@@ -1099,7 +1090,6 @@ const styles = StyleSheet.create({
   },
   phoneDigitTrack: {
     height: 6,
-    backgroundColor: "#E5E7EB",
     borderRadius: 3,
     overflow: "hidden",
   },
@@ -1109,13 +1099,10 @@ const styles = StyleSheet.create({
     // Width and backgroundColor are set dynamically
   },
   validInput: {
-    borderColor: "#10B981", // Green border for valid input
   },
   partialMatchInput: {
-    borderColor: "#F59E0B", // Amber border for partial match
   },
   invalidInput: {
-    borderColor: "#EF4444", // Red border for invalid input
   },
   /**
    * Icon positioning:
@@ -1211,7 +1198,6 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 18,
     fontWeight: "600",
-    color: "#111827",
   },
   modalCloseButton: {
     padding: 4,

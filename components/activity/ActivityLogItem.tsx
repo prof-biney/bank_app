@@ -12,9 +12,9 @@ export default function ActivityLogItem({ event, themeColors, onPress }: { event
     const isError = type.includes('failed') || type.includes('removed') || type.includes('delete') || status.includes('failed');
     const isSuccess = type.includes('success') || type.includes('approved') || type.includes('added') || type.includes('created') || status.includes('completed');
     const isPending = type.includes('pending') || type.includes('unapproved') || status.includes('pending');
-    if (isError) return '#EF4444';
-    if (isSuccess) return '#10B981';
-    if (isPending) return '#F59E0B';
+    if (isError) return themeColors.negative || '#EF4444';
+    if (isSuccess) return themeColors.positive || '#10B981';
+    if (isPending) return themeColors.warning || '#F59E0B';
     return themeColors.textSecondary;
   };
 
@@ -22,8 +22,8 @@ export default function ActivityLogItem({ event, themeColors, onPress }: { event
     if (isTx) {
       // Transaction icons prefer amount color coding but respect failed/pending
       const tone = getToneColor();
-      if ((amount || 0) > 0 && tone === themeColors.textSecondary) return <ArrowDownLeft color="#10B981" size={20} />;
-      if ((amount || 0) < 0 && tone === themeColors.textSecondary) return <ArrowUpRight color="#EF4444" size={20} />;
+      if ((amount || 0) > 0 && tone === themeColors.textSecondary) return <ArrowDownLeft color={themeColors.positive || '#10B981'} size={20} />;
+      if ((amount || 0) < 0 && tone === themeColors.textSecondary) return <ArrowUpRight color={themeColors.negative || '#EF4444'} size={20} />;
       // If tone overrides (failed/pending/success), show generic with tone color
       return (amount || 0) >= 0 ? <ArrowDownLeft color={tone} size={20} /> : <ArrowUpRight color={tone} size={20} />;
     }
@@ -34,7 +34,7 @@ export default function ActivityLogItem({ event, themeColors, onPress }: { event
 
   const getAmountColor = () => {
     if (!isTx || amount === undefined) return themeColors.textSecondary;
-    return amount > 0 ? '#10B981' : '#EF4444';
+    return amount > 0 ? (themeColors.positive || '#10B981') : (themeColors.negative || '#EF4444');
   };
 
   const formatDate = (iso: string) => {
@@ -46,7 +46,7 @@ export default function ActivityLogItem({ event, themeColors, onPress }: { event
 
   return (
     <TouchableOpacity style={[styles.container, { backgroundColor: themeColors.card, borderBottomColor: themeColors.border }]} onPress={() => onPress?.(event)}>
-      <View style={styles.iconContainer}>{getIcon()}</View>
+      <View style={[styles.iconContainer, { backgroundColor: themeColors.background }]}>{getIcon()}</View>
 
       <View style={styles.details}>
         <Text style={[styles.description, { color: themeColors.textPrimary }]} numberOfLines={1}>
@@ -81,7 +81,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#F9FAFB',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,

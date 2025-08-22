@@ -58,32 +58,32 @@ export default function ProfileScreen() {
         </View>
 
         <View style={[styles.userSection, { backgroundColor: colors.card }]}>
-          <View style={styles.avatar}>
-            <UserIcon color="#0F766E" size={32} />
+          <View style={[styles.avatar, { backgroundColor: colors.background }]}>
+            <UserIcon color={colors.tintPrimary} size={32} />
           </View>
           <Text style={[styles.userName, { color: colors.textPrimary }]}>{user?.name}</Text>
           <Text style={[styles.userEmail, { color: colors.textSecondary }]}>{user?.email}</Text>
         </View>
 
         <View style={[styles.menuSection, { backgroundColor: colors.card }]}>
-          <TouchableOpacity style={styles.menuItem} onPress={handleSettings}>
+          <TouchableOpacity style={[styles.menuItem, { borderBottomColor: colors.border }]} onPress={handleSettings}>
             <View style={styles.menuItemLeft}>
-              <Settings color="#374151" size={20} />
-              <Text style={styles.menuItemText}>Settings</Text>
+              <Settings color={colors.textSecondary} size={20} />
+              <Text style={[styles.menuItemText, { color: colors.textPrimary }]}>Settings</Text>
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.menuItem} onPress={handleHelpSupport}>
+          <TouchableOpacity style={[styles.menuItem, { borderBottomColor: colors.border }]} onPress={handleHelpSupport}>
             <View style={styles.menuItemLeft}>
-              <HelpCircle color="#374151" size={20} />
-              <Text style={styles.menuItemText}>Help & Support</Text>
+              <HelpCircle color={colors.textSecondary} size={20} />
+              <Text style={[styles.menuItemText, { color: colors.textPrimary }]}>Help & Support</Text>
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.menuItem} onPress={handleSignOut}>
+          <TouchableOpacity style={[styles.menuItem, { borderBottomColor: colors.border }]} onPress={handleSignOut}>
             <View style={styles.menuItemLeft}>
-              <LogOut color="#EF4444" size={20} />
-              <Text style={[styles.menuItemText, { color: "#EF4444" }]}>
+              <LogOut color={colors.negative} size={20} />
+              <Text style={[styles.menuItemText, { color: colors.negative }] }>
                 Sign Out
               </Text>
             </View>
@@ -97,7 +97,6 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
   },
   keyboardContainer: {
     flex: 1,
@@ -110,10 +109,8 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: "bold",
-    color: "#1F2937",
   },
   userSection: {
-    backgroundColor: "white",
     alignItems: "center",
     paddingVertical: 32,
     marginHorizontal: 20,
@@ -132,7 +129,6 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: "#F0FDFA",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 16,
@@ -140,15 +136,12 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 20,
     fontWeight: "bold",
-    color: "#1F2937",
     marginBottom: 4,
   },
   userEmail: {
     fontSize: 14,
-    color: "#6B7280",
   },
   menuSection: {
-    backgroundColor: "white",
     marginHorizontal: 20,
     borderRadius: 16,
     overflow: "hidden",
@@ -165,7 +158,6 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 20,
     borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
   },
   menuItemLeft: {
     flexDirection: "row",
@@ -173,7 +165,6 @@ const styles = StyleSheet.create({
   },
   menuItemText: {
     fontSize: 16,
-    color: "#374151",
     marginLeft: 12,
     fontWeight: "500",
   },

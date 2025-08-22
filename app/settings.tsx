@@ -22,7 +22,7 @@ export default function SettingsScreen() {
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => router.back()}
-          style={styles.backButton}
+          style={[styles.backButton, { backgroundColor: colors.card }]}
         >
           <ArrowLeft color={iconColor} size={24} />
         </TouchableOpacity>
@@ -32,7 +32,7 @@ export default function SettingsScreen() {
 
       <View style={styles.content}>
         <View style={[styles.section, { backgroundColor: colors.card }]}>
-          <Text style={styles.sectionTitle}>Notifications</Text>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Notifications</Text>
           <View style={styles.settingItem}>
             <View style={styles.settingLeft}>
               <Bell color={iconColor} size={20} />
@@ -41,14 +41,14 @@ export default function SettingsScreen() {
             <Switch
               value={notificationsEnabled}
               onValueChange={setNotificationsEnabled}
-              trackColor={{ false: "#D1D5DB", true: "#0F766E" }}
+              trackColor={{ false: colors.border, true: colors.tintPrimary }}
               thumbColor={notificationsEnabled ? "#ffffff" : "#ffffff"}
             />
           </View>
         </View>
 
         <View style={[styles.section, { backgroundColor: colors.card }]}>
-          <Text style={styles.sectionTitle}>Appearance</Text>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Appearance</Text>
           <View style={styles.settingItem}>
             <View style={styles.settingLeft}>
               <Moon color={iconColor} size={20} />
@@ -57,14 +57,14 @@ export default function SettingsScreen() {
             <Switch
               value={isDark}
               onValueChange={setDarkMode}
-              trackColor={{ false: "#D1D5DB", true: "#0F766E" }}
+              trackColor={{ false: colors.border, true: colors.tintPrimary }}
               thumbColor={isDark ? "#ffffff" : "#ffffff"}
             />
           </View>
         </View>
 
         <View style={[styles.section, { backgroundColor: colors.card }]}>
-          <Text style={styles.sectionTitle}>Security</Text>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Security</Text>
           <View style={styles.settingItem}>
             <View style={styles.settingLeft}>
               <Shield color={iconColor} size={20} />
@@ -73,14 +73,14 @@ export default function SettingsScreen() {
             <Switch
               value={biometricEnabled}
               onValueChange={setBiometricEnabled}
-              trackColor={{ false: "#D1D5DB", true: "#0F766E" }}
+              trackColor={{ false: colors.border, true: colors.tintPrimary }}
               thumbColor={biometricEnabled ? "#ffffff" : "#ffffff"}
             />
           </View>
         </View>
 
         <View style={[styles.section, { backgroundColor: colors.card }]}>
-          <Text style={styles.sectionTitle}>General</Text>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>General</Text>
           <TouchableOpacity style={styles.settingItem}>
             <View style={styles.settingLeft}>
               <Globe color={iconColor} size={20} />
@@ -111,14 +111,12 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "white",
     justifyContent: "center",
     alignItems: "center",
   },
   title: {
     fontSize: 20,
     fontWeight: "bold",
-    color: "#1F2937",
   },
   placeholder: {
     width: 44,
@@ -128,7 +126,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   section: {
-    backgroundColor: "white",
     borderRadius: 16,
     padding: 20,
     marginBottom: 16,
@@ -144,7 +141,6 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: "bold",
-    color: "#1F2937",
     marginBottom: 16,
   },
   settingItem: {
@@ -160,11 +156,9 @@ const styles = StyleSheet.create({
   },
   settingText: {
     fontSize: 16,
-    color: "#374151",
     marginLeft: 12,
   },
   settingValue: {
     fontSize: 16,
-    color: "#6B7280",
   },
 });

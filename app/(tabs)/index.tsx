@@ -102,12 +102,12 @@ export default function HomeScreen() {
               <Text style={[styles.userName, { color: colors.textPrimary }]}>{user?.name}</Text>
             </View>
             <TouchableOpacity
-              style={styles.notificationButton}
+              style={[styles.notificationButton, { backgroundColor: colors.card }]}
               onPress={() => setShowNotifications(true)}
             >
-              <Bell color="#374151" size={24} />
+              <Bell color={colors.textSecondary} size={24} />
               {unreadCount > 0 && (
-                <View style={styles.notificationBadgeCount}>
+                <View style={[styles.notificationBadgeCount, { backgroundColor: colors.negative }]}>
                   <Text style={styles.notificationBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
                 </View>
               )}
@@ -133,22 +133,22 @@ export default function HomeScreen() {
 
           <View style={styles.quickActions}>
             <QuickAction
-              icon={<ArrowDownLeft color="#0F766E" size={24} />}
+              icon={<ArrowDownLeft color={colors.tintPrimary} size={24} />}
               label="Deposit"
               onPress={() => {}}
             />
             <QuickAction
-              icon={<ArrowUpRight color="#0F766E" size={24} />}
+              icon={<ArrowUpRight color={colors.tintPrimary} size={24} />}
               label="Transfer"
               onPress={handleTransfer}
             />
             <QuickAction
-              icon={<CreditCard color="#0F766E" size={24} />}
+              icon={<CreditCard color={colors.tintPrimary} size={24} />}
               label="Withdraw"
               onPress={() => {}}
             />
             <QuickAction
-              icon={<MoreHorizontal color="#0F766E" size={24} />}
+              icon={<MoreHorizontal color={colors.tintPrimary} size={24} />}
               label="More"
               onPress={() => {}}
             />
@@ -158,12 +158,12 @@ export default function HomeScreen() {
             <View style={styles.sectionHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <TouchableOpacity onPress={() => setShowDateFilter(true)}>
-                  <Text style={styles.sectionTitle}>{getDateFilterLabel()}</Text>
+                  <Text style={[styles.sectionTitle, { color: colors.textPrimary, textDecorationColor: colors.tintPrimary }]}>{getDateFilterLabel()}</Text>
                 </TouchableOpacity>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <TouchableOpacity onPress={() => router.push("/(tabs)/activity")}>
-                  <Text style={styles.seeAllText}>All transactions</Text>
+                  <Text style={[styles.seeAllText, { color: colors.tintPrimary }]}>All transactions</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -198,7 +198,6 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
   },
   keyboardContainer: {
     flex: 1,
@@ -213,20 +212,17 @@ const styles = StyleSheet.create({
   },
   greeting: {
     fontSize: 16,
-    color: "#6B7280",
     marginBottom: 4,
   },
   userName: {
     fontSize: 24,
     fontWeight: "bold",
-    color: "#1F2937",
   },
   notificationButton: {
     position: "relative",
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "white",
     justifyContent: "center",
     alignItems: "center",
     shadowColor: "#000",
@@ -245,7 +241,6 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "#EF4444",
   },
   notificationBadgeCount: {
     position: "absolute",
@@ -255,7 +250,6 @@ const styles = StyleSheet.create({
     height: 18,
     paddingHorizontal: 4,
     borderRadius: 9,
-    backgroundColor: "#EF4444",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -277,7 +271,6 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   transactionsSection: {
-    backgroundColor: "white",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingTop: 24,
@@ -293,12 +286,9 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: "bold",
-    color: "#1F2937",
     textDecorationLine: "underline",
-    textDecorationColor: "#0F766E",
   },
   seeAllText: {
-    color: "#0F766E",
     fontSize: 14,
     fontWeight: "500",
   },

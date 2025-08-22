@@ -1,7 +1,7 @@
 import { router } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
 import React, { useState } from "react";
-import {
+import { 
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -10,12 +10,19 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Pressable,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BankCard } from "../components/BankCard";
 import { useApp } from "../context/AppContext";
 import { useAlert } from "../context/AlertContext";
 import { Recipient } from "../types/index";
+import { useTheme } from "@/context/ThemeContext";
+import { getChipStyles } from "@/theme/variants";
+import CustomButton from "@/components/CustomButton";
+import { withAlpha } from "@/theme/color-utils";
+import Badge from "@/components/ui/Badge";
+import { getBadgeVisuals } from "@/theme/badge-utils";
 
 export default function TransferScreen() {
   const { cards, activeCard, setActiveCard, addTransaction } = useApp();
@@ -89,8 +96,9 @@ const handleRecipientSelect = (name: string) => {
     }
   };
 
+  const { colors } = useTheme();
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -98,17 +106,17 @@ const handleRecipientSelect = (name: string) => {
         <View style={styles.header}>
           <TouchableOpacity
             onPress={() => router.back()}
-            style={styles.backButton}
+            style={[styles.backButton, { backgroundColor: colors.card }]}
           >
-            <ArrowLeft color="#374151" size={24} />
+            <ArrowLeft color={colors.textSecondary} size={24} />
           </TouchableOpacity>
-          <Text style={styles.title}>Transfer</Text>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>Transfer</Text>
           <View style={styles.placeholder} />
         </View>
 
         {step === "select-card" && (
           <View style={styles.content}>
-            <Text style={styles.sectionTitle}>Choose cards</Text>
+            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Choose cards</Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -124,25 +132,21 @@ const handleRecipientSelect = (name: string) => {
               ))}
             </ScrollView>
 
-            <TouchableOpacity
-              style={[
-                styles.continueButton,
-                !activeCard && styles.continueButtonDisabled,
-              ]}
-              onPress={() => setStep("select-recipient")}
+            <CustomButton
+              title="Continue"
+              variant="primary"
               disabled={!activeCard}
-            >
-              <Text style={styles.continueButtonText}>Continue</Text>
-            </TouchableOpacity>
+              onPress={() => setStep("select-recipient")}
+            />
           </View>
         )}
 
 {step === "select-recipient" && (
           <View style={styles.content}>
-            <Text style={styles.sectionTitle}>Enter recipient name</Text>
+            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Enter recipient name</Text>
 
-            <View style={styles.amountSection}>
-              <Text style={styles.amountLabel}>Recipient</Text>
+            <View style={[styles.amountSection, { backgroundColor: colors.card }]}>
+              <Text style={[styles.amountLabel, { color: colors.textSecondary }]}>Recipient</Text>
               <View style={styles.amountInputContainer}>
                 <TextInput
                   style={styles.amountInput}
@@ -158,22 +162,25 @@ const handleRecipientSelect = (name: string) => {
                 styles.continueButton,
                 !recipientName && styles.continueButtonDisabled,
               ]}
-              onPress={() => handleRecipientSelect(recipientName.trim())}
-              disabled={!recipientName.trim()}
             >
-              <Text style={styles.continueButtonText}>Continue</Text>
+              <CustomButton
+                title="Continue"
+                variant="primary"
+                disabled={!recipientName.trim()}
+                onPress={() => handleRecipientSelect(recipientName.trim())}
+              />
             </TouchableOpacity>
           </View>
         )}
 
         {step === "enter-amount" && (
           <View style={styles.content}>
-            <Text style={styles.sectionTitle}>Enter amount</Text>
+            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Enter amount</Text>
 
-            <View style={styles.amountSection}>
-              <Text style={styles.amountLabel}>Amount</Text>
+            <View style={[styles.amountSection, { backgroundColor: colors.card }]}>
+              <Text style={[styles.amountLabel, { color: colors.textSecondary }]}>Amount</Text>
               <View style={styles.amountInputContainer}>
-                <Text style={styles.currencySymbol}>$</Text>
+                <Text style={[styles.currencySymbol, { color: colors.textPrimary }]}>$</Text>
                 <TextInput
                   style={styles.amountInput}
                   value={amount}
@@ -185,39 +192,30 @@ const handleRecipientSelect = (name: string) => {
             </View>
 
             <View style={styles.quickAmounts}>
-              {["5", "10", "15", "20", "50", "100", "200", "500"].map(
-                (value) => (
-                  <TouchableOpacity
+              {["5", "10", "15", "20", "50", "100", "200", "500"].map((value) => {
+                const v = getBadgeVisuals(colors, { tone: 'accent', selected: amount === value, size: 'md' });
+                return (
+                  <Badge
                     key={value}
-                    style={[
-                      styles.quickAmountButton,
-                      amount === value && styles.quickAmountButtonActive,
-                    ]}
                     onPress={() => setAmount(value)}
+                    bordered
+                    borderColor={v.borderColor}
+                    backgroundColor={v.backgroundColor}
+                    textColor={v.textColor}
+                    style={[styles.quickAmountButton]}
                   >
-                    <Text
-                      style={[
-                        styles.quickAmountText,
-                        amount === value && styles.quickAmountTextActive,
-                      ]}
-                    >
-                      ${value}
-                    </Text>
-                  </TouchableOpacity>
-                )
-              )}
+                    <Text style={[styles.quickAmountText, { color: v.textColor }]}>${value}</Text>
+                  </Badge>
+                );
+              })}
             </View>
 
-            <TouchableOpacity
-              style={[
-                styles.transferButton,
-                !amount && styles.transferButtonDisabled,
-              ]}
-              onPress={handleTransfer}
+            <CustomButton
+              title="Transfer"
+              variant="primary"
               disabled={!amount}
-            >
-              <Text style={styles.transferButtonText}>Transfer</Text>
-            </TouchableOpacity>
+              onPress={handleTransfer}
+            />
           </View>
         )}
       </KeyboardAvoidingView>
@@ -228,7 +226,6 @@ const handleRecipientSelect = (name: string) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
   },
   keyboardContainer: {
     flex: 1,
@@ -245,14 +242,12 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "white",
     justifyContent: "center",
     alignItems: "center",
   },
   title: {
     fontSize: 20,
     fontWeight: "bold",
-    color: "#1F2937",
   },
   placeholder: {
     width: 44,
@@ -264,7 +259,6 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: "bold",
-    color: "#1F2937",
     marginBottom: 20,
   },
   cardsScroll: {
@@ -275,7 +269,6 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
   },
   amountSection: {
-    backgroundColor: "white",
     borderRadius: 16,
     padding: 24,
     marginBottom: 24,
@@ -283,7 +276,6 @@ const styles = StyleSheet.create({
   },
   amountLabel: {
     fontSize: 16,
-    color: "#6B7280",
     marginBottom: 16,
   },
   amountInputContainer: {
@@ -293,13 +285,11 @@ const styles = StyleSheet.create({
   currencySymbol: {
     fontSize: 32,
     fontWeight: "bold",
-    color: "#1F2937",
     marginRight: 8,
   },
   amountInput: {
     fontSize: 48,
     fontWeight: "bold",
-    color: "#1F2937",
     minWidth: 100,
     textAlign: "center",
   },
@@ -311,25 +301,19 @@ const styles = StyleSheet.create({
   },
   quickAmountButton: {
     width: "22%",
-    paddingVertical: 16,
     borderRadius: 12,
-    backgroundColor: "white",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 5,
   },
   quickAmountButtonActive: {
-    backgroundColor: "#0F766E",
   },
   quickAmountText: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#374151",
   },
   quickAmountTextActive: {
-    color: "white",
   },
   continueButton: {
-    backgroundColor: "#1F2937",
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: "center",
@@ -339,15 +323,12 @@ const styles = StyleSheet.create({
     right: 20,
   },
   continueButtonDisabled: {
-    backgroundColor: "#D1D5DB",
   },
   continueButtonText: {
-    color: "white",
     fontSize: 16,
     fontWeight: "600",
   },
   transferButton: {
-    backgroundColor: "#1F2937",
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: "center",
@@ -357,10 +338,8 @@ const styles = StyleSheet.create({
     right: 20,
   },
   transferButtonDisabled: {
-    backgroundColor: "#D1D5DB",
   },
   transferButtonText: {
-    color: "white",
     fontSize: 16,
     fontWeight: "600",
   },

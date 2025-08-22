@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTheme } from '@/context/ThemeContext';
+import CustomButton from '@/components/CustomButton';
+import Card from '@/components/ui/Card';
 
 export default function PaymentsScreen() {
   const [amount, setAmount] = useState('');
@@ -71,79 +74,75 @@ export default function PaymentsScreen() {
     }
   };
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={{ padding: 16 }}>
-        <Text style={styles.title}>Payments</Text>
-        <Text style={styles.subtitle}>Create and manage payments. Currency is Ghana Cedi (GHS).</Text>
+  const { colors } = useTheme();
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Create Payment (GHS)</Text>
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView contentContainerStyle={{ padding: 16 }}>
+        <Text style={[styles.title, { color: colors.textPrimary }]}>Payments</Text>
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Create and manage payments. Currency is Ghana Cedi (GHS).</Text>
+
+        <Card>
+          <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Create Payment (GHS)</Text>
           <View style={styles.row}>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: colors.background, color: colors.textPrimary }]}
               placeholder="Amount in GHS"
               keyboardType="numeric"
               value={amount}
               onChangeText={setAmount}
+              placeholderTextColor={colors.textSecondary}
             />
-            <TouchableOpacity onPress={onCreate} disabled={submitting} style={styles.buttonPrimary}>
-              <Text style={styles.buttonText}>{submitting ? 'Creating...' : 'Create'}</Text>
-            </TouchableOpacity>
+            <CustomButton onPress={onCreate} isLoading={submitting} title={submitting ? 'Creating...' : 'Create'} variant="primary" size="md" />
           </View>
-          {error && <Text style={{ color: '#ef4444' }}>{error}</Text>}
-        </View>
+          {error && <Text style={{ color: colors.negative }}>{error}</Text>}
+        </Card>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Recent Payments</Text>
+        <Card>
+          <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Recent Payments</Text>
           {items.length === 0 ? (
             <View style={{ paddingVertical: 16, alignItems: 'center' }}>
-              <Text style={{ color: '#6B7280' }}>No payments yet</Text>
-              <Text style={{ color: '#9CA3AF', marginTop: 4, textAlign: 'center' }}>
+              <Text style={{ color: colors.textSecondary }}>No payments yet</Text>
+              <Text style={{ color: colors.textSecondary, marginTop: 4, textAlign: 'center' }}>
                 Create your first payment above to see it here.
               </Text>
             </View>
           ) : (
             items.map((p) => (
-              <View key={p.id} style={styles.item}>
+              <View key={p.id} style={[styles.item, { borderBottomColor: colors.border }]}>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontWeight: '600' }}>Payment {p.id.slice(-6)}</Text>
-                  <Text style={{ color: '#6B7280' }}>{p.status.toUpperCase()} • {p.amount ?? '-'} {p.currency ?? ''}</Text>
-                  <Text style={{ color: '#6B7280' }}>{p.created ? new Date(p.created).toLocaleString() : ''}</Text>
+                  <Text style={{ fontWeight: '600', color: colors.textPrimary }}>Payment {p.id.slice(-6)}</Text>
+                  <Text style={{ color: colors.textSecondary }}>{p.status.toUpperCase()} • {p.amount ?? '-'} {p.currency ?? ''}</Text>
+                  <Text style={{ color: colors.textSecondary }}>{p.created ? new Date(p.created).toLocaleString() : ''}</Text>
                 </View>
                 <View style={{ flexDirection: 'row', gap: 8 }}>
                   {p.status === 'authorized' && (
-                    <TouchableOpacity onPress={() => action(p.id, 'capture')} style={styles.buttonSmallPrimary}>
-                      <Text style={styles.buttonText}>Capture</Text>
-                    </TouchableOpacity>
+                    <CustomButton onPress={() => action(p.id, 'capture')} title="Capture" variant="primary" size="sm" />
                   )}
                   {(p.status === 'authorized' || p.status === 'captured') && (
-                    <TouchableOpacity onPress={() => action(p.id, 'refund')} style={styles.buttonSmallDanger}>
-                      <Text style={styles.buttonText}>Refund</Text>
-                    </TouchableOpacity>
+                    <CustomButton onPress={() => action(p.id, 'refund')} title="Refund" variant="danger" size="sm" />
                   )}
                 </View>
               </View>
             ))
           )}
-        </View>
+        </Card>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8FAFC' },
-  title: { fontSize: 24, fontWeight: '700', color: '#111827' },
-  subtitle: { color: '#6B7280', marginTop: 4, marginBottom: 12 },
-  card: { backgroundColor: 'white', borderRadius: 12, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#E5E7EB' },
-  cardTitle: { fontWeight: '700', marginBottom: 12, color: '#111827' },
+  container: { flex: 1 },
+  title: { fontSize: 24, fontWeight: '700' },
+  subtitle: { marginTop: 4, marginBottom: 12 },
+  cardTitle: { fontWeight: '700', marginBottom: 12 },
   row: { flexDirection: 'row', gap: 8, alignItems: 'center' },
-  input: { flex: 1, backgroundColor: '#F3F4F6', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 },
+  input: { flex: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 },
   buttonPrimary: { backgroundColor: '#1D4ED8', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8 },
   buttonSmallPrimary: { backgroundColor: '#0F766E', paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8 },
   buttonSmallDanger: { backgroundColor: '#ef4444', paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8 },
   buttonText: { color: 'white', fontWeight: '700' },
-  item: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  item: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1 },
 });
 

@@ -18,20 +18,20 @@ export function TransactionItem({ transaction }: TransactionItemProps) {
   const getTransactionIcon = () => {
     switch (transaction.type) {
       case "deposit":
-        return <ArrowDownLeft color="#10B981" size={20} />;
+        return <ArrowDownLeft color={colors.positive} size={20} />;
       case "transfer":
-        return <ArrowUpRight color="#EF4444" size={20} />;
+        return <ArrowUpRight color={colors.negative} size={20} />;
       case "withdraw":
-        return <Banknote color="#EF4444" size={20} />;
+        return <Banknote color={colors.negative} size={20} />;
       case "payment":
-        return <CreditCard color="#EF4444" size={20} />;
+        return <CreditCard color={colors.negative} size={20} />;
       default:
-        return <CreditCard color="#6B7280" size={20} />;
+        return <CreditCard color={colors.textSecondary} size={20} />;
     }
   };
 
   const getAmountColor = () => {
-    return transaction.amount > 0 ? "#10B981" : "#EF4444";
+    return transaction.amount > 0 ? colors.positive : colors.negative;
   };
 
   const formatDate = (dateString: string) => {
@@ -68,15 +68,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 16,
     paddingHorizontal: 20,
-    backgroundColor: "white",
     borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
   },
   iconContainer: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "#F9FAFB",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
@@ -87,12 +84,10 @@ const styles = StyleSheet.create({
   description: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#1F2937",
     marginBottom: 4,
   },
   category: {
     fontSize: 14,
-    color: "#6B7280",
   },
   amountContainer: {
     alignItems: "flex-end",
@@ -104,6 +99,5 @@ const styles = StyleSheet.create({
   },
   date: {
     fontSize: 12,
-    color: "#9CA3AF",
   },
 });

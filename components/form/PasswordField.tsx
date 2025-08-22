@@ -9,7 +9,7 @@ import {
   getPasswordStrength,
   PasswordStrength
 } from "./types";
-import { formStyles } from "./styles";
+import { useFormStyles } from "./styles";
 
 /**
  * Props for the PasswordField component
@@ -121,36 +121,38 @@ const PasswordField: React.FC<PasswordFieldProps> = ({
     setShowPassword(!showPassword);
   };
 
+  const styles = useFormStyles();
   return (
-    <View style={formStyles.inputContainer}>
-      <Text style={formStyles.label}>{label}</Text>
-      <View style={formStyles.inputWrapper}>
+    <View style={styles.inputContainer}>
+      <Text style={styles.label}>{label}</Text>
+      <View style={styles.inputWrapper}>
         <TextInput
           style={[
-            formStyles.input,
+            styles.input,
             validation.isTouched && (
               validation.isValid 
-                ? formStyles.validInput 
+                ? styles.validInput 
                 : validation.errorMessage 
-                  ? formStyles.invalidInput 
+                  ? styles.invalidInput 
                   : null
             )
           ]}
           value={value}
           onChangeText={handleChangeText}
           placeholder={placeholder}
+          placeholderTextColor={undefined}
           secureTextEntry={!showPassword}
           {...rest}
         />
         {/* Password visibility toggle */}
         <TouchableOpacity 
-          style={formStyles.visibilityToggle} 
+          style={styles.visibilityToggle} 
           onPress={togglePasswordVisibility}
         >
           <Feather 
             name={showPassword ? "eye-off" : "eye"} 
             size={20} 
-            color="#6B7280" 
+            color={styles?.label?.color || '#6B7280'} 
           />
         </TouchableOpacity>
         
@@ -159,50 +161,50 @@ const PasswordField: React.FC<PasswordFieldProps> = ({
             style={
               // Use the appropriate style based on whether validation icon is present
               enableValidation && validation.isTouched && (validation.isValid || (!validation.isValid && value.length > 0))
-                ? formStyles.resetButton  // Validation icon is present
-                : formStyles.resetButtonNoValidation  // Validation icon is not present
+                ? styles.resetButton  // Validation icon is present
+                : styles.resetButtonNoValidation  // Validation icon is not present
             } 
             onPress={handleReset}
           >
-            <Feather name="x" size={18} color="#6B7280" />
+            <Feather name="x" size={18} color={styles?.label?.color || '#6B7280'} />
           </TouchableOpacity>
         )}
         
         {enableValidation && validation.isTouched && validation.isValid && (
-          <View style={formStyles.validationIcon}>
-            <MaterialIcons name="check-circle" size={20} color="#10B981" />
+          <View style={styles.validationIcon}>
+            <MaterialIcons name="check-circle" size={20} color={styles?.validInput?.borderColor || '#10B981'} />
           </View>
         )}
         
         {enableValidation && validation.isTouched && !validation.isValid && value.length > 0 && (
-          <View style={formStyles.validationIcon}>
-            <MaterialIcons name="error" size={20} color="#EF4444" />
+          <View style={styles.validationIcon}>
+            <MaterialIcons name="error" size={20} color={styles?.invalidInput?.borderColor || '#EF4444'} />
           </View>
         )}
       </View>
       
       {validation.isTouched && validation.errorMessage ? (
-        <Text style={formStyles.errorText}>{validation.errorMessage}</Text>
+        <Text style={styles.errorText}>{validation.errorMessage}</Text>
       ) : null}
       
       {/* Password strength meter */}
       {enableValidation && showStrengthMeter && value.length > 0 && (
-        <View style={formStyles.passwordStrengthContainer}>
-          <View style={formStyles.passwordStrengthLabels}>
-            <Text style={formStyles.passwordStrengthText}>
+        <View style={styles.passwordStrengthContainer}>
+          <View style={styles.passwordStrengthLabels}>
+            <Text style={styles.passwordStrengthText}>
               Password Strength:
             </Text>
-            <Text style={[formStyles.passwordStrengthLevelText, { color: passwordStrength.color }]}>
+            <Text style={[styles.passwordStrengthLevelText, { color: passwordStrength.color }]}>
               {passwordStrength.level === 0 ? "" :
                passwordStrength.level === 1 ? "Weak" :
                passwordStrength.level === 2 ? "Medium" :
                passwordStrength.level === 3 ? "Strong" : "Very Strong"}
             </Text>
           </View>
-          <View style={formStyles.passwordStrengthTrack}>
+          <View style={styles.passwordStrengthTrack}>
             <Animated.View 
               style={[
-                formStyles.passwordStrengthBar, 
+                styles.passwordStrengthBar, 
                 { 
                   width: animatedWidth.interpolate({
                     inputRange: [0, 100],

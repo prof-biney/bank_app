@@ -2,6 +2,7 @@ import { Check } from "lucide-react-native";
 import React from "react";
 import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Recipient } from "../types/index";
+import { useTheme } from "@/context/ThemeContext";
 
 interface RecipientItemProps {
   recipient: Recipient;
@@ -14,17 +15,18 @@ export function RecipientItem({
   selected,
   onPress,
 }: RecipientItemProps) {
+  const { colors } = useTheme();
   return (
     <TouchableOpacity style={styles.container} onPress={onPress}>
       <View style={styles.avatarContainer}>
         <Image source={{ uri: recipient.avatar }} style={styles.avatar} />
         {selected && (
-          <View style={styles.selectedBadge}>
+          <View style={[styles.selectedBadge, { backgroundColor: colors.tintPrimary, borderColor: colors.background }] }>
             <Check color="white" size={16} />
           </View>
         )}
       </View>
-      <Text style={styles.name}>{recipient.name}</Text>
+      <Text style={[styles.name, { color: colors.textSecondary }]}>{recipient.name}</Text>
     </TouchableOpacity>
   );
 }
@@ -51,15 +53,12 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: "#0F766E",
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 2,
-    borderColor: "white",
   },
   name: {
     fontSize: 12,
-    color: "#374151",
     fontWeight: "500",
     textAlign: "center",
   },

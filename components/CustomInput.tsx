@@ -26,10 +26,10 @@ const CustomInput = ({
         onFocus={() => setIsFocused(true)}
         onBlur={() => setIsFocused(false)}
         placeholder={placeholder}
-        placeholderTextColor="#888"
+        // Let global NativeWind styles handle base appearance; avoid hardcoded placeholder color
         className={cn(
           "input",
-          isFocused ? "border-teal-700" : "border-gray-300"
+          isFocused ? "border-primary" : "border-gray-300"
         )}
       />
     </View>

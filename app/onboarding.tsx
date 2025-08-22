@@ -9,31 +9,34 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useTheme } from "@/context/ThemeContext";
+import CustomButton from "@/components/CustomButton";
 
 const { width } = Dimensions.get("window");
 
-const onboardingData = [
-  {
-    id: 1,
-    title: "Secure Banking",
-    subtitle: "Your money is protected with bank-level security and encryption",
-    icon: <Shield color="#0F766E" size={80} />,
-  },
-  {
-    id: 2,
-    title: "Easy Transfers",
-    subtitle: "Send money to friends and family instantly with just a few taps",
-    icon: <CreditCard color="#0F766E" size={80} />,
-  },
-  {
-    id: 3,
-    title: "Mobile First",
-    subtitle: "Manage your finances on the go with our intuitive mobile app",
-    icon: <Smartphone color="#0F766E" size={80} />,
-  },
-];
-
 export default function OnboardingScreen() {
+  const { colors } = useTheme();
+
+  const onboardingData = [
+    {
+      id: 1,
+      title: "Secure Banking",
+      subtitle: "Your money is protected with bank-level security and encryption",
+      icon: <Shield color={colors.tintPrimary} size={80} />,
+    },
+    {
+      id: 2,
+      title: "Easy Transfers",
+      subtitle: "Send money to friends and family instantly with just a few taps",
+      icon: <CreditCard color={colors.tintPrimary} size={80} />,
+    },
+    {
+      id: 3,
+      title: "Mobile First",
+      subtitle: "Manage your finances on the go with our intuitive mobile app",
+      icon: <Smartphone color={colors.tintPrimary} size={80} />,
+    },
+  ];
   const [currentIndex, setCurrentIndex] = useState(0);
 
   const handleNext = () => {
@@ -60,16 +63,16 @@ export default function OnboardingScreen() {
   const currentData = onboardingData[currentIndex];
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
-        <Text style={styles.skipText}>Skip</Text>
+        <Text style={[styles.skipText, { color: colors.textSecondary }]}>Skip</Text>
       </TouchableOpacity>
 
       <View style={styles.content}>
         <View style={styles.iconContainer}>{currentData.icon}</View>
 
-        <Text style={styles.title}>{currentData.title}</Text>
-        <Text style={styles.subtitle}>{currentData.subtitle}</Text>
+        <Text style={[styles.title, { color: colors.textPrimary }]}>{currentData.title}</Text>
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{currentData.subtitle}</Text>
       </View>
 
       <View style={styles.footer}>
@@ -79,19 +82,19 @@ export default function OnboardingScreen() {
               key={index}
               style={[
                 styles.paginationDot,
-                index === currentIndex && styles.paginationDotActive,
+                { backgroundColor: index === currentIndex ? colors.tintPrimary : colors.border },
+                index === currentIndex ? { width: 24 } : null,
               ]}
             />
           ))}
         </View>
 
-        <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
-          <Text style={styles.nextButtonText}>
-            {currentIndex === onboardingData.length - 1
-              ? "Get Started"
-              : "Next"}
-          </Text>
-        </TouchableOpacity>
+        <CustomButton
+          title={currentIndex === onboardingData.length - 1 ? "Get Started" : "Next"}
+          variant="primary"
+          size="lg"
+          onPress={handleNext}
+        />
       </View>
     </View>
   );
@@ -100,7 +103,6 @@ export default function OnboardingScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "white",
     paddingHorizontal: 24,
     paddingTop: 60,
     paddingBottom: 40,
@@ -111,7 +113,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   skipText: {
-    color: "#6B7280",
     fontSize: 16,
     fontWeight: "500",
   },
@@ -127,13 +128,11 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: "bold",
-    color: "#1F2937",
     textAlign: "center",
     marginBottom: 16,
   },
   subtitle: {
     fontSize: 16,
-    color: "#6B7280",
     textAlign: "center",
     lineHeight: 24,
   },
@@ -148,7 +147,6 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "#D1D5DB",
     marginHorizontal: 4,
   },
   paginationDotActive: {
@@ -156,7 +154,6 @@ const styles = StyleSheet.create({
     width: 24,
   },
   nextButton: {
-    backgroundColor: "#0F766E",
     borderRadius: 12,
     paddingVertical: 16,
     paddingHorizontal: 48,
@@ -164,7 +161,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   nextButtonText: {
-    color: "white",
     fontSize: 16,
     fontWeight: "600",
   },

@@ -20,6 +20,8 @@ import {
   PasswordField,
   ValidationState
 } from "@/components/form";
+import { useTheme } from "@/context/ThemeContext";
+import { chooseReadableText } from "@/theme/color-utils";
 
 export default function SignInScreen() {
   // const [email, setEmail] = useState("");
@@ -180,16 +182,17 @@ export default function SignInScreen() {
   //   }
   // };
 
+  const { colors } = useTheme();
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.tintPrimary }]}>
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <View style={styles.content}>
           <View style={styles.header}>
-            <Text style={styles.title}>Welcome Back</Text>
-            <Text style={styles.subtitle}>Sign in to your account</Text>
+            <Text style={[styles.title, { color: chooseReadableText(colors.tintPrimary) }]}>Welcome Back</Text>
+            <Text style={[styles.subtitle, { color: chooseReadableText(colors.tintPrimary, '#FFFFFFCC', '#00000080') }]}>Sign in to your account</Text>
           </View>
 
           <View style={styles.form}>
@@ -228,11 +231,11 @@ export default function SignInScreen() {
             />
 
             <TouchableOpacity
-              style={[styles.button, isSubmitting && styles.buttonDisabled]}
+              style={[styles.button, { backgroundColor: colors.tintPrimary }, isSubmitting && styles.buttonDisabled]}
               onPress={submit}
               disabled={isSubmitting}
             >
-              <Text style={styles.buttonText}>
+              <Text style={[styles.buttonText, { color: chooseReadableText(colors.tintPrimary) }]}>
                 {isSubmitting ? "Signing In..." : "Sign In"}
               </Text>
             </TouchableOpacity>
@@ -262,7 +265,6 @@ export default function SignInScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0F766E",
   },
   keyboardContainer: {
     flex: 1,
@@ -279,15 +281,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: "bold",
-    color: "white",
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
-    color: "rgba(255, 255, 255, 0.8)",
   },
   form: {
-    backgroundColor: "white",
     borderRadius: 16,
     padding: 24,
     shadowColor: "#000",
@@ -305,7 +304,7 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#374151",
+    // color from theme in input components; keep neutral here minimal
     marginBottom: 8,
   },
   inputWrapper: {
@@ -316,19 +315,15 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     borderWidth: 1,
-    borderColor: "#D1D5DB",
     borderRadius: 8,
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 16,
-    backgroundColor: "#F9FAFB",
     paddingRight: 40, // Space for the icons
   },
   validInput: {
-    borderColor: "#10B981", // Green border for valid input
   },
   invalidInput: {
-    borderColor: "#EF4444", // Red border for invalid input
   },
   resetButton: {
     position: "absolute",
@@ -345,13 +340,11 @@ const styles = StyleSheet.create({
     right: 12,
   },
   errorText: {
-    color: "#EF4444",
     fontSize: 12,
     marginTop: 4,
     marginLeft: 4,
   },
   button: {
-    backgroundColor: "#0F766E",
     borderRadius: 8,
     paddingVertical: 16,
     alignItems: "center",
@@ -361,7 +354,6 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   buttonText: {
-    color: "white",
     fontSize: 16,
     fontWeight: "600",
   },
@@ -371,14 +363,12 @@ const styles = StyleSheet.create({
     marginTop: 24,
   },
   footerText: {
-    color: "#6B7280",
     fontSize: 14,
   },
   link: {
     marginLeft: 4,
   },
   linkText: {
-    color: "#0F766E",
     fontSize: 14,
     fontWeight: "600",
   },

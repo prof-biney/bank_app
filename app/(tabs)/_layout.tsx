@@ -2,10 +2,12 @@ import useAuthStore from "@/store/auth.store";
 import { Redirect, Tabs } from "expo-router";
 import { Activity, CreditCard, House, User, Wallet } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTheme } from "@/context/ThemeContext";
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const { isAuthenticated } = useAuthStore();
+  const { colors } = useTheme();
 
   if (!isAuthenticated) return <Redirect href="/sign-in" />;
 
@@ -14,9 +16,9 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: "white",
+          backgroundColor: colors.card,
           borderTopWidth: 1,
-          borderTopColor: "#F3F4F6",
+          borderTopColor: colors.border,
           height: 80 + insets.bottom,
           paddingBottom: 20 + insets.bottom,
           paddingTop: 8,
@@ -24,12 +26,9 @@ export default function TabLayout() {
           bottom: 0,
           left: 0,
           right: 0,
-          // elevation: 0,
-          // shadowOpacity: 0,
-          // shadowOffset: { height: 0, width: 0 },
         },
-        tabBarActiveTintColor: "#0F766E",
-        tabBarInactiveTintColor: "#9CA3AF",
+        tabBarActiveTintColor: colors.tintPrimary,
+        tabBarInactiveTintColor: colors.textSecondary,
         tabBarLabelStyle: {
           fontSize: 12,
           fontWeight: "500",
