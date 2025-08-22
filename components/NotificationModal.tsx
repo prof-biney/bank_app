@@ -269,9 +269,9 @@ export function NotificationModal({
               </View>
             </TouchableOpacity>
           </Swipeable>
-          ))}
-          )}
-          {nextCursor && (
+        ))
+      )}
+      {nextCursor && (
             <View style={{ padding: 16, alignItems: 'center' }}>
               <TouchableOpacity onPress={async () => {
                 try {
