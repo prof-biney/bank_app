@@ -31,7 +31,7 @@ const faqs: FAQ[] = [
     id: "2",
     question: "Is my money safe with this app?",
     answer:
-      "Yes, we use bank-level security with 256-bit encryption. Your funds are FDIC insured up to $250,000 and we never store your sensitive information.",
+      "Yes, we use bank-level security with 256-bit encryption. Your funds are FDIC insured up to GHS 250,000 and we never store your sensitive information.",
   },
   {
     id: "3",

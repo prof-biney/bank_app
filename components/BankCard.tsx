@@ -34,10 +34,11 @@ export function BankCard({ card, onPress, selected, onDelete }: BankCardProps) {
             e.stopPropagation();
             onDelete();
           }}
-          style={[styles.deleteFab, { backgroundColor: withAlpha(colors.negative, 0.12) }]}
+          style={[styles.deleteFab, { backgroundColor: '#dc2626' }]}
           accessibilityLabel="Delete card"
+          activeOpacity={0.8}
         >
-          <Trash2 color={colors.negative} size={18} />
+          <Trash2 color="white" size={18} />
         </TouchableOpacity>
       )}
 
@@ -90,14 +91,22 @@ const styles = StyleSheet.create({
   },
   deleteFab: {
     position: "absolute",
-    top: 10,
-    right: 10,
+    top: 8,
+    right: 8,
     zIndex: 2,
     borderRadius: 16,
     width: 32,
     height: 32,
     alignItems: "center",
     justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 4,
   },
   cardHeader: {
     flexDirection: "row",

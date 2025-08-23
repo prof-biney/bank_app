@@ -27,7 +27,16 @@ function AddCardButton() {
   const { colors } = useTheme();
 
   const { getApiBase } = require('../../lib/api');
-  const cardsUrl = `${getApiBase()}/v1/cards`;
+  
+  let cardsUrl;
+  try {
+    const apiBase = getApiBase();
+    cardsUrl = `${apiBase}/v1/cards`;
+    console.log('[AddCard] API Configuration:', { apiBase, cardsUrl });
+  } catch (error) {
+    console.error('[AddCard] API Configuration Error:', error);
+    throw error;
+  }
 
   const [visible, setVisible] = React.useState(false);
   const open = () => setVisible(true);
@@ -35,34 +44,102 @@ function AddCardButton() {
 
   const handleSubmit = async (payload: { number: string; name: string; exp_month: string; exp_year: string; cvc: string }) => {
     try {
-      // Obtain Appwrite JWT from your auth layer if available
-      const jwt = (global as any).__APPWRITE_JWT__ || undefined;
+      const { getValidJWT, refreshAppwriteJWT } = require('../../lib/jwt');
+      
+      // Get a valid JWT token
+      let jwt = await getValidJWT();
       const normalized = payload.number.replace(/\s+/g, "");
       const last4In = normalized.slice(-4);
       console.log('[AddCard] Submitting', { hasJwt: Boolean(jwt), last4: last4In });
-      const res = await fetch(cardsUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}),
-          "Idempotency-Key": `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        },
-        body: JSON.stringify({
+      
+      const makeRequest = async (token: string | undefined) => {
+        const requestBody = {
           number: normalized,
           name: payload.name,
           exp_month: Number(payload.exp_month),
           exp_year: Number(payload.exp_year),
           cvc: payload.cvc,
-        }),
-      });
+        };
+        
+        const headers = {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          "Idempotency-Key": `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        };
+        
+        // Log the request details
+        console.log('[AddCard] Request Details:', {
+          url: cardsUrl,
+          method: 'POST',
+          headers: {
+            ...headers,
+            // Mask the authorization token for security
+            Authorization: token ? `Bearer ${token.slice(0, 10)}...` : 'none'
+          },
+          body: {
+            ...requestBody,
+            // Mask sensitive card data in logs
+            number: `${normalized.slice(0, 4)}****${normalized.slice(-4)}`,
+            cvc: '***'
+          }
+        });
+        
+        return await fetch(cardsUrl, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(requestBody),
+        });
+      };
+      
+      let res = await makeRequest(jwt);
+      
+      // If we get a 401, try refreshing the token once
+      if (res.status === 401 && jwt) {
+        console.log('[AddCard] Got 401, refreshing JWT and retrying...');
+        jwt = await refreshAppwriteJWT();
+        if (jwt) {
+          res = await makeRequest(jwt);
+        }
+      }
+      
       const raw = await res.text();
       let data: any = raw;
       try { data = JSON.parse(raw); } catch {}
+      
+      // Log the response details
+      console.log('[AddCard] Response Details:', {
+        status: res.status,
+        statusText: res.statusText,
+        headers: Object.fromEntries(res.headers.entries()),
+        rawBody: raw,
+        parsedBody: data
+      });
+      
       if (!res.ok) {
-        console.error('[AddCard] Error response', { status: res.status, data });
+        console.error('[AddCard] Error response', { 
+          status: res.status, 
+          statusText: res.statusText,
+          url: cardsUrl,
+          data,
+          rawBody: raw
+        });
+        
+        // For 500 errors, provide more detailed context
+        if (res.status === 500) {
+          console.error('[AddCard] Server Error Details:', {
+            'Possible causes': [
+              'Server misconfiguration (missing environment variables)',
+              'Database connection issues',
+              'Invalid card data validation',
+              'Appwrite authentication issues'
+            ],
+            'Check server logs': 'Look for detailed error information in your server logs'
+          });
+        }
+        
         const msg = (data && typeof data === 'object' && (data as any).error === "validation_error")
           ? JSON.stringify((data as any).details)
-          : (data && typeof data === 'object' && ((data as any).message || (data as any).error)) || `HTTP ${res.status}`;
+          : (data && typeof data === 'object' && ((data as any).message || (data as any).error)) || `HTTP ${res.status}: ${res.statusText || 'Server Error'}`;
         throw new Error(msg);
       }
       console.log('[AddCard] Success', { status: res.status, last4: data?.authorization?.last4 || last4In });

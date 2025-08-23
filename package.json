@@ -7,6 +7,8 @@
     "reset-project": "node ./scripts/reset-project.js",
     "test-env": "node ./scripts/test-env.js",
     "test-appwrite": "node ./scripts/test-appwrite.js",
+    "test-jwt": "node ./scripts/test-jwt.js",
+    "check-config": "node ./scripts/check-config.js",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
