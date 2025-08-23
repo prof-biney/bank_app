@@ -325,6 +325,7 @@ export default function ActivityScreen() {
               style={({ pressed }) => [
                 { marginLeft: 0 },
                 getChipStyles(colors, { tone: 'neutral', size: 'md' }).container,
+                { borderRadius: 8, paddingHorizontal: 5 },
                 pressed && { opacity: 0.9 },
               ]}
             >
@@ -344,7 +345,8 @@ export default function ActivityScreen() {
                     size="sm"
                     variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
                     onPress={setAllOn}
-style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5, borderRadius: 8 }}
+style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5, borderRadius: 18 }}
+
                     textStyle={{ color: v.textColor }}
                   />
                 </View>
