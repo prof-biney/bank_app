@@ -344,7 +344,7 @@ export default function ActivityScreen() {
                     size="sm"
                     variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
                     onPress={setAllOn}
-                    style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5 }}
+style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5, borderRadius: 18 }}
                     textStyle={{ color: v.textColor }}
                   />
                 </View>
@@ -361,7 +361,7 @@ export default function ActivityScreen() {
                     onPress={() => toggleFilter('income')}
                     title="Income"
                     leftIcon={<ArrowDownLeft size={14} color={v.textColor as string} />}
-                    style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5 }}
+style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5, borderRadius: 18 }}
                     textStyle={{ color: v.textColor }}
                   />
                 </View>
@@ -378,7 +378,7 @@ export default function ActivityScreen() {
                     onPress={() => toggleFilter('expense')}
                     title="Expense"
                     leftIcon={<ArrowUpRight size={14} color={v.textColor as string} />}
-                    style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5 }}
+style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5, borderRadius: 18 }}
                     textStyle={{ color: v.textColor }}
                   />
                 </View>
@@ -395,7 +395,7 @@ export default function ActivityScreen() {
                     onPress={() => toggleFilter('account')}
                     title="Account"
                     leftIcon={<User size={14} color={v.textColor as string} />}
-                    style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5 }}
+style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5, borderRadius: 18 }}
                     textStyle={{ color: v.textColor }}
                   />
                 </View>
@@ -412,7 +412,7 @@ export default function ActivityScreen() {
                     onPress={() => toggleFilter('card')}
                     title="Cards"
                     leftIcon={<CardIcon size={14} color={v.textColor as string} />}
-                    style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5 }}
+style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5, borderRadius: 18 }}
                     textStyle={{ color: v.textColor }}
                   />
                 </View>
@@ -433,7 +433,7 @@ export default function ActivityScreen() {
                 <CustomButton size="sm" variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
                   onPress={() => toggleStatus(key)}
                   title={title}
-                  style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5 }}
+style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5, borderRadius: 18 }}
                   textStyle={{ color: v.textColor }}
                 />
               </View>

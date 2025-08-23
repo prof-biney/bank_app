@@ -54,7 +54,7 @@ export function DateFilterModal({
                     title={option.label}
                     size="sm"
                     variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
-                    style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5, marginRight: 5 }}
+style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5, marginRight: 5, borderRadius: 18 }}
                     textStyle={{ color: v.textColor }}
                   />
                 </View>
