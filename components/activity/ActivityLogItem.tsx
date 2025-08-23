@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { ActivityEvent } from '@/types/activity';
-import { ArrowDownLeft, ArrowUpRight, CreditCard, Info } from 'lucide-react-native';
+import { ArrowDownLeft, ArrowUpRight, CreditCard, Info, Send } from 'lucide-react-native';
 
 export default function ActivityLogItem({ event, themeColors, onPress }: { event: ActivityEvent; themeColors: any; onPress?: (e: ActivityEvent) => void; }) {
   const isTx = event.category === 'transaction';
@@ -20,6 +20,14 @@ export default function ActivityLogItem({ event, themeColors, onPress }: { event
 
   const getIcon = () => {
     if (isTx) {
+      // Check if it's a transfer transaction
+      const isTransfer = event.type?.includes('transfer') || event.title?.toLowerCase().includes('transfer');
+      
+      if (isTransfer && (amount || 0) < 0) {
+        // Red transfer icon for outgoing transfers (expenses)
+        return <Send color={themeColors.negative || '#EF4444'} size={20} />;
+      }
+      
       // Transaction icons prefer amount color coding but respect failed/pending
       const tone = getToneColor();
       if ((amount || 0) > 0 && tone === themeColors.textSecondary) return <ArrowDownLeft color={themeColors.positive || '#10B981'} size={20} />;
@@ -60,7 +68,7 @@ export default function ActivityLogItem({ event, themeColors, onPress }: { event
       <View style={styles.amountContainer}>
         {amount !== undefined ? (
           <Text style={[styles.amount, { color: getAmountColor() }]}>
-            {amount > 0 ? '+' : ''}${Math.abs(amount).toFixed(2)}
+            {amount > 0 ? '+' : ''}GHS {Math.abs(amount).toFixed(2)}
           </Text>
         ) : null}
         <Text style={[styles.date, { color: themeColors.textSecondary }]}>{formatDate(event.timestamp)}</Text>

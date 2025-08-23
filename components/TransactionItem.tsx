@@ -53,7 +53,7 @@ export function TransactionItem({ transaction }: TransactionItemProps) {
 
       <View style={styles.amountContainer}>
         <Text style={[styles.amount, { color: getAmountColor() }]}>
-          {transaction.amount > 0 ? "+" : ""}$
+          {transaction.amount > 0 ? "+" : ""}GHS 
           {Math.abs(transaction.amount).toFixed(2)}
         </Text>
         <Text style={[styles.date, { color: colors.textSecondary }]}>{formatDate(transaction.date)}</Text>
