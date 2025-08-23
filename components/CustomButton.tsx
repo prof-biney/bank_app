@@ -13,6 +13,8 @@ type Props = {
   variant?: ButtonVariant;
   size?: ButtonSize;
   disabled?: boolean;
+  /** Apply standardized filter-action button sizing (chips in drawers/screens/modals) */
+  isFilterAction?: boolean;
 };
 
 const CustomButton = ({
@@ -25,12 +27,26 @@ const CustomButton = ({
   variant = "primary",
   size = "md",
   disabled = false,
+  isFilterAction = false,
 }: Props) => {
   const { colors } = useTheme();
   const styles = getButtonStyles(colors, { variant, size, disabled: isLoading || disabled });
+  // Filter action overrides: ensure fixed size and centering for chips
+  const filterOverrides: ViewStyle | undefined = isFilterAction
+    ? {
+        width: 100,
+        height: 40,
+        paddingHorizontal: 15,
+        paddingVertical: 10,
+        borderRadius: 18,
+        justifyContent: 'center',
+        alignItems: 'center',
+      }
+    : undefined;
+
   return (
     <TouchableOpacity
-      style={[styles.container, style]}
+      style={[styles.container, filterOverrides as any, style]}
       onPress={onPress}
       disabled={isLoading || disabled}
     >
@@ -39,7 +55,17 @@ const CustomButton = ({
         {isLoading ? (
           <ActivityIndicator size="small" color={styles.text.color as string} />
         ) : (
-          <Text style={[styles.text, textStyle]}>{title}</Text>
+          <Text
+            numberOfLines={isFilterAction ? 1 : undefined}
+            ellipsizeMode={isFilterAction ? 'tail' : 'clip'}
+            style={[
+              styles.text,
+              isFilterAction ? { maxWidth: '100%', flexShrink: 1 } : undefined,
+              textStyle,
+            ]}
+          >
+            {title}
+          </Text>
         )}
       </View>
     </TouchableOpacity>

@@ -7,21 +7,18 @@ import {
   StyleSheet,
   Text,
   View,
-  Pressable,
   TouchableOpacity,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { DateFilterModal } from "../../components/DateFilterModal";
+import { DateFilterModal } from "@/components/DateFilterModal";
 import ActivityLogItem from "@/components/activity/ActivityLogItem";
 import ActivityDetailModal from "@/components/activity/ActivityDetailModal";
 import { useTheme } from "@/context/ThemeContext";
-import { getChipStyles } from "@/theme/variants";
-import { withAlpha } from "@/theme/color-utils";
 import CustomButton from "@/components/CustomButton";
 import { getBadgeVisuals } from "@/theme/badge-utils";
-import { TransactionItem } from "../../components/TransactionItem";
-import { useApp } from "../../context/AppContext";
+import { TransactionItem } from "@/components/TransactionItem";
+import { useApp } from "@/context/AppContext";
 import { ActivityEvent } from "@/types/activity";
 
 type Payment = { id: string; status: string; amount?: number; currency?: string; created?: string };
@@ -30,7 +27,7 @@ export default function ActivityScreen() {
 
   const handleCapture = async (id: string) => {
     try {
-      const { getApiBase } = require('../../lib/api');
+      const { getApiBase } = require('@/lib/api');
       const apiBase = getApiBase();
       const url = `${apiBase.replace(/\/$/, "")}/v1/payments/${id}/capture`;
       const jwt = (global as any).__APPWRITE_JWT__ || undefined;
@@ -45,7 +42,7 @@ export default function ActivityScreen() {
 
   const handleRefund = async (id: string) => {
     try {
-      const { getApiBase } = require('../../lib/api');
+      const { getApiBase } = require('@/lib/api');
       const apiBase = getApiBase();
       const url = `${apiBase.replace(/\/$/, "")}/v1/payments/${id}/refund`;
       const jwt = (global as any).__APPWRITE_JWT__ || undefined;
@@ -58,7 +55,7 @@ export default function ActivityScreen() {
     } catch (e) {}
   };
   const { transactions, activity } = useApp();
-  const { getApiBase } = require('../../lib/api');
+  const { getApiBase } = require('@/lib/api');
   const [payments, setPayments] = React.useState<Payment[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [loadingMore, setLoadingMore] = React.useState(false);
@@ -314,133 +311,124 @@ export default function ActivityScreen() {
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <TouchableOpacity
-              style={[styles.filterButton, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, marginRight: 10 }]}
+              style={[styles.filterButton, { backgroundColor: colors.card }]}
               onPress={() => setShowDateFilter(true)}
             >
-              <Filter color={colors.textSecondary} size={20} />
+              <Filter color={colors.textSecondary} size={24} />
             </TouchableOpacity>
-            <Pressable
-              android_ripple={{ color: withAlpha(colors.tintPrimary, 0.12) }}
-              onPress={() => { setFilters({ income: true, expense: true, account: true, card: true }); setTypeFilter({ deposit: true, transfer: true, withdraw: true, payment: true }); setStatusFilter({ completed: true, pending: true, failed: true, reversed: true }); setDateFilter('all'); }}
-              style={({ pressed }) => [
-                { marginLeft: 0 },
-                getChipStyles(colors, { tone: 'neutral', size: 'md' }).container,
-                pressed && { opacity: 0.9 },
-              ]}
-            >
-              <Text style={[getChipStyles(colors, { tone: 'neutral', size: 'md' }).text]}>Reset</Text>
-            </Pressable>
           </View>
         </View>
 
-        <View style={styles.filterTabs}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScrollContent}>
-            {(() => {
-              const v = getBadgeVisuals(colors, { tone: 'neutral', size: 'md' });
-              return (
-                <View style={{ marginRight: 5 }}>
-                  <CustomButton
-                    title="All"
-                    size="sm"
-                    variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
-                    onPress={setAllOn}
-style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingVertical: 5 }}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.filterTabs, { marginBottom: 0 }]} contentContainerStyle={styles.filterScrollContent}>
+          {(() => {
+            const v = getBadgeVisuals(colors, { tone: 'neutral', size: 'md' });
+            return (
+              <View style={{ marginRight: 5 }}>
+                <CustomButton
+                  title="All"
+                  size="sm"
+                  isFilterAction
+                  variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
+                  onPress={setAllOn}
+                  style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1 }}
+                  textStyle={{ color: v.textColor }}
+                />
+              </View>
+            );
+          })()}
 
-                    textStyle={{ color: v.textColor }}
-                  />
-                </View>
-              );
-            })()}
+          {(() => {
+            const v = getBadgeVisuals(colors, { tone: 'success', selected: filters.income, size: 'md' });
+            return (
+              <View style={{ marginRight: 5 }}>
+                <CustomButton
+                  size="sm"
+                  isFilterAction
+                  variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
+                  onPress={() => toggleFilter('income')}
+                  title="Income"
+                  leftIcon={<ArrowDownLeft size={14} color={v.textColor as string} />}
+                  style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1 }}
+                  textStyle={{ color: v.textColor }}
+                />
+              </View>
+            );
+          })()}
 
-            {(() => {
-              const v = getBadgeVisuals(colors, { tone: 'success', selected: filters.income, size: 'md' });
-              return (
-                <View style={{ marginRight: 5 }}>
-                  <CustomButton
-                    size="sm"
-                    variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
-                    onPress={() => toggleFilter('income')}
-                    title="Income"
-                    leftIcon={<ArrowDownLeft size={14} color={v.textColor as string} />}
-style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingVertical: 5 }}
-                    textStyle={{ color: v.textColor }}
-                  />
-                </View>
-              );
-            })()}
+          {(() => {
+            const v = getBadgeVisuals(colors, { tone: 'danger', selected: filters.expense, size: 'md' });
+            return (
+              <View style={{ marginRight: 5 }}>
+                <CustomButton
+                  size="sm"
+                  isFilterAction
+                  variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
+                  onPress={() => toggleFilter('expense')}
+                  title="Expense"
+                  leftIcon={<ArrowUpRight size={14} color={v.textColor as string} />}
+                  style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1 }}
+                  textStyle={{ color: v.textColor }}
+                />
+              </View>
+            );
+          })()}
 
-            {(() => {
-              const v = getBadgeVisuals(colors, { tone: 'danger', selected: filters.expense, size: 'md' });
-              return (
-                <View style={{ marginRight: 5 }}>
-                  <CustomButton
-                    size="sm"
-                    variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
-                    onPress={() => toggleFilter('expense')}
-                    title="Expense"
-                    leftIcon={<ArrowUpRight size={14} color={v.textColor as string} />}
-style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8 }}
-                    textStyle={{ color: v.textColor }}
-                  />
-                </View>
-              );
-            })()}
+          {(() => {
+            const v = getBadgeVisuals(colors, { tone: 'accent', selected: filters.account, size: 'md' });
+            return (
+              <View style={{ marginRight: 5 }}>
+                <CustomButton
+                  size="sm"
+                  isFilterAction
+                  variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
+                  onPress={() => toggleFilter('account')}
+                  title="Account"
+                  leftIcon={<User size={14} color={v.textColor as string} />}
+                  style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1 }}
+                  textStyle={{ color: v.textColor }}
+                />
+              </View>
+            );
+          })()}
 
-            {(() => {
-              const v = getBadgeVisuals(colors, { tone: 'accent', selected: filters.account, size: 'md' });
-              return (
-                <View style={{ marginRight: 5 }}>
-                  <CustomButton
-                    size="sm"
-                    variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
-                    onPress={() => toggleFilter('account')}
-                    title="Account"
-                    leftIcon={<User size={14} color={v.textColor as string} />}
-style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingVertical: 5 }}
-                    textStyle={{ color: v.textColor }}
-                  />
-                </View>
-              );
-            })()}
-
-            {(() => {
-              const v = getBadgeVisuals(colors, { tone: 'accent', selected: filters.card, size: 'md' });
-              return (
-                <View style={{ marginRight: 5 }}>
-                  <CustomButton
-                    size="sm"
-                    variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
-                    onPress={() => toggleFilter('card')}
-                    title="Cards"
-                    leftIcon={<CardIcon size={14} color={v.textColor as string} />}
-style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5, borderRadius: 18 }}
-                    textStyle={{ color: v.textColor }}
-                  />
-                </View>
-              );
-            })()}
-          </ScrollView>
-        </View>
+          {(() => {
+            const v = getBadgeVisuals(colors, { tone: 'accent', selected: filters.card, size: 'md' });
+            return (
+              <View style={{ marginRight: 5 }}>
+                <CustomButton
+                  size="sm"
+                  isFilterAction
+                  variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
+                  onPress={() => toggleFilter('card')}
+                  title="Cards"
+                  leftIcon={<CardIcon size={14} color={v.textColor as string} />}
+                  style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1 }}
+                  textStyle={{ color: v.textColor }}
+                />
+              </View>
+            );
+          })()}
+        </ScrollView>
 
 
         {/* Transaction Status Filters */}
-        <View style={[styles.categoryChips, { paddingBottom: 4 }] }>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.filterTabs, { marginBottom: 8 }]} contentContainerStyle={styles.filterScrollContent}>
           {(['completed','pending','failed','reversed'] as const).map(key => {
             const tone = key === 'completed' ? 'success' : key === 'failed' ? 'danger' : 'warning';
             const v = getBadgeVisuals(colors, { tone: tone as any, selected: statusFilter[key], size: 'sm' });
             const title = key[0].toUpperCase() + key.slice(1);
             return (
               <View key={key} style={{ marginRight: 5 }}>
-                <CustomButton size="sm" variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
+                <CustomButton size="sm" isFilterAction variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
                   onPress={() => toggleStatus(key)}
                   title={title}
-style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5, borderRadius: 18 }}
+                  style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1 }}
                   textStyle={{ color: v.textColor }}
                 />
               </View>
             );
           })}
-        </View>
+        </ScrollView>
 
         <View style={styles.transactionsContainer}>
           <ScrollView
@@ -536,9 +524,9 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
   filterButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: "center",
     alignItems: "center",
     shadowColor: "#000",
@@ -552,12 +540,12 @@ const styles = StyleSheet.create({
   },
   filterTabs: {
     flexDirection: "row",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    marginBottom: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 0,
+    marginBottom: 0,
   },
   filterScrollContent: {
-    paddingRight: 16,
+    paddingRight: 8,
   },
   filterTab: {
     paddingHorizontal: 20,

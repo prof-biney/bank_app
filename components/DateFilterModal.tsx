@@ -1,8 +1,7 @@
 import React from "react";
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useTheme } from "@/context/ThemeContext";
-import CustomButton from "@/components/CustomButton";
-import { getBadgeVisuals } from "@/theme/badge-utils";
+import { Check } from "lucide-react-native";
 
 interface DateFilterModalProps {
   visible: boolean;
@@ -43,24 +42,18 @@ export function DateFilterModal({
         <View style={[styles.modal, { backgroundColor: colors.card }]}>
           <Text style={[styles.title, { color: colors.textPrimary }]}>Filter Transactions</Text>
 
-          <View style={styles.chipRow}>
-            {filterOptions.map((option) => {
-              const tone = option.key === 'today' ? 'accent' : option.key === 'week' ? 'success' : option.key === 'month' ? 'warning' : option.key === 'year' ? 'accent' : 'neutral';
-              const v = getBadgeVisuals(colors, { tone: tone as any, selected: selectedFilter === option.key, size: 'sm' });
-              return (
-                <View key={option.key} style={styles.chipItem}>
-                  <CustomButton
-                    onPress={() => handleFilterSelect(option.key)}
-                    title={option.label}
-                    size="sm"
-                    variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
-style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingVertical: 5, marginRight: 5 }}
-                    textStyle={{ color: v.textColor }}
-                  />
-                </View>
-              );
-            })}
-          </View>
+          {filterOptions.map((option) => (
+            <TouchableOpacity
+              key={option.key}
+              style={[styles.option, { borderBottomColor: colors.border }]}
+              onPress={() => handleFilterSelect(option.key)}
+            >
+              <Text style={[styles.optionText, { color: colors.textPrimary }]}>{option.label}</Text>
+              {selectedFilter === option.key && (
+                <Check color={colors.tintPrimary} size={20} />
+              )}
+            </TouchableOpacity>
+          ))}
         </View>
       </TouchableOpacity>
     </Modal>
@@ -99,7 +92,6 @@ const styles = StyleSheet.create({
   },
   chipRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 0,
     paddingVertical: 4,
   },
