@@ -25,11 +25,12 @@ import Badge from "@/components/ui/Badge";
 import { getBadgeVisuals } from "@/theme/badge-utils";
 
 export default function TransferScreen() {
-  const { cards, activeCard, setActiveCard, addTransaction } = useApp();
+  const { cards, activeCard, setActiveCard, makeTransfer } = useApp();
   const { showAlert } = useAlert();
 const [selectedRecipient, setSelectedRecipient] = useState<Recipient | null>(null);
   const [recipientName, setRecipientName] = useState("");
   const [amount, setAmount] = useState("");
+  const [isTransferring, setIsTransferring] = useState(false);
   const [step, setStep] = useState<
     "select-card" | "select-recipient" | "enter-amount"
   >("select-card");
@@ -50,8 +51,11 @@ const handleRecipientSelect = (name: string) => {
     setStep("enter-amount");
   };
 
-  const handleTransfer = () => {
+  const handleTransfer = async () => {
+    console.log('[TransferScreen] handleTransfer called');
+    
     if (!activeCard || !selectedRecipient || !amount) {
+      console.log('[TransferScreen] Missing required fields:', { activeCard: !!activeCard, selectedRecipient: !!selectedRecipient, amount });
       showAlert('error', 'Please complete all required fields.', 'Transfer Error');
       return;
     }
@@ -59,40 +63,52 @@ const handleRecipientSelect = (name: string) => {
     const transferAmount = parseFloat(amount);
     
     if (isNaN(transferAmount) || transferAmount <= 0) {
+      console.log('[TransferScreen] Invalid amount:', { amount, transferAmount });
       showAlert('error', 'Please enter a valid amount.', 'Transfer Error');
       return;
     }
     
     if (transferAmount > activeCard.balance) {
+      console.log('[TransferScreen] Insufficient funds:', { transferAmount, balance: activeCard.balance });
       showAlert('error', 'Insufficient funds for this transfer.', 'Transfer Error');
       return;
     }
 
+    console.log('[TransferScreen] Starting transfer:', {
+      cardId: activeCard.id,
+      amount: transferAmount,
+      recipient: selectedRecipient.name
+    });
+    
+    setIsTransferring(true);
+    
     try {
-      addTransaction({
-        userId: activeCard.userId,
-        cardId: activeCard.id,
-        type: "transfer",
-        amount: -transferAmount,
-        description: `To ${selectedRecipient.name}`,
-        recipient: selectedRecipient.name,
-        category: "Transfer",
-        status: "completed",
-      });
-
-      showAlert(
-        'success', 
-        `$${transferAmount.toFixed(2)} has been successfully transferred to ${selectedRecipient.name}.`,
-        'Transfer Successful'
+      const result = await makeTransfer(
+        activeCard.id,
+        transferAmount,
+        selectedRecipient.name,
+        `Transfer To: ${selectedRecipient.name}`
       );
       
-      // Navigate back after a short delay to allow the user to see the alert
-      setTimeout(() => {
-        router.back();
-      }, 1500);
+      if (result.success) {
+        showAlert(
+          'success', 
+          `GHS ${transferAmount.toFixed(2)} has been successfully transferred to ${selectedRecipient.name}. New balance: GHS ${result.newBalance?.toFixed(2) || 'N/A'}`,
+          'Transfer Successful'
+        );
+        
+        // Navigate back after a short delay to allow the user to see the alert
+        setTimeout(() => {
+          router.back();
+        }, 1500);
+      } else {
+        showAlert('error', result.error || 'An error occurred while processing your transfer.', 'Transfer Failed');
+      }
     } catch (error) {
-      showAlert('error', 'An error occurred while processing your transfer. Please try again.', 'Transfer Failed');
+      showAlert('error', 'An unexpected error occurred. Please try again.', 'Transfer Failed');
       console.error('Transfer error:', error);
+    } finally {
+      setIsTransferring(false);
     }
   };
 
@@ -180,7 +196,7 @@ const handleRecipientSelect = (name: string) => {
             <View style={[styles.amountSection, { backgroundColor: colors.card }]}>
               <Text style={[styles.amountLabel, { color: colors.textSecondary }]}>Amount</Text>
               <View style={styles.amountInputContainer}>
-                <Text style={[styles.currencySymbol, { color: colors.textPrimary }]}>$</Text>
+                <Text style={[styles.currencySymbol, { color: colors.textPrimary }]}>GHS</Text>
                 <TextInput
                   style={styles.amountInput}
                   value={amount}
@@ -204,16 +220,16 @@ const handleRecipientSelect = (name: string) => {
                     textColor={v.textColor}
                     style={[styles.quickAmountButton]}
                   >
-                    <Text style={[styles.quickAmountText, { color: v.textColor }]}>${value}</Text>
+                    <Text style={[styles.quickAmountText, { color: v.textColor }]}>GHS {value}</Text>
                   </Badge>
                 );
               })}
             </View>
 
             <CustomButton
-              title="Transfer"
+              title={isTransferring ? "Processing..." : "Transfer"}
               variant="primary"
-              disabled={!amount}
+              disabled={!amount || isTransferring}
               onPress={handleTransfer}
             />
           </View>

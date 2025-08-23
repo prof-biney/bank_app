@@ -13,6 +13,8 @@ interface AppContextType {
   addCard: (card: Omit<Card, "id" | "balance"> & Partial<Pick<Card, "balance" | "token" | "currency">>) => void;
   removeCard: (cardId: string) => void;
   addTransaction: (transaction: Omit<Transaction, "id" | "date">) => void;
+  updateCardBalance: (cardId: string, newBalance: number) => void;
+  makeTransfer: (cardId: string, amount: number, recipient: string, description?: string) => Promise<{ success: boolean; error?: string; newBalance?: number }>;
   isLoadingCards: boolean;
   // Activity events
   activity: ActivityEvent[];
@@ -55,14 +57,19 @@ const pushActivity: AppContextType["pushActivity"] = (evt) => {
     setTransactions((prev) => [newTransaction, ...prev]);
 
     // Push activity event
+    // For transfers, use the description directly to avoid duplication ("Transfer: Transfer To: Name")
+    const activityTitle = newTransaction.type === 'transfer' ? 
+      newTransaction.description : 
+      `${newTransaction.type.charAt(0).toUpperCase()}${newTransaction.type.slice(1)}: ${newTransaction.description}`;
+    
     pushActivity({
       id: `tx.${newTransaction.id}`,
       category: 'transaction',
       type: `transaction.${newTransaction.type}`,
-      title: `${newTransaction.type.charAt(0).toUpperCase()}${newTransaction.type.slice(1)}: ${newTransaction.description}`,
+      title: activityTitle,
       subtitle: new Date(newTransaction.date).toLocaleString(),
       amount: newTransaction.amount,
-      currency: 'USD',
+      currency: 'GHS',
       status: newTransaction.status as any,
       timestamp: newTransaction.date,
       transactionId: newTransaction.id,
@@ -100,20 +107,20 @@ const addCard: AppContextType["addCard"] = (cardData) => {
       tags: ['card','added'],
     });
 
-    // Persist to Appwrite (fire-and-forget)
+    // Persist to Appwrite (fire-and-forget) - Temporarily disabled due to permissions
     try {
-      const last4 = (newCard.cardNumber.match(/(\d{4})$/) || [])[0];
-      logCardEvent({
-        status: "added",
-        cardId: newCard.id,
-        userId: newCard.userId,
-        last4,
-        brand: newCard.cardType,
-        cardHolderName: newCard.cardHolderName,
-        expiryDate: newCard.expiryDate,
-        title: "Card added",
-        description: `${newCard.cardHolderName} • ${newCard.cardNumber}`,
-      });
+      // const last4 = (newCard.cardNumber.match(/(\d{4})$/) || [])[0];
+      // logCardEvent({
+      //   status: "added",
+      //   cardId: newCard.id,
+      //   userId: newCard.userId,
+      //   last4,
+      //   brand: newCard.cardType,
+      //   cardHolderName: newCard.cardHolderName,
+      //   expiryDate: newCard.expiryDate,
+      //   title: "Card added",
+      //   description: `${newCard.cardHolderName} • ${newCard.cardNumber}`,
+      // });
     } catch {}
   };
 
@@ -134,36 +141,170 @@ const removeCard: AppContextType["removeCard"] = (cardId) => {
       tags: ['card','removed'],
     });
 
-    // Persist to Appwrite (fire-and-forget)
+    // Persist to Appwrite (fire-and-forget) - Temporarily disabled due to permissions
     try {
-      const last4 = removed?.cardNumber?.match(/(\d{4})$/)?.[0];
-      logCardEvent({
-        status: "removed",
-        cardId,
-        userId: removed?.userId,
-        last4,
-        brand: removed?.cardType,
-        cardHolderName: removed?.cardHolderName,
-        expiryDate: removed?.expiryDate,
-        title: "Card removed",
-        description: removed ? `${removed.cardHolderName} • ${removed.cardNumber}` : undefined,
-      });
+      // const last4 = removed?.cardNumber?.match(/(\d{4})$/)?.[0];
+      // logCardEvent({
+      //   status: "removed",
+      //   cardId,
+      //   userId: removed?.userId,
+      //   last4,
+      //   brand: removed?.cardType,
+      //   cardHolderName: removed?.cardHolderName,
+      //   expiryDate: removed?.expiryDate,
+      //   title: "Card removed",
+      //   description: removed ? `${removed.cardHolderName} • ${removed.cardNumber}` : undefined,
+      // });
     } catch {}
+  };
+
+  const updateCardBalance: AppContextType["updateCardBalance"] = (cardId, newBalance) => {
+    setCards((prev) => prev.map((card) => 
+      card.id === cardId ? { ...card, balance: newBalance } : card
+    ));
+    
+    // Update active card if it's the one being updated
+    setActiveCard((prev) => 
+      prev?.id === cardId ? { ...prev, balance: newBalance } : prev
+    );
+  };
+
+  const makeTransfer: AppContextType["makeTransfer"] = async (cardId, amount, recipient, description) => {
+    console.log('[MakeTransfer] Function called with:', { cardId, amount, recipient });
+    
+    try {
+      const { getApiBase } = require('../lib/api');
+      const { getValidJWT, refreshAppwriteJWT } = require('../lib/jwt');
+      const apiBase = getApiBase();
+      const url = `${apiBase}/v1/transfers`;
+      
+      console.log('[MakeTransfer] API Base:', apiBase);
+      
+      let jwt = await getValidJWT();
+      console.log('[MakeTransfer] JWT obtained:', !!jwt);
+      
+      const requestBody = {
+        cardId,
+        amount,
+        currency: 'GHS', // Add required currency field
+        recipient,
+        description: description || `Transfer To: ${recipient}`
+      };
+      
+      console.log('[MakeTransfer] Request details:', {
+        url,
+        cardId,
+        amount,
+        recipient,
+        hasJWT: !!jwt
+      });
+      
+      const makeRequest = async (token: string | undefined) => {
+        const headers: any = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        return await fetch(url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(requestBody)
+        });
+      };
+      
+      let res = await makeRequest(jwt);
+      
+      console.log('[MakeTransfer] Response status:', res.status);
+      
+      // If we get a 401, try refreshing the token once
+      if (res.status === 401 && jwt) {
+        console.log('[MakeTransfer] Got 401, refreshing JWT and retrying...');
+        jwt = await refreshAppwriteJWT();
+        if (jwt) {
+          res = await makeRequest(jwt);
+          console.log('[MakeTransfer] Retry response status:', res.status);
+        }
+      }
+      
+      if (!res.ok) {
+        const responseText = await res.text();
+        let errorData = {};
+        try {
+          errorData = JSON.parse(responseText);
+        } catch {
+          errorData = { rawResponse: responseText };
+        }
+        console.error('[MakeTransfer] Server error:', {
+          status: res.status,
+          statusText: res.statusText,
+          errorData,
+          responseText
+        });
+        return {
+          success: false,
+          error: (errorData as any).error || (errorData as any).message || `Server error: ${res.status} - ${responseText}`
+        };
+      }
+      
+      const data = await res.json();
+      const newBalance = data.newBalance;
+      
+      console.log('[MakeTransfer] Success:', { newBalance });
+      
+      // Update local card balance
+      updateCardBalance(cardId, newBalance);
+      
+      // Add the transaction locally
+      addTransaction({
+        cardId,
+        amount: -amount, // Negative for outgoing transfer
+        type: 'transfer',
+        category: 'transfer',
+        description: description || `Transfer To: ${recipient}`,
+        recipient,
+        status: 'completed'
+      });
+      
+      return {
+        success: true,
+        newBalance
+      };
+    } catch (error) {
+      console.error('[MakeTransfer] Error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Network error or server unavailable'
+      };
+    }
   };
 
   // Initial load from server for cards (optional; no mock data)
   useEffect(() => {
     const { getApiBase } = require('../lib/api');
+    const { getValidJWT, refreshAppwriteJWT } = require('../lib/jwt');
+    
     const loadCards = async () => {
       setIsLoadingCards(true);
       try {
-        const jwt = (global as any).__APPWRITE_JWT__ || undefined;
+        let jwt = await getValidJWT();
         const url = `${getApiBase()}/v1/cards`;
-        const res = await fetch(url, {
-          headers: {
-            ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}),
-          },
-        });
+        
+        const makeRequest = async (token: string | undefined) => {
+          return await fetch(url, {
+            headers: {
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+          });
+        };
+        
+        let res = await makeRequest(jwt);
+        
+        // If we get a 401, try refreshing the token once
+        if (res.status === 401 && jwt) {
+          console.log('[LoadCards] Got 401, refreshing JWT and retrying...');
+          jwt = await refreshAppwriteJWT();
+          if (jwt) {
+            res = await makeRequest(jwt);
+          }
+        }
+        
         if (!res.ok) return; // no-op
         const data = await res.json();
         // Server returns { data: Card[] }
@@ -421,11 +562,28 @@ const removeCard: AppContextType["removeCard"] = (cardId) => {
   const clearAllNotifications: AppContextType['clearAllNotifications'] = async () => {
     try {
       const { getApiBase } = require('../lib/api');
+      const { getValidJWT, refreshAppwriteJWT } = require('../lib/jwt');
       const url = `${getApiBase()}/v1/notifications/clear`;
-      const jwt = (global as any).__APPWRITE_JWT__ || undefined;
-      const headers: any = { 'Content-Type': 'application/json' };
-      if (jwt) headers['Authorization'] = `Bearer ${jwt}`;
-      const res = await fetch(url, { method: 'POST', headers });
+      
+      let jwt = await getValidJWT();
+      
+      const makeRequest = async (token: string | undefined) => {
+        const headers: any = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        return await fetch(url, { method: 'POST', headers });
+      };
+      
+      let res = await makeRequest(jwt);
+      
+      // If we get a 401, try refreshing the token once
+      if (res.status === 401 && jwt) {
+        console.log('[ClearNotifications] Got 401, refreshing JWT and retrying...');
+        jwt = await refreshAppwriteJWT();
+        if (jwt) {
+          res = await makeRequest(jwt);
+        }
+      }
+      
       if (!res.ok) {
         console.warn('Failed to clear notifications (server)');
         return;
@@ -446,6 +604,8 @@ const removeCard: AppContextType["removeCard"] = (cardId) => {
         addCard,
         removeCard,
         addTransaction,
+        updateCardBalance,
+        makeTransfer,
         isLoadingCards,
         activity,
         pushActivity,
