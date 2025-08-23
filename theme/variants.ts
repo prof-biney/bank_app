@@ -9,7 +9,7 @@ export function getButtonStyles(colors: ThemeColors, opts: { variant?: ButtonVar
   const { variant = 'primary', size = 'md', disabled = false } = opts;
 
   const sizing = {
-    sm: { height: 36, padH: 12, radius: 8, text: 14 },
+    sm: { height: 36, padH: 8, radius: 8, text: 14 },
     md: { height: 44, padH: 16, radius: 12, text: 16 },
     lg: { height: 52, padH: 20, radius: 14, text: 17 },
   }[size];
@@ -70,7 +70,7 @@ export function getChipStyles(colors: ThemeColors, opts: { tone?: ChipTone; size
   const { tone = 'neutral', size = 'md', selected = false } = opts;
 
   const sizing = {
-    sm: { height: 28, padH: 10, radius: 14, text: 12 },
+    sm: { height: 28, padH: 8, radius: 8, text: 12 },
     md: { height: 32, padH: 12, radius: 16, text: 13 },
   }[size];
 
