@@ -361,7 +361,7 @@ style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderW
                     onPress={() => toggleFilter('income')}
                     title="Income"
                     leftIcon={<ArrowDownLeft size={14} color={v.textColor as string} />}
-style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5, borderRadius: 18 }}
+style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5, borderRadius: 8 }}
                     textStyle={{ color: v.textColor }}
                   />
                 </View>
