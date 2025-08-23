@@ -4,12 +4,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '@/context/ThemeContext';
 import CustomButton from '@/components/CustomButton';
 import Card from '@/components/ui/Card';
+import { useApp } from '@/context/AppContext';
 
 export default function PaymentsScreen() {
   const [amount, setAmount] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<any[]>([]);
+  const { activeCard } = useApp();
 
   useEffect(() => {
     const { getApiBase } = require('../../lib/api');
@@ -35,6 +37,10 @@ export default function PaymentsScreen() {
       setError('Enter a valid amount');
       return;
     }
+    if (!activeCard || !activeCard.token) {
+      setError('Select a card with a valid token before creating a payment.');
+      return;
+    }
     setSubmitting(true);
     try {
       const { getApiBase } = require('../../lib/api');
@@ -44,7 +50,7 @@ export default function PaymentsScreen() {
       const headers: any = { 'Content-Type': 'application/json' };
       if (jwt) headers['Authorization'] = `Bearer ${jwt}`;
       headers['Idempotency-Key'] = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const body = { amount: value, currency: 'GHS', source: 'tok_demo', description: 'Payment from app' };
+      const body = { amount: value, currency: 'GHS', source: activeCard.token, description: 'Payment from app' };
       const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);

@@ -10,7 +10,7 @@ interface AppContextType {
   transactions: Transaction[];
   activeCard: Card | null;
   setActiveCard: (card: Card) => void;
-  addCard: (card: Omit<Card, "id" | "balance"> & Partial<Pick<Card, "balance">>) => void;
+  addCard: (card: Omit<Card, "id" | "balance"> & Partial<Pick<Card, "balance" | "token" | "currency">>) => void;
   removeCard: (cardId: string) => void;
   addTransaction: (transaction: Omit<Transaction, "id" | "date">) => void;
   isLoadingCards: boolean;
@@ -82,6 +82,8 @@ const addCard: AppContextType["addCard"] = (cardData) => {
       cardType: cardData.cardType,
       isActive: true,
       cardColor: cardData.cardColor,
+      token: cardData.token,
+      currency: cardData.currency ?? 'GHS',
     };
     setCards((prev) => [newCard, ...prev]);
     setActiveCard(newCard);

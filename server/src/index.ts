@@ -8,6 +8,9 @@ import { luhnValid, detectBrand } from './utils/luhn';
 
 const app = new Hono();
 
+// Dummy mode gate
+const IS_DUMMY = (process.env.DUMMY_MODE || '').toLowerCase() === 'true';
+
 // CORS
 const CORS_ORIGINS = (process.env.CORS_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
 app.use('*', cors({ origin: (origin) => {
@@ -79,11 +82,23 @@ v1.post('/cards', appwriteAuth, async (c) => {
     const { number, exp_month, exp_year, cvc, name } = parse.data;
 
     const normalized = number.replace(/\s+/g, '');
-    if (!luhnValid(normalized)) return c.json({ error: 'invalid_card_number' }, 400);
+    // Always require Luhn-valid numbers
+    if (!luhnValid(normalized)) return c.json({ error: 'invalid_card_number', message: 'Invalid card number' }, 400);
+    // In dummy mode, reject numbers that contain duplicate 4-digit chunks
+    if (IS_DUMMY) {
+      const chunks = normalized.match(/\d{4}/g) || [];
+      const hasDuplicateChunk = new Set(chunks).size !== chunks.length;
+      if (hasDuplicateChunk) {
+        return c.json({ error: 'invalid_card_number', message: 'Invalid card number' }, 400);
+      }
+    }
+
     const brand = detectBrand(normalized);
     const last4 = normalized.slice(-4);
-    const token = `tok_${crypto.randomUUID()}`;
-    const fingerprint = `fp_${Buffer.from(normalized).toString('base64url').slice(-16)}`;
+    const token = `tok_${crypto.randomUUID()}`; // always random token
+    const fingerprint = IS_DUMMY
+      ? `fp_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`
+      : `fp_${Buffer.from(normalized).toString('base64url').slice(-16)}`;
 
     const { databases } = createDb();
     const databaseId = process.env.APPWRITE_DATABASE_ID!;
@@ -313,7 +328,98 @@ v1.post('/payments/:id/refund', appwriteAuth, async (c) => {
     }
   } catch {}
 
-  return c.json({ id: updated.$id, status: 'refunded' });
+return c.json({ id: updated.$id, status: 'refunded' });
+});
+
+// Dev-only: seed transactions (dummy mode)
+const SeedReq = z.object({
+  count: z.number().int().min(1).max(200),
+  cardToken: z.string().min(6).optional(),
+  skipIfNotEmpty: z.boolean().optional(),
+});
+
+v1.post('/dev/seed-transactions', appwriteAuth, async (c) => {
+  if (!IS_DUMMY) return c.json({ error: 'not_found' }, 404);
+  const user = c.get('user') as { $id: string };
+  const parsed = SeedReq.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: 'validation_error', details: parsed.error.flatten() }, 400);
+  const { count, cardToken, skipIfNotEmpty } = parsed.data;
+
+  const { databases } = createDb();
+  const databaseId = process.env.APPWRITE_DATABASE_ID!;
+  const txCol = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID!;
+  const cardsCol = process.env.APPWRITE_CARDS_COLLECTION_ID!;
+
+  if (!txCol || !cardsCol) return c.json({ error: 'server_missing_collections' }, 500);
+
+  if (skipIfNotEmpty) {
+    const existing = await databases.listDocuments(databaseId, txCol, [Query.equal('userId', user.$id), Query.limit(1)]);
+    if ((existing.documents || []).length > 0) {
+      return c.json({ ok: true, seeded: 0 });
+    }
+  }
+
+  let tokens: string[] = [];
+  if (cardToken) {
+    tokens = [cardToken];
+  } else {
+    const cardList = await databases.listDocuments(databaseId, cardsCol, [Query.equal('userId', user.$id), Query.limit(100)]);
+    tokens = (cardList.documents || []).map((d: any) => d.token).filter(Boolean);
+  }
+  if (tokens.length === 0) return c.json({ ok: true, seeded: 0, note: 'no cards' });
+
+  const now = Date.now();
+  const DAY = 86400000;
+  let seeded = 0;
+
+  async function adjustByToken(token: string, delta: number) {
+    const list = await databases.listDocuments(databaseId, cardsCol, [Query.equal('token', token), Query.equal('userId', user.$id), Query.limit(1)]);
+    const card = (list.documents || [])[0] as any;
+    if (!card) return;
+    const start = typeof card.startingBalance === 'number' ? card.startingBalance : DEFAULT_CARD_BALANCE;
+    const prev = typeof card.balance === 'number' ? card.balance : start;
+    let next = prev + delta;
+    if (delta < 0) next = Math.max(next, 0);
+    else next = Math.min(next, start);
+    await databases.updateDocument(databaseId, cardsCol, card.$id, { balance: next });
+  }
+
+  function pickStatus(): 'authorized' | 'captured' | 'refunded' {
+    const r = Math.random();
+    if (r < 0.6) return 'captured';
+    if (r < 0.85) return 'authorized';
+    return 'refunded';
+  }
+
+  for (let i = 0; i < count; i++) {
+    const tkn = tokens[Math.floor(Math.random() * tokens.length)];
+    const amount = Math.floor(5 + Math.random() * 1995);
+    const status = pickStatus();
+    const ts = new Date(now - Math.floor(Math.random() * 90 * DAY)).toISOString();
+
+    await databases.createDocument(databaseId, txCol, ID.unique(), {
+      userId: user.$id,
+      amount,
+      currency: 'GHS',
+      source: tkn,
+      description: 'Seeded transaction',
+      status,
+      createdAt: ts,
+      ...(status === 'captured' ? { capturedAt: ts } : {}),
+      ...(status === 'refunded' ? { refundedAt: ts } : {}),
+      type: 'payment'
+    });
+
+    if (status === 'captured') {
+      await adjustByToken(tkn, -amount);
+    } else if (status === 'refunded') {
+      await adjustByToken(tkn, +amount);
+    }
+
+    seeded++;
+  }
+
+  return c.json({ ok: true, seeded });
 });
 
 // Notifications: clear all for current user
@@ -464,6 +570,7 @@ v1.get('/diag', async (c) => {
       databaseId: Boolean(databaseId),
       cardsCollectionId: Boolean(cardsCol),
       transactionsCollectionId: Boolean(txCol),
+      dummyMode: IS_DUMMY,
     },
     checks: {}
   };

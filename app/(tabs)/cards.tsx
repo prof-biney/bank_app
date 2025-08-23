@@ -62,7 +62,7 @@ function AddCardButton() {
         console.error('[AddCard] Error response', { status: res.status, data });
         const msg = (data && typeof data === 'object' && (data as any).error === "validation_error")
           ? JSON.stringify((data as any).details)
-          : (data && typeof data === 'object' && (data as any).error) || `HTTP ${res.status}`;
+          : (data && typeof data === 'object' && ((data as any).message || (data as any).error)) || `HTTP ${res.status}`;
         throw new Error(msg);
       }
       console.log('[AddCard] Success', { status: res.status, last4: data?.authorization?.last4 || last4In });
@@ -84,6 +84,8 @@ function AddCardButton() {
         cardType: brand,
         cardColor: "#1F2937",
         balance: startingBalance,
+        token: data?.token,
+        currency: 'GHS',
       });
       showAlert("success", "Card added successfully.", "Card Added");
       close();
