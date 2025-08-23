@@ -168,14 +168,19 @@ export default function HomeScreen() {
               </View>
             </View>
 
-            <View style={styles.transactionsList}>
+            <ScrollView 
+              style={styles.transactionsList}
+              contentContainerStyle={styles.transactionsScrollContent}
+              showsVerticalScrollIndicator={true}
+              nestedScrollEnabled={true}
+            >
               {recentTransactions.map((transaction) => (
                 <TransactionItem
                   key={transaction.id}
                   transaction={transaction}
                 />
               ))}
-            </View>
+            </ScrollView>
           </View>
         </ScrollView>
 
@@ -294,5 +299,9 @@ const styles = StyleSheet.create({
   },
   transactionsList: {
     flex: 1,
+    maxHeight: 400, // Limit height so it can scroll within the section
+  },
+  transactionsScrollContent: {
+    paddingBottom: 20,
   },
 });
