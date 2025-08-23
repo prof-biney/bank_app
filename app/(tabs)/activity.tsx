@@ -319,7 +319,7 @@ export default function ActivityScreen() {
           </View>
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.filterTabs, { marginBottom: 0 }]} contentContainerStyle={styles.filterScrollContent}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterTabs} contentContainerStyle={styles.filterScrollContent}>
           {(() => {
             const v = getBadgeVisuals(colors, { tone: 'neutral', size: 'md' });
             return (
@@ -412,7 +412,7 @@ export default function ActivityScreen() {
 
 
         {/* Transaction Status Filters */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.filterTabs, { marginBottom: 8 }]} contentContainerStyle={styles.filterScrollContent}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.filterTabs, { marginBottom: 4 }]} contentContainerStyle={styles.filterScrollContent}>
           {(['completed','pending','failed','reversed'] as const).map(key => {
             const tone = key === 'completed' ? 'success' : key === 'failed' ? 'danger' : 'warning';
             const v = getBadgeVisuals(colors, { tone: tone as any, selected: statusFilter[key], size: 'sm' });
@@ -430,7 +430,7 @@ export default function ActivityScreen() {
           })}
         </ScrollView>
 
-        <View style={styles.transactionsContainer}>
+        <View style={[styles.transactionsContainer, { marginTop: 4, paddingTop: 4 }]}>
           <ScrollView
             style={styles.transactionsList}
             showsVerticalScrollIndicator={false}
@@ -517,7 +517,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 20,
     paddingTop: 20,
-    paddingBottom: 24,
+    paddingBottom: 12,
   },
   title: {
     fontSize: 28,
@@ -583,8 +583,6 @@ const styles = StyleSheet.create({
     flex: 1,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    marginTop: 8,
-    paddingTop: 8,
   },
   transactionsList: {
     flex: 1,
