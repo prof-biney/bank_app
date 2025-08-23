@@ -34,7 +34,7 @@ const CustomButton = ({
   // Filter action overrides: ensure fixed size and centering for chips
   const filterOverrides: ViewStyle | undefined = isFilterAction
     ? {
-        width: 100,
+        width: 110,
         height: 40,
         paddingHorizontal: 15,
         paddingVertical: 10,
