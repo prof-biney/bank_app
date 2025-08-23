@@ -64,6 +64,14 @@ const PaymentCreate = z.object({
   description: z.string().max(256).optional()
 });
 
+const TransferCreate = z.object({
+  amount: z.number().positive().max(1_000_000_000),
+  currency: z.literal('GHS'),
+  cardId: z.string().min(1), // card ID
+  recipient: z.string().min(1).max(256),
+  description: z.string().max(256).optional()
+});
+
 // Authenticated routes
 const v1 = new Hono();
 
@@ -93,7 +101,10 @@ v1.post('/cards', appwriteAuth, async (c) => {
       }
     }
 
-    const brand = detectBrand(normalized);
+    const detectedBrand = detectBrand(normalized);
+    // Map detected brand to valid Appwrite enum values
+    const validBrands = ['visa', 'mastercard', 'amex', 'verve', 'discover', 'unionpay', 'jcb'];
+    const brand = validBrands.includes(detectedBrand) ? detectedBrand : 'visa'; // Default to visa
     const last4 = normalized.slice(-4);
     const token = `tok_${crypto.randomUUID()}`; // always random token
     const fingerprint = IS_DUMMY
@@ -120,8 +131,7 @@ v1.post('/cards', appwriteAuth, async (c) => {
       currency: 'GHS',
       startingBalance: DEFAULT_CARD_BALANCE,
       balance: DEFAULT_CARD_BALANCE,
-      createdAt: new Date().toISOString(),
-      type: 'card'
+      type: 'debit' // Changed from 'card' to valid enum value
     });
 
     const body = {
@@ -257,7 +267,6 @@ v1.post('/payments', appwriteAuth, async (c) => {
     source,
     description,
     status: 'authorized',
-    createdAt: new Date().toISOString(),
     type: 'payment'
   });
   const body = { id: doc.$id, status: 'authorized', amount, currency: currency.toUpperCase(), created: doc.$createdAt };
@@ -330,6 +339,155 @@ v1.post('/payments/:id/refund', appwriteAuth, async (c) => {
 
 return c.json({ id: updated.$id, status: 'refunded' });
 });
+
+// Transfers: create and update card balance
+v1.post('/transfers', appwriteAuth, async (c) => {
+  const idemKey = c.req.header('Idempotency-Key');
+  const user = c.get('user') as { $id: string };
+  if (idemKey) {
+    const cached = idem.get(`${user.$id}:${idemKey}`);
+    if (cached) return c.json(cached.body, cached.status);
+  }
+  
+  const parse = TransferCreate.safeParse(await c.req.json().catch(() => ({})));
+  if (!parse.success) return c.json({ error: 'validation_error', details: parse.error.flatten() }, 400);
+  const { amount, currency, cardId, recipient, description } = parse.data;
+  
+  if ((currency || '').toUpperCase() !== 'GHS') return c.json({ error: 'unsupported_currency', expected: 'GHS' }, 400);
+  
+  const { databases } = createDb();
+  const databaseId = process.env.APPWRITE_DATABASE_ID!;
+  const cardsCol = process.env.APPWRITE_CARDS_COLLECTION_ID!;
+  const txCol = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID!;
+  if (!txCol || !cardsCol) return c.json({ error: 'server_missing_collections' }, 500);
+  
+  let balanceDebited = false;
+  let originalBalance = 0;
+  let failedTransferDoc: any = null;
+  
+  try {
+    // Get the card to verify ownership and check balance
+    const card: any = await databases.getDocument(databaseId, cardsCol, cardId).catch(() => null);
+    if (!card) return c.json({ error: 'card_not_found' }, 404);
+    if (card.userId !== user.$id) return c.json({ error: 'forbidden' }, 403);
+    
+    const currentBalance = typeof card.balance === 'number' ? card.balance : (typeof card.startingBalance === 'number' ? card.startingBalance : DEFAULT_CARD_BALANCE);
+    if (amount > currentBalance) return c.json({ error: 'insufficient_funds', available: currentBalance }, 400);
+    
+    originalBalance = currentBalance;
+    
+    // Step 1: Debit the card balance first
+    const newBalance = Math.max(currentBalance - amount, 0);
+    await databases.updateDocument(databaseId, cardsCol, cardId, { balance: newBalance });
+    balanceDebited = true;
+    
+    // Step 2: Simulate transfer processing (this could fail)
+    // In a real system, this would be an external API call to a payment processor
+    const transferSuccess = await simulateTransferProcessing(amount, recipient);
+    
+    if (!transferSuccess) {
+      // Transfer failed, create a failed transaction record
+      failedTransferDoc = await databases.createDocument(databaseId, txCol, ID.unique(), {
+        userId: user.$id,
+        cardId: cardId,
+        amount: -amount,
+        currency: currency.toUpperCase(),
+        recipient,
+        description: `FAILED: ${description || `Transfer to ${recipient}`}`,
+        status: 'failed',
+        type: 'transfer',
+        failureReason: 'transfer_processing_failed'
+      });
+      
+      // Refund the amount back to the card
+      await databases.updateDocument(databaseId, cardsCol, cardId, { balance: originalBalance });
+      
+      console.log('[transfer.create] failed and refunded', { userId: user.$id, cardId, amount, failedTransferDocId: failedTransferDoc.$id });
+      
+      return c.json({ 
+        error: 'transfer_failed', 
+        message: 'Transfer could not be processed. Amount has been refunded to your card.',
+        refunded: true,
+        failedTransactionId: failedTransferDoc.$id
+      }, 400);
+    }
+    
+    // Step 3: Transfer succeeded, create success transaction record
+    const transferDoc = await databases.createDocument(databaseId, txCol, ID.unique(), {
+      userId: user.$id,
+      cardId: cardId,
+      amount: -amount, // Negative for outgoing transfer
+      currency: currency.toUpperCase(),
+      recipient,
+      description: description || `Transfer to ${recipient}`,
+      status: 'completed',
+      type: 'transfer',
+    });
+    
+    const body = {
+      id: transferDoc.$id,
+      status: 'completed',
+      amount: amount,
+      currency: currency.toUpperCase(),
+      recipient,
+      cardId,
+      newBalance,
+      created: transferDoc.$createdAt
+    };
+    
+    if (idemKey) idem.set(`${user.$id}:${idemKey}`, { status: 200, body, expiresAt: Date.now() + IDEM_TTL_MS });
+    console.log('[transfer.create] success', { userId: user.$id, cardId, amount, newBalance });
+    
+    return c.json(body);
+  } catch (e: any) {
+    // If balance was debited but something failed, refund it
+    if (balanceDebited && originalBalance > 0) {
+      try {
+        await databases.updateDocument(databaseId, cardsCol, cardId, { balance: originalBalance });
+        console.log('[transfer.create] refunded after error', { userId: user.$id, cardId, amount, originalBalance });
+        
+        // Create a failed transaction record if we haven't already
+        if (!failedTransferDoc) {
+          await databases.createDocument(databaseId, txCol, ID.unique(), {
+            userId: user.$id,
+            cardId: cardId,
+            amount: -amount,
+            currency: currency.toUpperCase(),
+            recipient,
+            description: `FAILED: ${description || `Transfer to ${recipient}`}`,
+            status: 'failed',
+            type: 'transfer',
+            failureReason: 'system_error'
+          });
+        }
+      } catch (refundError) {
+        console.error('[transfer.create] failed to refund after error', { userId: user.$id, cardId, amount, refundError });
+      }
+    }
+    
+    const errInfo = {
+      message: e?.message,
+      code: e?.code,
+      type: e?.type,
+      response: e?.response || undefined,
+    };
+    console.error('[transfer.create] error', { userId: user.$id, cardId, amount, ...errInfo });
+    return c.json({ error: 'server_error', message: 'Transfer failed. If amount was debited, it has been refunded.', ...errInfo }, 500);
+  }
+});
+
+// Simulate transfer processing - in a real system, this would call an external payment API
+async function simulateTransferProcessing(amount: number, recipient: string): Promise<boolean> {
+  // Simulate a 10% failure rate for demonstration
+  // In production, this would be replaced with actual payment processor API calls
+  const random = Math.random();
+  
+  // Simulate processing delay
+  await new Promise(resolve => setTimeout(resolve, 100));
+  
+  // 90% success rate
+  return random > 0.1;
+}
 
 // Dev-only: seed transactions (dummy mode)
 const SeedReq = z.object({
@@ -404,7 +562,6 @@ v1.post('/dev/seed-transactions', appwriteAuth, async (c) => {
       source: tkn,
       description: 'Seeded transaction',
       status,
-      createdAt: ts,
       ...(status === 'captured' ? { capturedAt: ts } : {}),
       ...(status === 'refunded' ? { refundedAt: ts } : {}),
       type: 'payment'
