@@ -54,7 +54,7 @@ export function DateFilterModal({
                     title={option.label}
                     size="sm"
                     variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
-style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5, marginRight: 5, borderRadius: 18 }}
+style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5, marginRight: 5, borderRadius: 8 }}
                     textStyle={{ color: v.textColor }}
                   />
                 </View>
@@ -76,7 +76,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   modal: {
-    borderRadius: 16,
+    borderRadius: 8,
     padding: 20,
     width: "100%",
     maxWidth: 300,

@@ -344,7 +344,7 @@ export default function ActivityScreen() {
                     size="sm"
                     variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
                     onPress={setAllOn}
-style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5, borderRadius: 18 }}
+style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5, borderRadius: 8 }}
                     textStyle={{ color: v.textColor }}
                   />
                 </View>
