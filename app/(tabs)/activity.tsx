@@ -325,7 +325,6 @@ export default function ActivityScreen() {
               style={({ pressed }) => [
                 { marginLeft: 0 },
                 getChipStyles(colors, { tone: 'neutral', size: 'md' }).container,
-                { borderRadius: 8, paddingHorizontal: 5 },
                 pressed && { opacity: 0.9 },
               ]}
             >
@@ -345,7 +344,7 @@ export default function ActivityScreen() {
                     size="sm"
                     variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
                     onPress={setAllOn}
-style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8 }}
+style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingVertical: 5 }}
 
                     textStyle={{ color: v.textColor }}
                   />
@@ -363,7 +362,7 @@ style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderW
                     onPress={() => toggleFilter('income')}
                     title="Income"
                     leftIcon={<ArrowDownLeft size={14} color={v.textColor as string} />}
-style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5, borderRadius: 8 }}
+style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingVertical: 5 }}
                     textStyle={{ color: v.textColor }}
                   />
                 </View>
@@ -397,7 +396,7 @@ style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderW
                     onPress={() => toggleFilter('account')}
                     title="Account"
                     leftIcon={<User size={14} color={v.textColor as string} />}
-style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingHorizontal: 5, paddingVertical: 5, borderRadius: 18 }}
+style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1, paddingVertical: 5 }}
                     textStyle={{ color: v.textColor }}
                   />
                 </View>
