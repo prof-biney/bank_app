@@ -199,12 +199,32 @@ For more detailed information about the Appwrite setup, refer to the [API Docume
 
 ## Server API (cards/payments)
 
-Use a Fly.io-hosted mock server that handles card storage and payment flows:
+Use a Fly.io-hosted mock server that handles card storage and payment flows.
+
+### Dummy Mode & Seeding
+- Set DUMMY_MODE=true on the server to enable safe demo behavior.
+- Card creation rules:
+  - Luhn-valid card numbers are required
+  - In dummy mode, numbers with repeated 4-digit chunks are rejected (e.g., 4242 4242 4242 4242)
+- Server generates a random token; the app stores this token on the card and uses it as the payment source.
+- Fingerprint is randomized in dummy mode (not derived from the PAN).
+- Seeding: POST /v1/dev/seed-transactions to generate demo payments and adjust balances.
 
 - Configure the app to use it by setting in your .env:
   - EXPO_PUBLIC_API_BASE_URL=https://your-app.fly.dev
     or
   - EXPO_PUBLIC_FLY_API_URL=https://your-app.fly.dev
+
+CORS
+- Browsers must match exact origins. Examples:
+  - Dev: http://localhost:19006,http://localhost:8081
+  - Snack (optional): https://snack.expo.dev
+  - Prod: https://app.yourdomain.com
+- React Native (device/emulator) generally has no Origin header; CORS is primarily for web/Snack.
+
+401/CORS troubleshooting
+- 401: Verify your client obtains an Appwrite JWT (account.createJWT()) and includes Authorization: Bearer <JWT>
+- CORS error: Ensure the browser origin is listed in CORS_ORIGINS exactly (scheme, no trailing slash)
 
 - What it provides:
   - POST /v1/cards (adds a card; requires Authorization: Bearer <Appwrite JWT>)
@@ -213,6 +233,12 @@ Use a Fly.io-hosted mock server that handles card storage and payment flows:
   - Payments endpoints (authorize, capture, refund) and Notifications endpoints
 
 Note: The local server directory (server/) is deprecated and kept only for reference. Do not run it locally.
+
+### Optimization Tips
+- Use Idempotency-Key on POST requests to avoid duplicates when retrying.
+- Keep Expo packages on expected patch versions (Expo CLI suggests versions at startup).
+- In server Dockerfile, pin Bun version and prefer `bun install --ci` for reproducible builds.
+- Use tunnel mode for easy device testing: bunx expo start --tunnel.
 
 ### Verifying Environment Variables
 

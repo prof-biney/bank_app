@@ -8,8 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Comprehensive documentation (README.md, CONTRIBUTING.md, CHANGELOG.md)
-- Updated .gitignore file with comprehensive rules
+- Server: DUMMY_MODE flag with stricter card validation (reject repeated 4-digit chunks), randomized fingerprint, and dev-only /v1/dev/seed-transactions endpoint.
+- App: store server-issued card token and use it as payment source; auto-seed demo transactions on sign-in/login when server is in dummy mode.
+- Docs: Dummy mode & seeding docs; CORS guidance; /v1/diag mention; optimization tips (Expo patches, pinned Bun, bun install --ci, Idempotency-Key).
+- Updated server Dockerfile: pin Bun version and copy server/scripts into image.
 
 ## [1.0.0] - 2025-08-02
 
