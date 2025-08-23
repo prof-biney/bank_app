@@ -110,6 +110,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Local process logs
+.logs/
+!.logs/.gitkeep
+
 # Testing
 coverage/
 .nyc_output/
