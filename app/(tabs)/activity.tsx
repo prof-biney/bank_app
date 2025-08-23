@@ -319,7 +319,8 @@ export default function ActivityScreen() {
 					</View>
 				</View>
 
-				<ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterTabs} contentContainerStyle={styles.filterScrollContent}>
+				<View style={{ marginBottom: 10 }}>
+					<ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterTabs} contentContainerStyle={styles.filterScrollContent}>
 					{(() => {
 						const v = getBadgeVisuals(colors, { tone: 'neutral', size: 'md' });
 						return (
@@ -409,9 +410,11 @@ export default function ActivityScreen() {
 						);
 					})()}
 				</ScrollView>
+				</View>
+				
 
-
-				{/* Transaction Status Filters */}
+				<View>
+					{/* Transaction Status Filters */}
 				<ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterTabs} contentContainerStyle={styles.filterScrollContent}>
 					{(['completed','pending','failed','reversed'] as const).map(key => {
 						const tone = key === 'completed' ? 'success' : key === 'failed' ? 'danger' : 'warning';
@@ -429,6 +432,9 @@ export default function ActivityScreen() {
 						);
 					})}
 				</ScrollView>
+				</View>
+
+				
 
 				<View style={styles.transactionsContainer}>
 					<ScrollView
