@@ -299,6 +299,70 @@ export default function ActivityScreen() {
 
 	const filteredTransactions = getFilteredTransactions();
 
+	// Create unified, deduplicated activity list
+	const allActivities = useMemo(() => {
+		const items: Array<{
+			id: string;
+			type: 'activity' | 'transaction' | 'payment';
+			timestamp: string;
+			data: any;
+		}> = [];
+
+		// Add activity cards
+		activityCards.forEach(evt => {
+			items.push({
+				id: `activity_${evt.id}`,
+				type: 'activity',
+				timestamp: evt.timestamp,
+				data: evt
+			});
+		});
+
+		// Add filtered transactions (only if not already represented in activity)
+		filteredTransactions.forEach(tx => {
+			// Check if this transaction is already represented in activity
+			const hasActivity = activityCards.some(evt => 
+				evt.transactionId === tx.id || 
+				(evt.category === 'transaction' && evt.title.includes(tx.description))
+			);
+			if (!hasActivity) {
+				items.push({
+					id: `transaction_${tx.id}`,
+					type: 'transaction',
+					timestamp: tx.date,
+					data: tx
+				});
+			}
+		});
+
+		// Add payments (only if not already represented in activity or transactions)
+		payments.forEach(payment => {
+			const hasActivity = activityCards.some(evt => 
+				evt.transactionId === payment.id ||
+				(evt.type && evt.type.includes('payment') && evt.title.includes(payment.id.slice(-6)))
+			);
+			const hasTransaction = filteredTransactions.some(tx => tx.id === payment.id);
+			
+			if (!hasActivity && !hasTransaction) {
+				items.push({
+					id: `payment_${payment.id}`,
+					type: 'payment',
+					timestamp: payment.created || new Date().toISOString(),
+					data: payment
+				});
+			}
+		});
+
+		// Sort by timestamp (most recent first) and remove duplicates by id
+		const uniqueItems = items.filter((item, index, self) => 
+			self.findIndex(i => i.id === item.id) === index
+		);
+
+		return uniqueItems.sort((a, b) => 
+			new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+		);
+	}, [activityCards, filteredTransactions, payments]);
+
 	return (
 		<SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
 			<KeyboardAvoidingView
@@ -436,13 +500,19 @@ export default function ActivityScreen() {
 
 				
 
+				{/* Horizontal separator bar */}
+				<View style={[styles.horizontalBar, { backgroundColor: colors.border }]} />
+
 				<View style={styles.transactionsContainer}>
 					<ScrollView
 						style={styles.transactionsList}
-						showsVerticalScrollIndicator={false}
+						contentContainerStyle={styles.scrollContent}
+						showsVerticalScrollIndicator={true}
+						alwaysBounceVertical={true}
+						nestedScrollEnabled={true}
 					>
-						{/* Empty state when there are no activities/payments/transactions */}
-						{!loading && !error && activityCards.length === 0 && filteredTransactions.length === 0 && payments.length === 0 && (
+						{/* Empty state when there are no activities */}
+						{!loading && !error && allActivities.length === 0 && (
 							<View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 48 }}>
 								<Text style={{ fontSize: 18, fontWeight: '700', color: colors.textPrimary }}>No activities yet</Text>
 								<Text style={{ marginTop: 8, color: colors.textSecondary, textAlign: 'center', paddingHorizontal: 32 }}>
@@ -451,42 +521,54 @@ export default function ActivityScreen() {
 							</View>
 						)}
 
-						{/* Activity timeline events (account, card, and transaction summaries) */}
-						{activityCards.map((evt) => (
-								<ActivityLogItem key={evt.id} event={evt} themeColors={colors} onPress={(e) => { setSelected(e); setShowDetail(true); }} />
-							))}
-
-						{/* Detailed transaction list (still shown for finances) */}
-						{filteredTransactions.map((transaction) => (
-							<TransactionItem key={transaction.id} transaction={transaction} />
-						))}
-
-						{/* Payments from server */}
+						{/* Loading and Error states */}
 						{loading && (
-							<Text style={{ padding: 16, color: colors.textSecondary }}>Loading payments…</Text>
+							<Text style={{ padding: 16, color: colors.textSecondary }}>Loading activities…</Text>
 						)}
 						{error && (
 							<Text style={{ padding: 16, color: colors.negative }}>{error}</Text>
 						)}
-						{payments.map((p) => (
-							<View key={p.id} style={{ paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.card }}>
-								<Text style={{ fontWeight: '600', color: colors.textPrimary }}>Payment {p.id.slice(-6)}</Text>
-								<Text style={{ color: colors.textSecondary }}>{p.status.toUpperCase()} • {p.amount ?? '-'} {p.currency ?? ''}</Text>
-								<Text style={{ color: colors.textSecondary }}>{p.created ? new Date(p.created).toLocaleString() : ''}</Text>
-								<View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-									{p.status === 'authorized' && (
-										<TouchableOpacity onPress={() => handleCapture(p.id)} style={{ backgroundColor: colors.tintPrimary, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6 }}>
-										<Text style={{ color: '#fff', fontWeight: '600' }}>Capture</Text>
-										</TouchableOpacity>
-									)}
-									{(p.status === 'authorized' || p.status === 'captured') && (
-										<TouchableOpacity onPress={() => handleRefund(p.id)} style={{ backgroundColor: colors.negative, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6 }}>
-											<Text style={{ color: '#fff', fontWeight: '600' }}>Refund</Text>
-										</TouchableOpacity>
-									)}
-								</View>
-							</View>
-						))}
+
+						{/* Unified activity list - deduplicated and sorted */}
+						{allActivities.map((item) => {
+							if (item.type === 'activity') {
+								return (
+									<ActivityLogItem 
+										key={item.id} 
+										event={item.data} 
+										themeColors={colors} 
+										onPress={(e) => { setSelected(e); setShowDetail(true); }} 
+									/>
+								);
+							} else if (item.type === 'transaction') {
+								return (
+									<TransactionItem key={item.id} transaction={item.data} />
+								);
+							} else if (item.type === 'payment') {
+								return (
+									<View key={item.id} style={{ paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.card }}>
+										<Text style={{ fontWeight: '600', color: colors.textPrimary }}>Payment {item.data.id.slice(-6)}</Text>
+										<Text style={{ color: colors.textSecondary }}>{item.data.status.toUpperCase()} • {item.data.amount ?? '-'} {item.data.currency ?? ''}</Text>
+										<Text style={{ color: colors.textSecondary }}>{item.data.created ? new Date(item.data.created).toLocaleString() : ''}</Text>
+										<View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+											{item.data.status === 'authorized' && (
+												<TouchableOpacity onPress={() => handleCapture(item.data.id)} style={{ backgroundColor: colors.tintPrimary, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6 }}>
+												<Text style={{ color: '#fff', fontWeight: '600' }}>Capture</Text>
+												</TouchableOpacity>
+											)}
+											{(item.data.status === 'authorized' || item.data.status === 'captured') && (
+												<TouchableOpacity onPress={() => handleRefund(item.data.id)} style={{ backgroundColor: colors.negative, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6 }}>
+													<Text style={{ color: '#fff', fontWeight: '600' }}>Refund</Text>
+												</TouchableOpacity>
+											)}
+										</View>
+									</View>
+								);
+							}
+							return null;
+						})}
+
+						{/* Load more button */}
 						{nextPaymentsCursor && (
 							<View style={{ padding: 16, alignItems: 'center' }}>
 								<TouchableOpacity disabled={loadingMore} onPress={loadMorePayments} style={{ backgroundColor: colors.tintPrimary, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8, opacity: loadingMore ? 0.8 : 1 }}>
@@ -594,6 +676,10 @@ const styles = StyleSheet.create({
 	transactionsList: {
 		flex: 1,
 	},
+	scrollContent: {
+		flexGrow: 1,
+		paddingBottom: 20,
+	},
 	activityItem: {
 		paddingHorizontal: 20,
 		paddingVertical: 12,
@@ -610,5 +696,12 @@ const styles = StyleSheet.create({
 	activityMeta: {
 		fontSize: 11,
 		marginTop: 4,
+	},
+	horizontalBar: {
+		height: 2,
+		marginHorizontal: 20,
+		marginVertical: 8,
+		opacity: 0.3,
+		zIndex: 1,
 	},
 });
