@@ -120,6 +120,18 @@ const useAuthStore = create<AuthState>((set) => ({
           try {
             const jwt = await account.createJWT();
             (global as any).__APPWRITE_JWT__ = jwt?.jwt;
+            // Seed demo transactions on sign-in (idempotent if transactions exist)
+            try {
+              const { getApiBase } = require('../lib/api');
+              const url = `${getApiBase()}/v1/dev/seed-transactions`;
+              if (jwt?.jwt) {
+                await fetch(url, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt.jwt}` },
+                  body: JSON.stringify({ count: 20, skipIfNotEmpty: true })
+                }).catch(() => {});
+              }
+            } catch {}
           } catch (e) {
             // Non-fatal if JWT cannot be created
             (global as any).__APPWRITE_JWT__ = undefined;
@@ -173,6 +185,18 @@ const useAuthStore = create<AuthState>((set) => ({
           try {
             const jwt = await account.createJWT();
             (global as any).__APPWRITE_JWT__ = jwt?.jwt;
+            // Seed demo transactions on login (idempotent if transactions exist)
+            try {
+              const { getApiBase } = require('../lib/api');
+              const url = `${getApiBase()}/v1/dev/seed-transactions`;
+              if (jwt?.jwt) {
+                await fetch(url, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt.jwt}` },
+                  body: JSON.stringify({ count: 20, skipIfNotEmpty: true })
+                }).catch(() => {});
+              }
+            } catch {}
           } catch (e) {
             (global as any).__APPWRITE_JWT__ = undefined;
           }
