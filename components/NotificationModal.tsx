@@ -1,4 +1,4 @@
-import { Bell, CreditCard, TrendingUp, X, Mail, MailOpen, Trash2, Eraser } from "lucide-react-native";
+import { Bell, CreditCard, TrendingUp, X, Mail, MailOpen, Trash2, Eraser, Archive, ArchiveRestore } from "lucide-react-native";
 import ConfirmDialog from '@/components/modals/ConfirmDialog';
 import React from "react";
 import {
@@ -13,10 +13,11 @@ import {
 import { useTheme } from "@/context/ThemeContext";
 import { withAlpha } from "@/theme/color-utils";
 import { getChipStyles } from "@/theme/variants";
-import { ScrollView as GHScrollView, Swipeable, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { ScrollView as GHScrollView, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Pressable } from 'react-native';
 import CustomButton from "@/components/CustomButton";
 import { getBadgeVisuals } from "@/theme/badge-utils";
+import { useApp } from "@/context/AppContext";
 
 interface NotificationModalProps {
   visible: boolean;
@@ -28,90 +29,38 @@ export function NotificationModal({
   onClose,
 }: NotificationModalProps) {
   const { colors } = useTheme();
-  const { getApiBase } = require('../lib/api');
+  const { 
+    notifications, 
+    markNotificationRead, 
+    deleteNotification, 
+    markAllNotificationsRead, 
+    deleteAllReadNotifications, 
+    clearAllNotifications, 
+    toggleNotificationRead, 
+    markAllNotificationsUnread,
+    archiveNotification,
+    unarchiveNotification,
+    toggleNotificationArchive,
+    archiveAllReadNotifications
+  } = useApp();
 
-  type NotificationItem = {
-    id: string;
-    type: 'payment' | 'transaction' | 'statement' | 'system' | string;
-    title: string;
-    message: string;
-    createdAt: string;
-    unread: boolean;
-  };
+  const [confirm, setConfirm] = React.useState<{ 
+    visible: boolean; 
+    title: string; 
+    message: string; 
+    tone?: 'default' | 'danger' | 'success'; 
+    onConfirm?: () => void 
+  } | null>(null);
 
-  const [items, setItems] = React.useState<NotificationItem[]>([]);
-  const [nextCursor, setNextCursor] = React.useState<string | null>(null);
-  const [loading, setLoading] = React.useState(false);
-  const [loadingMore, setLoadingMore] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const [confirm, setConfirm] = React.useState<{ visible: boolean; title: string; message: string; tone?: 'default' | 'danger' | 'success'; onConfirm?: () => void } | null>(null);
-
-  const [filter, setFilter] = React.useState<'all' | 'unread' | 'payment' | 'transaction' | 'statement' | 'system'>('all');
+  const [filter, setFilter] = React.useState<'all' | 'unread' | 'archived' | 'payment' | 'transaction' | 'statement' | 'system'>('all');
+  
   const filtered = React.useMemo(() => {
-    const base = items;
-    if (filter === 'all') return base;
-    if (filter === 'unread') return base.filter(n => n.unread);
-    return base.filter(n => n.type === filter);
-  }, [items, filter]);
-
-  const PAGE_SIZE = 15;
-
-  const mapDoc = (d: any): NotificationItem => ({
-    id: d.$id,
-    type: d.type || 'system',
-    title: d.title || d.subject || 'Notification',
-    message: d.message || d.body || '',
-    createdAt: d.$createdAt || d.createdAt || new Date().toISOString(),
-    unread: d.unread !== false,
-  });
-
-  const fetchPage = async (cursor?: string) => {
-    const apiBase = getApiBase();
-    const jwt = (global as any).__APPWRITE_JWT__ || undefined;
-    const url = `${apiBase.replace(/\/$/, "")}/v1/notifications?limit=${PAGE_SIZE}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
-    const headers: any = { 'Content-Type': 'application/json', ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) };
-    const res = await fetch(url, { headers });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-    const docs = Array.isArray(data?.data) ? data.data : [];
-    const mapped: NotificationItem[] = docs.map(mapDoc);
-    return { list: mapped, next: data?.nextCursor ?? null };
-  };
-
-  const patchUnread = async (id: string, unread: boolean) => {
-    const apiBase = getApiBase();
-    const jwt = (global as any).__APPWRITE_JWT__ || undefined;
-    await fetch(`${apiBase.replace(/\/$/, "")}/v1/notifications/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) },
-      body: JSON.stringify({ unread })
-    }).then(async (r) => { await r.json().catch(() => ({})); }).catch(() => {});
-  };
-
-  const deleteOne = async (id: string) => {
-    const apiBase = getApiBase();
-    const jwt = (global as any).__APPWRITE_JWT__ || undefined;
-    await fetch(`${apiBase.replace(/\/$/, "")}/v1/notifications/${id}`, {
-      method: 'DELETE',
-      headers: { ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) },
-    }).then(async (r) => { await r.json().catch(() => ({})); }).catch(() => {});
-  };
-
-  React.useEffect(() => {
-    if (!visible) return;
-    (async () => {
-      try {
-        setLoading(true);
-        const { list, next } = await fetchPage();
-        setItems(list);
-        setNextCursor(next);
-      } catch (e: any) {
-        setError(e?.message || 'Failed to load notifications');
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [visible]);
+    const base = notifications;
+    if (filter === 'all') return base.filter(n => !n.archived);
+    if (filter === 'unread') return base.filter(n => n.unread && !n.archived);
+    if (filter === 'archived') return base.filter(n => n.archived);
+    return base.filter(n => n.type === filter && !n.archived);
+  }, [notifications, filter]);
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
@@ -124,20 +73,6 @@ export function NotificationModal({
     }
   };
 
-  React.useEffect(() => {
-    if (visible) {
-      // Auto-mark the newest 5 unread notifications as read (client-side only)
-      setItems(prev => {
-        const copy = [...prev];
-        let remaining = 5;
-        for (let i = 0; i < copy.length && remaining > 0; i++) {
-          if (copy[i].unread) { copy[i] = { ...copy[i], unread: false }; remaining--; }
-        }
-        return copy;
-      });
-    }
-  }, [visible]);
-
   return (
     <Modal
       visible={visible}
@@ -146,123 +81,116 @@ export function NotificationModal({
       onRequestClose={onClose}
     >
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <View style={[styles.container, { backgroundColor: colors.background }] }>
+        <View style={[styles.container, { backgroundColor: colors.background }]}>
           <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
             <Text style={[styles.title, { color: colors.textPrimary }]}>Notifications</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <TouchableOpacity onPress={() => {
-                setConfirm({
-                  visible: true,
-                  title: 'Mark all as read?',
-                  message: 'This will mark your latest notifications as read.',
-                  onConfirm: async () => {
-                    try {
-                      const apiBase = getApiBase();
-                      const jwt = (global as any).__APPWRITE_JWT__ || undefined;
-                      await fetch(`${apiBase.replace(/\/$/, '')}/v1/notifications/mark-all`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) },
-                        body: JSON.stringify({ unread: false })
-                      }).then(async (r) => { await r.json().catch(() => ({})); });
-                    } catch {}
-                    setItems(prev => prev.map(n => ({ ...n, unread: false })));
-                  }
-                });
-              }} style={[styles.markAllButton, { backgroundColor: colors.background, borderColor: colors.border }]}> 
-                <MailOpen color={colors.textSecondary} size={18} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <TouchableOpacity 
+                onPress={() => {
+                  setConfirm({
+                    visible: true,
+                    title: 'Mark all as read?',
+                    message: 'This will mark your latest notifications as read.',
+                    onConfirm: async () => {
+                      await markAllNotificationsRead();
+                    }
+                  });
+                }} 
+                style={[styles.markAllButton, { backgroundColor: colors.background, borderColor: colors.border }]}
+              >
+                <MailOpen color={colors.textSecondary} size={16} />
               </TouchableOpacity>
-              {process.env.EXPO_PUBLIC_APP_ENV !== 'production' && (
-                <TouchableOpacity onPress={() => {
+              
+              <TouchableOpacity 
+                onPress={() => {
                   setConfirm({
                     visible: true,
                     title: 'Mark all as unread?',
                     message: 'This will mark your latest notifications as unread.',
                     onConfirm: async () => {
-                      try {
-                        const apiBase = getApiBase();
-                        const jwt = (global as any).__APPWRITE_JWT__ || undefined;
-                        await fetch(`${apiBase.replace(/\/$/, '')}/v1/notifications/mark-all`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json', ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) },
-                          body: JSON.stringify({ unread: true })
-                        }).then(async (r) => { await r.json().catch(() => ({})); });
-                      } catch {}
-                      setItems(prev => prev.map(n => ({ ...n, unread: true })));
+                      await markAllNotificationsUnread();
                     }
                   });
-                }} style={[styles.markAllButton, { backgroundColor: colors.background, borderColor: colors.border }]}> 
-                  <Mail color={colors.textSecondary} size={18} />
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity onPress={() => {
-                setConfirm({
-                  visible: true,
-                  title: 'Delete all read notifications?',
-                  message: 'This will permanently delete all read notifications.',
-                  tone: 'danger',
-                  onConfirm: async () => {
-                    try {
-                      const apiBase = getApiBase();
-                      const jwt = (global as any).__APPWRITE_JWT__ || undefined;
-                      await fetch(`${apiBase.replace(/\/$/, '')}/v1/notifications/delete-read`, { method: 'POST', headers: { ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) } }).then(async (r) => { await r.json().catch(() => ({})); });
-                    } catch {}
-                    setItems(prev => prev.filter(n => n.unread));
-                  }
-                });
-              }} style={[styles.markAllButton, { backgroundColor: colors.background, borderColor: colors.border }]}> 
-                <Trash2 color={colors.negative} size={18} />
+                }} 
+                style={[styles.markAllButton, { backgroundColor: colors.background, borderColor: colors.border }]}
+              > 
+                <Mail color={colors.textSecondary} size={16} />
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => {
-                setConfirm({
-                  visible: true,
-                  title: 'Clear all notifications?',
-                  message: 'This will permanently delete all notifications for your account.',
-                  tone: 'danger',
-                  onConfirm: async () => {
-                    try {
-                      const apiBase = getApiBase();
-                      const jwt = (global as any).__APPWRITE_JWT__ || undefined;
-                      const res = await fetch(`${apiBase.replace(/\/$/, '')}/v1/notifications/clear`, { method: 'POST', headers: { ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) } });
-                      await res.json().catch(() => ({}));
-                    } catch {}
-                    setItems([]);
-                    setNextCursor(null);
-                  },
-                });
-              }} style={[styles.markAllButton, { backgroundColor: colors.background, borderColor: colors.border }]}> 
-                <Eraser color={colors.negative} size={18} />
+              
+              <TouchableOpacity 
+                onPress={() => {
+                  setConfirm({
+                    visible: true,
+                    title: 'Archive all read notifications?',
+                    message: 'This will archive all read notifications. You can find them in the Archived filter.',
+                    onConfirm: async () => {
+                      await archiveAllReadNotifications();
+                    }
+                  });
+                }} 
+                style={[styles.markAllButton, { backgroundColor: colors.background, borderColor: colors.border }]}
+              > 
+                <Archive color={colors.textSecondary} size={16} />
               </TouchableOpacity>
-              <TouchableOpacity onPress={onClose} style={[styles.closeButton, { backgroundColor: colors.background }]}>
-                <X color={colors.textPrimary} size={24} />
+              
+              <TouchableOpacity 
+                onPress={() => {
+                  setConfirm({
+                    visible: true,
+                    title: 'Clear all notifications?',
+                    message: 'This will permanently delete all notifications for your account.',
+                    tone: 'danger',
+                    onConfirm: async () => {
+                      await clearAllNotifications();
+                    },
+                  });
+                }} 
+                style={[styles.markAllButton, { backgroundColor: colors.background, borderColor: colors.border }]}
+              > 
+                <Eraser color={colors.negative} size={16} />
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                onPress={onClose} 
+                style={[styles.closeButton, { backgroundColor: colors.background }]}
+              >
+                <X color={colors.textPrimary} size={20} />
               </TouchableOpacity>
             </View>
           </View>
-
-          <GHScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', gap: 0, paddingHorizontal: 16, paddingVertical: 8 }}>
-            {(['all','unread','payment','transaction','statement','system'] as const).map(key => {
-              const tone = key === 'all' ? 'neutral' :
-                            key === 'unread' ? 'accent' :
-                            key === 'payment' ? 'success' :
-                            key === 'transaction' ? 'accent' :
-                            key === 'statement' ? 'neutral' :
-                            'warning';
-              const v = getBadgeVisuals(colors, { tone: tone as any, selected: filter === key, size: 'sm' });
-              const label = key[0].toUpperCase() + key.slice(1);
-              return (
-                <View key={key} style={{ marginRight: 5 }}>
-                  <CustomButton
-                    onPress={() => setFilter(key)}
-                    title={label}
-                    size="sm"
-                    isFilterAction
-                    variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
-                    style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1 }}
-                    textStyle={{ color: v.textColor }}
-                  />
-                </View>
-              );
-            })}
-          </GHScrollView>
+				
+					<View>
+						<GHScrollView 
+							horizontal 
+							showsHorizontalScrollIndicator={false} 
+							contentContainerStyle={{ flexDirection: 'row', gap: 0, paddingHorizontal: 16, paddingVertical: 8 }}
+						>
+							{(['all','unread','archived','payment','transaction','statement','system'] as const).map(key => {
+								const tone = key === 'all' ? 'neutral' :
+									key === 'unread' ? 'accent' :
+										key === 'archived' ? 'neutral' :
+											key === 'payment' ? 'success' :
+												key === 'transaction' ? 'accent' :
+													key === 'statement' ? 'neutral' :
+														'warning';
+								const v = getBadgeVisuals(colors, { tone: tone as any, selected: filter === key, size: 'sm' });
+								const label = key[0].toUpperCase() + key.slice(1);
+								return (
+									<View key={key} style={{ marginRight: 5 }}>
+										<CustomButton
+											onPress={() => setFilter(key)}
+											title={label}
+											size="sm"
+											isFilterAction
+											variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
+											style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1 }}
+											textStyle={{ color: v.textColor }}
+										/>
+									</View>
+								);
+							})}
+						</GHScrollView>
+					</View>
 
           <ScrollView
             style={styles.notificationsList}
@@ -272,84 +200,80 @@ export function NotificationModal({
               <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 48 }}>
                 <Text style={{ fontSize: 18, fontWeight: '700', color: colors.textPrimary }}>No notifications</Text>
                 <Text style={{ marginTop: 8, color: colors.textSecondary, textAlign: 'center', paddingHorizontal: 32 }}>
-                  {items.length === 0 ? 'You’ll see alerts about payments, cards, and account updates here.' : 'No items match this filter.'}
+                  {notifications.length === 0 ? 'You\'ll see alerts about payments, cards, and account updates here.' : 'No items match this filter.'}
                 </Text>
               </View>
             ) : (
               filtered.map((notification) => (
-                <Swipeable
+                <TouchableOpacity
                   key={notification.id}
-                  renderRightActions={() => (
-                    <View style={{ flexDirection: 'row', alignItems: 'stretch' }}>
-                      <TouchableOpacity onPress={async () => { const nowUnread = !notification.unread; setItems(prev => prev.map(n => n.id === notification.id ? { ...n, unread: nowUnread } : n)); await patchUnread(notification.id, nowUnread); }} style={[styles.swipeAction, { backgroundColor: colors.tintPrimary }]}> 
-                        {notification.unread ? <MailOpen color="#fff" size={18} /> : <Mail color="#fff" size={18} />}
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={() => {
-                        setConfirm({
-                          visible: true,
-                          title: 'Delete this notification?',
-                          message: 'This item will be permanently removed.',
-                          onConfirm: async () => {
-                            setItems(prev => prev.filter(n => n.id !== notification.id));
-                            await deleteOne(notification.id);
-                          }
-                        });
-                      }} style={[styles.swipeAction, { backgroundColor: colors.negative }]}> 
-                        <Trash2 color="#fff" size={18} />
-                      </TouchableOpacity>
-                    </View>
-                  )}
+                  style={[styles.notificationItem, { backgroundColor: colors.card }]}
+                  onPress={async () => { 
+                    if (notification.unread) await markNotificationRead(notification.id); 
+                  }}
+                  onLongPress={async () => { 
+                    await toggleNotificationRead(notification.id); 
+                  }}
                 >
-                  <TouchableOpacity
-                    style={[styles.notificationItem, { backgroundColor: colors.card }]}
-                    onPress={async () => { setItems(prev => prev.map(n => n.id === notification.id ? { ...n, unread: false } : n)); await patchUnread(notification.id, false); }}
-                    onLongPress={async () => { const nowUnread = !notification.unread; setItems(prev => prev.map(n => n.id === notification.id ? { ...n, unread: nowUnread } : n)); await patchUnread(notification.id, nowUnread); }}
-                  >
-                    <View style={[styles.notificationIcon, { backgroundColor: colors.background }]}> 
-                      {getNotificationIcon(notification.type as string)}
-                    </View>
-                    <View style={styles.notificationContent}>
-                      <View style={styles.notificationHeader}>
-                        <Text style={[styles.notificationTitle, { color: colors.textPrimary }]}>
-                          {notification.title}
-                        </Text>
-                        {notification.unread && <View style={[styles.unreadDot, { backgroundColor: colors.tintPrimary }]} />}
-                      </View>
-                      <Text style={[styles.notificationMessage, { color: colors.textSecondary }]}>
-                        {notification.message}
+                  <View style={[styles.notificationIcon, { backgroundColor: colors.background }]}> 
+                    {getNotificationIcon(notification.type as string)}
+                  </View>
+                  <View style={styles.notificationContent}>
+                    <View style={styles.notificationHeader}>
+                      <Text style={[styles.notificationTitle, { color: colors.textPrimary }]}>
+                        {notification.title}
                       </Text>
-                      <Text style={[styles.notificationTime, { color: colors.textSecondary }]}>
-                    {notification.createdAt ? new Date(notification.createdAt).toLocaleString() : ''}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            </Swipeable>
-          ))
-        )}
-        {nextCursor && (
-              <View style={{ padding: 16, alignItems: 'center' }}>
-                <TouchableOpacity onPress={async () => {
-                  try {
-                    setLoadingMore(true);
-                    const { list, next } = await fetchPage(nextCursor);
-                    setItems(prev => {
-                      const seen = new Set(prev.map(n => n.id));
-                      const merged = [...prev];
-                      for (const it of list) if (!seen.has(it.id)) merged.push(it);
-                      return merged;
-                    });
-                    setNextCursor(next);
-                  } catch (e: any) {
-                    setError(e?.message || 'Failed to load notifications');
-                  } finally {
-                    setLoadingMore(false);
-                  }
-                }} style={{ backgroundColor: colors.tintPrimary, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8, opacity: loadingMore ? 0.8 : 1 }}>
-                  <Text style={{ color: '#fff', fontWeight: '700' }}>{loadingMore ? 'Loading…' : 'Load more'}</Text>
+                      {notification.unread && <View style={[styles.unreadDot, { backgroundColor: colors.tintPrimary }]} />}
+                    </View>
+                    <Text style={[styles.notificationMessage, { color: colors.textSecondary }]}>
+                      {notification.message}
+                    </Text>
+                    <Text style={[styles.notificationTime, { color: colors.textSecondary }]}>
+                      {notification.createdAt ? new Date(notification.createdAt).toLocaleString() : ''}
+                    </Text>
+                    
+                    {/* Individual Action Buttons */}
+                    <View style={styles.actionButtons}>
+                      <TouchableOpacity
+                        onPress={() => {
+                          setConfirm({
+                            visible: true,
+                            title: notification.archived ? 'Unarchive this notification?' : 'Archive this notification?',
+                            message: notification.archived ? 'This notification will be moved back to your active notifications.' : 'This notification will be archived and moved out of your main list.',
+                            tone: notification.archived ? 'success' : 'default',
+                            onConfirm: async () => {
+                              await toggleNotificationArchive(notification.id);
+                            }
+                          });
+                        }}
+                        style={[styles.actionButton, { backgroundColor: colors.background, borderColor: colors.border }]}
+                      >
+                        {notification.archived ? <ArchiveRestore color={colors.textSecondary} size={16} /> : <Archive color={colors.textSecondary} size={16} />}
+                      </TouchableOpacity>
+                      
+                      <TouchableOpacity
+                        onPress={() => {
+                          setConfirm({
+                            visible: true,
+                            title: 'Delete this notification?',
+                            message: 'This item will be permanently removed.',
+                            tone: 'danger',
+                            onConfirm: async () => {
+                              await deleteNotification(notification.id);
+                            }
+                          });
+                        }}
+                        style={[styles.actionButton, { backgroundColor: colors.background, borderColor: colors.border }]}
+                      >
+                        <Trash2 color={colors.negative} size={16} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
                 </TouchableOpacity>
-              </View>
+              ))
             )}
           </ScrollView>
+          
           {/* Confirm Dialog */}
           <ConfirmDialog
             visible={Boolean(confirm?.visible)}
@@ -358,7 +282,13 @@ export function NotificationModal({
             confirmText="Confirm"
             cancelText="Cancel"
             tone={confirm?.tone || 'default'}
-            onConfirm={() => { try { confirm?.onConfirm?.(); } finally { setConfirm(null); } }}
+            onConfirm={() => { 
+              try { 
+                confirm?.onConfirm?.(); 
+              } finally { 
+                setConfirm(null); 
+              } 
+            }}
             onCancel={() => setConfirm(null)}
           />
         </View>
@@ -397,10 +327,14 @@ const styles = StyleSheet.create({
     paddingTop: 16,
   },
   markAllButton: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 6,
     paddingVertical: 6,
     borderRadius: 8,
     borderWidth: 1,
+    minWidth: 32,
+    minHeight: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   filterChip: {
     paddingHorizontal: 10,
@@ -420,17 +354,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 2,
-  },
-  swipeAction: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    marginVertical: 6,
-    borderRadius: 8,
-  },
-  swipeActionText: {
-    color: '#fff',
-    fontWeight: '700',
   },
   notificationIcon: {
     width: 40,
@@ -464,5 +387,21 @@ const styles = StyleSheet.create({
   },
   notificationTime: {
     fontSize: 12,
+    marginBottom: 8,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  actionButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

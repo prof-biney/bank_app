@@ -43,12 +43,31 @@ export function TransactionItem({ transaction }: TransactionItemProps) {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-      <View style={styles.iconContainer}>{getTransactionIcon()}</View>
+    <View style={[styles.container, { 
+      backgroundColor: colors.card,
+      shadowColor: colors.textPrimary,
+    }]}>
+      <View style={[styles.iconContainer, { backgroundColor: colors.background }]}>{getTransactionIcon()}</View>
 
       <View style={styles.details}>
-        <Text style={[styles.description, { color: colors.textPrimary }]}>{transaction.description}</Text>
-        <Text style={[styles.category, { color: colors.textSecondary }]}>{transaction.category}</Text>
+        <Text 
+          style={[styles.description, { color: colors.textPrimary }]}
+          numberOfLines={1}
+          ellipsizeMode="tail"
+          adjustsFontSizeToFit
+          minimumFontScale={0.7}
+        >
+          {transaction.description}
+        </Text>
+        <Text 
+          style={[styles.category, { color: colors.textSecondary }]}
+          numberOfLines={1}
+          ellipsizeMode="tail"
+          adjustsFontSizeToFit
+          minimumFontScale={0.8}
+        >
+          {transaction.category}
+        </Text>
       </View>
 
       <View style={styles.amountContainer}>
@@ -67,13 +86,22 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 16,
-    paddingHorizontal: 20,
-    borderBottomWidth: 1,
+    paddingHorizontal: 16,
+    marginHorizontal: 16,
+    marginVertical: 6,
+    borderRadius: 12,
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   iconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,

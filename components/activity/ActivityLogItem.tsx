@@ -53,14 +53,32 @@ export default function ActivityLogItem({ event, themeColors, onPress }: { event
   const categoryText = event.tags?.[0] ?? event.category.charAt(0).toUpperCase() + event.category.slice(1);
 
   return (
-    <TouchableOpacity style={[styles.container, { backgroundColor: themeColors.card, borderBottomColor: themeColors.border }]} onPress={() => onPress?.(event)}>
+    <TouchableOpacity 
+      style={[styles.container, { 
+        backgroundColor: themeColors.card,
+        shadowColor: themeColors.textPrimary,
+      }]} 
+      onPress={() => onPress?.(event)}
+    >
       <View style={[styles.iconContainer, { backgroundColor: themeColors.background }]}>{getIcon()}</View>
 
       <View style={styles.details}>
-        <Text style={[styles.description, { color: themeColors.textPrimary }]} numberOfLines={1}>
+        <Text 
+          style={[styles.description, { color: themeColors.textPrimary }]} 
+          numberOfLines={1}
+          ellipsizeMode="tail"
+          adjustsFontSizeToFit
+          minimumFontScale={0.7}
+        >
           {event.title}
         </Text>
-        <Text style={[styles.category, { color: themeColors.textSecondary }]} numberOfLines={1}>
+        <Text 
+          style={[styles.category, { color: themeColors.textSecondary }]} 
+          numberOfLines={1}
+          ellipsizeMode="tail"
+          adjustsFontSizeToFit
+          minimumFontScale={0.8}
+        >
           {categoryText}
         </Text>
       </View>
@@ -82,13 +100,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 16,
-    paddingHorizontal: 20,
-    borderBottomWidth: 1,
+    paddingHorizontal: 16,
+    marginHorizontal: 16,
+    marginVertical: 6,
+    borderRadius: 12,
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   iconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
