@@ -3,6 +3,8 @@ export interface User {
   email: string;
   name: string;
   createdAt: string;
+  avatar?: string; // URL of the profile picture or initials avatar
+  avatarFileId?: string; // Appwrite storage file ID for uploaded profile pictures
 }
 
 export interface Card {
@@ -46,5 +48,6 @@ export interface Notification {
   message: string;
   type?: 'payment' | 'transaction' | 'statement' | 'system';
   unread?: boolean;
+  archived?: boolean;
   createdAt?: string; // ISO timestamp
 }
