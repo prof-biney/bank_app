@@ -199,7 +199,96 @@ v1.delete('/cards/:id', appwriteAuth, async (c) => {
   return c.json({ ok: true });
 });
 
-// Payments: list (paginated + optional status/type filters)
+// Transactions: list (paginated + optional status/type filters) - All transaction types
+v1.get('/transactions', appwriteAuth, async (c) => {
+  const user = c.get('user') as { $id: string };
+  const { databases } = createDb();
+  const databaseId = process.env.APPWRITE_DATABASE_ID!;
+  const txCol = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID!;
+  const cardsCol = process.env.APPWRITE_CARDS_COLLECTION_ID!;
+  if (!txCol) return c.json({ error: 'server_missing_transactions_collection' }, 500);
+
+  const limitRaw = Number(c.req.query('limit') || '20');
+  const limit = Math.min(Math.max(limitRaw, 1), 100);
+  const cursor = c.req.query('cursor') || undefined;
+  const statusParam = c.req.query('status') || '';
+  const typeParam = c.req.query('type') || '';
+  const cardIdParam = c.req.query('cardId') || '';
+
+  const queries: any[] = [
+    Query.equal('userId', user.$id),
+    Query.orderDesc('$createdAt'),
+    Query.limit(limit),
+  ];
+  
+  // Filter by transaction type if specified
+  const types = typeParam.split(',').map(s => s.trim()).filter(Boolean);
+  if (types.length > 0) {
+    queries.push(Query.equal('type', types.length === 1 ? types[0] : types));
+  }
+  
+  // Filter by status if specified
+  const statuses = statusParam.split(',').map(s => s.trim()).filter(Boolean);
+  if (statuses.length > 0) {
+    queries.push(Query.equal('status', statuses.length === 1 ? statuses[0] : statuses));
+  }
+  
+  // Filter by card ID if specified
+  if (cardIdParam) {
+    queries.push(Query.equal('cardId', cardIdParam));
+  }
+  
+  if (cursor) queries.push(Query.cursorAfter(cursor));
+
+  const list = await databases.listDocuments(databaseId, txCol, queries);
+  const docs = list.documents || [];
+  
+  // Transform database records to match frontend Transaction interface
+  const data = await Promise.all(docs.map(async (d: any) => {
+    let cardInfo = null;
+    
+    // Try to get card info for transactions that have cardId or source (token)
+    if (cardsCol && (d.cardId || d.source)) {
+      try {
+        let cardQuery = [];
+        if (d.cardId) {
+          cardQuery = [Query.equal('userId', user.$id)];
+          const card = await databases.getDocument(databaseId, cardsCol, d.cardId).catch(() => null);
+          if (card && card.userId === user.$id) cardInfo = card;
+        } else if (d.source) {
+          // Find card by token for older payment transactions
+          const cardList = await databases.listDocuments(databaseId, cardsCol, [
+            Query.equal('token', d.source),
+            Query.equal('userId', user.$id),
+            Query.limit(1)
+          ]);
+          cardInfo = (cardList.documents || [])[0] || null;
+        }
+      } catch {
+        // Ignore card lookup errors
+      }
+    }
+
+    return {
+      id: d.$id,
+      userId: d.userId,
+      cardId: d.cardId || cardInfo?.$id || '',
+      type: d.type || 'payment',
+      amount: typeof d.amount === 'number' ? Math.abs(d.amount) : 0,
+      description: d.description || `${(d.type || 'payment').charAt(0).toUpperCase()}${(d.type || 'payment').slice(1)}`,
+      recipient: d.recipient || undefined,
+      category: d.type || 'general',
+      date: d.$createdAt || d.createdAt || new Date().toISOString(),
+      status: (d.status === 'captured' || d.status === 'completed') ? 'completed' as const : 
+              (d.status === 'failed') ? 'failed' as const : 'pending' as const
+    };
+  }));
+  
+  const nextCursor = docs.length === limit ? docs[docs.length - 1].$id : null;
+  return c.json({ data, nextCursor });
+});
+
+// Payments: list (paginated + optional status/type filters) - Legacy endpoint
 v1.get('/payments', appwriteAuth, async (c) => {
   const user = c.get('user') as { $id: string };
   const { databases } = createDb();
@@ -577,6 +666,49 @@ v1.post('/dev/seed-transactions', appwriteAuth, async (c) => {
   }
 
   return c.json({ ok: true, seeded });
+});
+
+// Notifications: create new notification
+v1.post('/notifications', appwriteAuth, async (c) => {
+  const user = c.get('user') as { $id: string };
+  const { databases } = createDb();
+  const databaseId = process.env.APPWRITE_DATABASE_ID!;
+  const notifCol = process.env.APPWRITE_NOTIFICATIONS_COLLECTION_ID;
+  if (!notifCol) return c.json({ error: 'server_missing_notifications_collection' }, 500);
+  
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const parsed = z.object({ 
+      type: z.string().default('system'),
+      title: z.string().min(1).max(255),
+      message: z.string().min(1).max(1000),
+      unread: z.boolean().default(true)
+    }).safeParse(body);
+    
+    if (!parsed.success) {
+      return c.json({ error: 'validation_error', details: parsed.error.flatten() }, 400);
+    }
+    
+    const doc = await databases.createDocument(databaseId, notifCol, ID.unique(), {
+      userId: user.$id,
+      type: parsed.data.type,
+      title: parsed.data.title,
+      message: parsed.data.message,
+      unread: parsed.data.unread
+    });
+    
+    return c.json({ 
+      id: doc.$id, 
+      type: doc.type,
+      title: doc.title,
+      message: doc.message,
+      unread: doc.unread,
+      createdAt: doc.$createdAt
+    });
+  } catch (e: any) {
+    console.error('[notifications.create] error', { userId: user.$id, error: e?.message });
+    return c.json({ error: 'server_error', message: e?.message }, 500);
+  }
 });
 
 // Notifications: clear all for current user
