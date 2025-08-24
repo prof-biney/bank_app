@@ -1,4 +1,4 @@
-import { Filter, ArrowDownLeft, ArrowUpRight, User, CreditCard as CardIcon } from "lucide-react-native";
+import { Filter, ArrowDownLeft, ArrowUpRight, User, CreditCard as CardIcon, CreditCard } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import { 
 	KeyboardAvoidingView,
@@ -147,7 +147,7 @@ export default function ActivityScreen() {
 	const [dateFilter, setDateFilter] = useState("all");
 	const [filters, setFilters] = useState({ income: true, expense: true, account: true, card: true });
 	const [typeFilter, setTypeFilter] = useState({ deposit: true, transfer: true, withdraw: true, payment: true });
-	const [statusFilter, setStatusFilter] = useState({ completed: true, pending: true, failed: true, reversed: true });
+	const [statusFilter, setStatusFilter] = useState({ completed: true, pending: true, failed: true, reversed: true, info: true });
 
 	React.useEffect(() => {
 		(async () => {
@@ -206,7 +206,8 @@ export default function ActivityScreen() {
 	const toggleStatus = (key: keyof typeof statusFilter) => {
 		setStatusFilter(prev => {
 			const next = { ...prev, [key]: !prev[key] };
-			if (!next.completed && !next.pending && !next.failed && !next.reversed) {
+			// Enforce at least one status filter is on
+			if (!next.completed && !next.pending && !next.failed && !next.reversed && !next.info) {
 				return prev;
 			}
 			return next;
@@ -261,15 +262,23 @@ export default function ActivityScreen() {
 
 	const activityCards = useMemo(() => {
 		const events: ActivityEvent[] = activity.filter((evt) => {
+			// Apply category filters
 			if (evt.category === 'transaction') {
 				const amt = typeof evt.amount === 'number' ? evt.amount : 0;
-				if (amt > 0) return filters.income;
-				if (amt < 0) return filters.expense;
+				if (amt > 0 && !filters.income) return false;
+				if (amt < 0 && !filters.expense) return false;
 				// If no amount, include if either income or expense is on
-				return filters.income || filters.expense;
+				if (amt === 0 && !filters.income && !filters.expense) return false;
 			}
-			if (evt.category === 'account') return filters.account;
-			if (evt.category === 'card') return filters.card;
+			if (evt.category === 'account' && !filters.account) return false;
+			if (evt.category === 'card' && !filters.card) return false;
+
+			// Apply status filters
+			if (evt.status) {
+				const eventStatus = evt.status;
+				if (!(statusFilter as any)[eventStatus]) return false;
+			}
+
 			return true;
 		});
 
@@ -292,7 +301,7 @@ export default function ActivityScreen() {
 		};
 
 		return events.filter((e) => inRange(e.timestamp));
-	}, [activity, filters, dateFilter]);
+	}, [activity, filters, dateFilter, statusFilter]);
 
 	const [selected, setSelected] = useState<ActivityEvent | null>(null);
 	const [showDetail, setShowDetail] = useState(false);
@@ -478,24 +487,54 @@ export default function ActivityScreen() {
 				
 
 				<View>
-					{/* Transaction Status Filters */}
-				<ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterTabs} contentContainerStyle={styles.filterScrollContent}>
-					{(['completed','pending','failed','reversed'] as const).map(key => {
-						const tone = key === 'completed' ? 'success' : key === 'failed' ? 'danger' : 'warning';
-						const v = getBadgeVisuals(colors, { tone: tone as any, selected: statusFilter[key], size: 'sm' });
-						const title = key[0].toUpperCase() + key.slice(1);
-						return (
-							<View key={key} style={{ marginRight: 5 }}>
-								<CustomButton size="sm" isFilterAction variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
-									onPress={() => toggleStatus(key)}
-									title={title}
-									style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1 }}
-									textStyle={{ color: v.textColor }}
-								/>
-							</View>
-						);
-					})}
-				</ScrollView>
+				{/* Activity Status Filters */}
+				<View style={{ marginBottom: 10 }}>
+					<ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterTabs} contentContainerStyle={styles.filterScrollContent}>
+						{(['completed','pending','failed','reversed','info'] as const).map(key => {
+							const tone = key === 'completed' ? 'success' : 
+										key === 'failed' ? 'danger' : 
+										key === 'reversed' ? 'warning' :
+										key === 'info' ? 'accent' : 'warning';
+							const isSelected = (statusFilter as any)[key] !== false;
+							const v = getBadgeVisuals(colors, { tone: tone as any, selected: isSelected, size: 'sm' });
+							const title = key === 'reversed' ? 'Refunded' : key[0].toUpperCase() + key.slice(1);
+							return (
+								<View key={key} style={{ marginRight: 5 }}>
+									<CustomButton 
+										size="sm" 
+										isFilterAction 
+										variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
+										onPress={() => toggleStatus(key)}
+										title={title}
+										style={{ 
+											backgroundColor: v.backgroundColor, 
+											borderColor: v.borderColor, 
+											borderWidth: 1 
+										}}
+										textStyle={{ color: v.textColor }}
+									/>
+								</View>
+							);
+						})}
+						
+						{/* Clear All Status Filters Button */}
+						<View style={{ marginRight: 5 }}>
+							<CustomButton 
+								size="sm" 
+								isFilterAction 
+								variant="secondary"
+								onPress={() => setStatusFilter({ completed: true, pending: true, failed: true, reversed: true, info: true })}
+								title="All Status"
+								style={{ 
+									backgroundColor: colors.card, 
+									borderColor: colors.border, 
+									borderWidth: 1 
+								}}
+								textStyle={{ color: colors.textSecondary }}
+							/>
+						</View>
+					</ScrollView>
+				</View>
 				</View>
 
 				
@@ -546,19 +585,27 @@ export default function ActivityScreen() {
 								);
 							} else if (item.type === 'payment') {
 								return (
-									<View key={item.id} style={{ paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.card }}>
-										<Text style={{ fontWeight: '600', color: colors.textPrimary }}>Payment {item.data.id.slice(-6)}</Text>
-										<Text style={{ color: colors.textSecondary }}>{item.data.status.toUpperCase()} • {item.data.amount ?? '-'} {item.data.currency ?? ''}</Text>
-										<Text style={{ color: colors.textSecondary }}>{item.data.created ? new Date(item.data.created).toLocaleString() : ''}</Text>
-										<View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+									<View key={item.id} style={[styles.paymentCard, { 
+										backgroundColor: colors.card,
+										shadowColor: colors.textPrimary,
+									}]}>
+										<View style={[styles.paymentIconContainer, { backgroundColor: colors.background }]}>
+											<CreditCard color={colors.tintPrimary} size={20} />
+										</View>
+										<View style={styles.paymentDetails}>
+											<Text style={[styles.paymentTitle, { color: colors.textPrimary }]}>Payment {item.data.id.slice(-6)}</Text>
+											<Text style={[styles.paymentSubtitle, { color: colors.textSecondary }]}>{item.data.status.toUpperCase()} • {item.data.amount ?? '-'} {item.data.currency ?? ''}</Text>
+											<Text style={[styles.paymentDate, { color: colors.textSecondary }]}>{item.data.created ? new Date(item.data.created).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}</Text>
+										</View>
+										<View style={styles.paymentActions}>
 											{item.data.status === 'authorized' && (
-												<TouchableOpacity onPress={() => handleCapture(item.data.id)} style={{ backgroundColor: colors.tintPrimary, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6 }}>
-												<Text style={{ color: '#fff', fontWeight: '600' }}>Capture</Text>
+												<TouchableOpacity onPress={() => handleCapture(item.data.id)} style={[styles.actionButton, { backgroundColor: colors.tintPrimary }]}>
+													<Text style={styles.actionButtonText}>Capture</Text>
 												</TouchableOpacity>
 											)}
 											{(item.data.status === 'authorized' || item.data.status === 'captured') && (
-												<TouchableOpacity onPress={() => handleRefund(item.data.id)} style={{ backgroundColor: colors.negative, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6 }}>
-													<Text style={{ color: '#fff', fontWeight: '600' }}>Refund</Text>
+												<TouchableOpacity onPress={() => handleRefund(item.data.id)} style={[styles.actionButton, { backgroundColor: colors.negative, marginTop: 4 }]}>
+													<Text style={styles.actionButtonText}>Refund</Text>
 												</TouchableOpacity>
 											)}
 										</View>
@@ -703,5 +750,59 @@ const styles = StyleSheet.create({
 		marginVertical: 8,
 		opacity: 0.3,
 		zIndex: 1,
+	},
+	paymentCard: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		paddingVertical: 16,
+		paddingHorizontal: 16,
+		marginHorizontal: 16,
+		marginVertical: 6,
+		borderRadius: 12,
+		shadowOffset: {
+			width: 0,
+			height: 2,
+		},
+		shadowOpacity: 0.1,
+		shadowRadius: 4,
+		elevation: 3,
+	},
+	paymentIconContainer: {
+		width: 44,
+		height: 44,
+		borderRadius: 22,
+		justifyContent: 'center',
+		alignItems: 'center',
+		marginRight: 12,
+	},
+	paymentDetails: {
+		flex: 1,
+	},
+	paymentTitle: {
+		fontSize: 16,
+		fontWeight: '600',
+		marginBottom: 4,
+	},
+	paymentSubtitle: {
+		fontSize: 14,
+		marginBottom: 4,
+	},
+	paymentDate: {
+		fontSize: 12,
+	},
+	paymentActions: {
+		alignItems: 'flex-end',
+	},
+	actionButton: {
+		paddingVertical: 6,
+		paddingHorizontal: 12,
+		borderRadius: 6,
+		minWidth: 70,
+		alignItems: 'center',
+	},
+	actionButtonText: {
+		color: '#fff',
+		fontSize: 12,
+		fontWeight: '600',
 	},
 });
