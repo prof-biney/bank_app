@@ -204,27 +204,31 @@ export default function CardsScreen() {
           {cards.length > 0 && <AddCardButton />}
         </View>
 
-          <ScrollView
-            style={styles.cardsContainer}
-            showsVerticalScrollIndicator={false}
-          >
-            {isLoadingCards && cards.length === 0 ? (
-              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 }}>
-                <ActivityIndicator size="large" color={colors.tintPrimary} />
-                <Text style={{ marginTop: 12, color: colors.textSecondary }}>Loading cards...</Text>
+        <ScrollView
+          style={styles.cardsContainer}
+          contentContainerStyle={styles.cardsContent}
+          showsVerticalScrollIndicator={true}
+          bounces={true}
+          alwaysBounceVertical={false}
+        >
+          {isLoadingCards && cards.length === 0 ? (
+            <View style={styles.centerContent}>
+              <ActivityIndicator size="large" color={colors.tintPrimary} />
+              <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading cards...</Text>
+            </View>
+          ) : cards.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>No cards yet</Text>
+              <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
+                Add your first card to start making payments and tracking activity.
+              </Text>
+              <View style={styles.emptyButton}>
+                <AddCardButton />
               </View>
-            ) : cards.length === 0 ? (
-              <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 48 }}>
-                <Text style={{ fontSize: 18, fontWeight: '700', color: colors.textPrimary }}>No cards yet</Text>
-                <Text style={{ marginTop: 8, color: colors.textSecondary, textAlign: 'center', paddingHorizontal: 32 }}>
-                  Add your first card to start making payments and tracking activity.
-                </Text>
-                <View style={{ marginTop: 16 }}>
-                  <AddCardButton />
-                </View>
-              </View>
-            ) : (
-              cards.map((card) => (
+            </View>
+          ) : (
+            <>
+              {cards.map((card) => (
                 <View key={card.id} style={styles.cardWrapper}>
                   <BankCard
                     card={card}
@@ -233,9 +237,10 @@ export default function CardsScreen() {
                     onDelete={() => handleDelete(card.id)}
                   />
                 </View>
-              ))
-            )}
-          </ScrollView>
+              ))}
+            </>
+          )}
+        </ScrollView>
       </KeyboardAvoidingView>
       <ConfirmDialog
         visible={confirmVisible}
@@ -283,8 +288,41 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 20,
   },
+  cardsContent: {
+    paddingBottom: 20,
+    flexGrow: 1,
+  },
   cardWrapper: {
     alignItems: "center",
     marginBottom: 20,
+  },
+  centerContent: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 40,
+  },
+  loadingText: {
+    marginTop: 12,
+  },
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    paddingHorizontal: 20,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    marginTop: 8,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  emptyButton: {
+    marginTop: 24,
   },
 });

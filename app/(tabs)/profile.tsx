@@ -4,9 +4,8 @@ import {
   CircleHelp as HelpCircle,
   LogOut,
   Settings,
-  User as UserIcon,
 } from "lucide-react-native";
-import React from "react";
+import React, { useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -19,9 +18,13 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useTheme } from "@/context/ThemeContext";
+import { ProfilePicture } from "@/components/ProfilePicture";
+import { ImagePickerModal } from "@/components/ImagePickerModal";
 
 export default function ProfileScreen() {
-  const { user, logout } = useAuthStore();
+  const { user, logout, updateProfilePicture, isLoading } = useAuthStore();
+  const [showImagePicker, setShowImagePicker] = useState(false);
+  const [isUpdatingPicture, setIsUpdatingPicture] = useState(false);
 
   const handleSignOut = () => {
     Alert.alert("Sign Out", "Are you sure you want to sign out?", [
@@ -45,6 +48,26 @@ export default function ProfileScreen() {
     router.push("/help-support");
   };
 
+  const handleProfilePicturePress = () => {
+    setShowImagePicker(true);
+  };
+
+  const handleImageSelected = async (imageUri: string) => {
+    try {
+      setIsUpdatingPicture(true);
+      await updateProfilePicture(imageUri);
+      Alert.alert('Success', 'Profile picture updated successfully!');
+    } catch (error) {
+      console.error('Profile picture update error:', error);
+      Alert.alert(
+        'Error',
+        error instanceof Error ? error.message : 'Failed to update profile picture'
+      );
+    } finally {
+      setIsUpdatingPicture(false);
+    }
+  };
+
   const { colors } = useTheme();
 
   return (
@@ -58,9 +81,15 @@ export default function ProfileScreen() {
         </View>
 
         <View style={[styles.userSection, { backgroundColor: colors.card }]}>
-          <View style={[styles.avatar, { backgroundColor: colors.background }]}>
-            <UserIcon color={colors.tintPrimary} size={32} />
-          </View>
+          <ProfilePicture
+            name={user?.name}
+            imageUrl={user?.avatar}
+            size="large"
+            editable
+            loading={isUpdatingPicture}
+            onPress={handleProfilePicturePress}
+            style={styles.profilePicture}
+          />
           <Text style={[styles.userName, { color: colors.textPrimary }]}>{user?.name}</Text>
           <Text style={[styles.userEmail, { color: colors.textSecondary }]}>{user?.email}</Text>
         </View>
@@ -90,6 +119,12 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+      
+      <ImagePickerModal
+        visible={showImagePicker}
+        onClose={() => setShowImagePicker(false)}
+        onImageSelected={handleImageSelected}
+      />
     </SafeAreaView>
   );
 }
@@ -125,12 +160,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    justifyContent: "center",
-    alignItems: "center",
+  profilePicture: {
     marginBottom: 16,
   },
   userName: {

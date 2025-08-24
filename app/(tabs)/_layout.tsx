@@ -23,7 +23,7 @@ export default function TabLayout() {
           paddingBottom: 20 + insets.bottom,
           paddingTop: 8,
           position: "absolute",
-          bottom: 0,
+          bottom: -35,
           left: 0,
           right: 0,
         },

@@ -23,6 +23,7 @@ import { DateFilterModal } from "../../components/DateFilterModal";
 import { NotificationModal } from "../../components/NotificationModal";
 import { QuickAction } from "../../components/QuickAction";
 import { TransactionItem } from "../../components/TransactionItem";
+import { ProfilePicture } from "../../components/ProfilePicture";
 import { useApp } from "../../context/AppContext";
 
 import { useTheme } from "@/context/ThemeContext";
@@ -35,7 +36,17 @@ export default function HomeScreen() {
 
   const { user } = useAuthStore();
   const { notifications } = useApp();
-  const unreadCount = React.useMemo(() => notifications.filter(n => n.unread).length, [notifications]);
+  const unreadCount = React.useMemo(() => {
+    const unreadNotifications = notifications.filter(n => n.unread && !n.archived);
+    const count = unreadNotifications.length;
+    console.log('[HomeScreen] Notification count calculation:', {
+      totalNotifications: notifications.length,
+      unreadCount: count,
+      unreadNotifications: unreadNotifications,
+      allNotifications: notifications,
+    });
+    return count;
+  }, [notifications]);
 
   const getFilteredTransactions = () => {
     const now = new Date();
@@ -97,9 +108,17 @@ export default function HomeScreen() {
       >
         <ScrollView showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
-            <View>
-            <Text style={[styles.greeting, { color: colors.textSecondary }]}>Welcome back!</Text>
-              <Text style={[styles.userName, { color: colors.textPrimary }]}>{user?.name}</Text>
+            <View style={styles.headerLeft}>
+              <ProfilePicture
+                name={user?.name}
+                imageUrl={user?.avatar}
+                size="medium"
+                style={styles.headerProfilePicture}
+              />
+              <View style={styles.greetingContainer}>
+                <Text style={[styles.greeting, { color: colors.textSecondary }]}>Welcome back!</Text>
+                <Text style={[styles.userName, { color: colors.textPrimary }]}>{user?.name}</Text>
+              </View>
             </View>
             <TouchableOpacity
               style={[styles.notificationButton, { backgroundColor: colors.card }]}
@@ -174,12 +193,29 @@ export default function HomeScreen() {
               showsVerticalScrollIndicator={true}
               nestedScrollEnabled={true}
             >
-              {recentTransactions.map((transaction) => (
-                <TransactionItem
-                  key={transaction.id}
-                  transaction={transaction}
-                />
-              ))}
+              {/* Empty state when no transactions */}
+              {recentTransactions.length === 0 ? (
+                <View style={styles.emptyStateContainer}>
+                  <CreditCard color={colors.textSecondary} size={48} style={{ opacity: 0.5 }} />
+                  <Text style={[styles.emptyStateTitle, { color: colors.textPrimary }]}>No transactions yet</Text>
+                  <Text style={[styles.emptyStateDescription, { color: colors.textSecondary }]}>
+                    Start by making a transfer or payment to see your transaction history here.
+                  </Text>
+                  <TouchableOpacity 
+                    style={[styles.emptyStateButton, { backgroundColor: colors.tintPrimary }]}
+                    onPress={handleTransfer}
+                  >
+                    <Text style={styles.emptyStateButtonText}>Make a Transfer</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                recentTransactions.map((transaction) => (
+                  <TransactionItem
+                    key={transaction.id}
+                    transaction={transaction}
+                  />
+                ))
+              )}
             </ScrollView>
           </View>
         </ScrollView>
@@ -214,6 +250,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 24,
+  },
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  headerProfilePicture: {
+    marginRight: 12,
+  },
+  greetingContainer: {
+    flex: 1,
   },
   greeting: {
     fontSize: 16,
@@ -303,5 +350,33 @@ const styles = StyleSheet.create({
   },
   transactionsScrollContent: {
     paddingBottom: 20,
+  },
+  emptyStateContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    paddingHorizontal: 32,
+  },
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  emptyStateDescription: {
+    marginTop: 8,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  emptyStateButton: {
+    marginTop: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  emptyStateButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
