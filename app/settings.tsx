@@ -1,13 +1,13 @@
 import { router } from "expo-router";
 import { ArrowLeft, Bell, Globe, Moon, Shield } from "lucide-react-native";
 import React, { useState } from "react";
-import { useTheme } from "@/context/ThemeContext";
+import { useSafeTheme } from "@/hooks/useSafeTheme";
 import { StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function SettingsScreen() {
-  // Theme toggler state could be persisted or sourced from a ThemeContext
-  const { isDark, colors, setDarkMode } = useTheme();
+  // Use safe theme hook to prevent ThemeProvider errors
+  const { isDark, colors, setDarkMode } = useSafeTheme();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [biometricEnabled, setBiometricEnabled] = useState(true);
 

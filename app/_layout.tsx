@@ -17,6 +17,7 @@ function RootLayoutContent() {
   const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(
     null
   );
+  const [providersReady, setProvidersReady] = useState(false);
 
   // useEffect(() => {
   //   checkOnboardingStatus();
@@ -26,7 +27,16 @@ function RootLayoutContent() {
     fetchAuthenticatedUser();
   }, []);
 
-  if (isLoading) {
+  // Ensure providers are fully initialized
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setProvidersReady(true);
+    }, 100); // Small delay to ensure all providers are mounted
+    
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (isLoading || !providersReady) {
     return null;
   }
 
