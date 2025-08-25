@@ -16,7 +16,9 @@ import {
   Modal,
   FlatList,
   Dimensions,
+  ScrollView,
 } from "react-native";
+import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, MaterialIcons } from "@expo/vector-icons";
 import { useTheme } from "@/context/ThemeContext";
 import { parsePhoneNumberFromString, getCountryCallingCode, getExampleNumber, AsYouType, getCountries } from 'libphonenumber-js';
@@ -32,6 +34,7 @@ import {
   PhoneNumberValidationState,
   ConfirmPasswordValidationState
 } from "@/components/form";
+import { withAlpha } from "@/theme/color-utils";
 
 // Get all available countries and create a comprehensive country data array
 // This uses the getCountries function from libphonenumber-js to get all country codes
@@ -846,123 +849,195 @@ export default function SignUpScreen() {
     );
   };
 
+  const { width } = Dimensions.get('window');
+
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        style={styles.keyboardContainer}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      <LinearGradient
+        colors={[
+          colors.tintPrimary,
+          withAlpha(colors.tintPrimary, 0.8),
+          colors.background
+        ]}
+        locations={[0, 0.5, 1]}
+        style={styles.gradient}
       >
-        <View style={styles.content}>
-          <View style={styles.header}>
-            <Text style={styles.title}>Create Account</Text>
-            <Text style={styles.subtitle}>Join us today</Text>
-          </View>
+        <KeyboardAvoidingView
+          style={styles.keyboardContainer}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <ScrollView 
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+          >
+            {/* Hero Section */}
+            <View style={styles.heroSection}>
+              <View style={styles.logoContainer}>
+                <View style={[styles.logoCircle, { backgroundColor: withAlpha('#FFFFFF', 0.2) }]}>
+                  <MaterialIcons name="person-add" size={32} color="#FFFFFF" />
+                </View>
+              </View>
+              <Text style={styles.heroTitle}>Join Us Today</Text>
+              <Text style={styles.heroSubtitle}>Create your account and start your financial journey with confidence.</Text>
+            </View>
 
-          <View style={styles.form}>
-            <FullNameField
-              label="Full Name"
-              value={form.name}
-              onChangeText={(text) => setForm((prev) => ({ ...prev, name: text }))}
-              validation={validation.name as ValidationState}
-              onValidationChange={(newValidation) => 
-                setValidation(prev => ({
-                  ...prev,
-                  name: newValidation
-                }))
-              }
-              resetField={() => resetField('name')}
-              placeholder="Enter your full name"
-            />
+            {/* Form Card */}
+            <View style={[styles.formCard, { backgroundColor: colors.card }]}>
+              <View style={styles.formHeader}>
+                <Text style={[styles.formTitle, { color: colors.textPrimary }]}>Create Account</Text>
+                <Text style={[styles.formSubtitle, { color: colors.textSecondary }]}>Fill in your information below</Text>
+              </View>
 
-            <EmailField
-              label="Email"
-              value={form.email}
-              onChangeText={(text) => setForm((prev) => ({ ...prev, email: text }))}
-              validation={validation.email as ValidationState}
-              onValidationChange={(newValidation) => 
-                setValidation(prev => ({
-                  ...prev,
-                  email: newValidation
-                }))
-              }
-              resetField={() => resetField('email')}
-              placeholder="Enter your email"
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-            
-            <PhoneNumberField
-              label="Phone Number"
-              value={form.phoneNumber}
-              onChangeText={(text) => setForm((prev) => ({ ...prev, phoneNumber: text }))}
-              validation={validation.phoneNumber as PhoneNumberValidationState}
-              onValidationChange={(newValidation) => 
-                setValidation(prev => ({
-                  ...prev,
-                  phoneNumber: newValidation
-                }))
-              }
-              resetField={() => resetField('phoneNumber')}
-              countryCode={countryCode}
-              onCountryCodeChange={setCountryCode}
-              placeholder="Enter phone number"
-              keyboardType="phone-pad"
-            />
+              <View style={styles.formContent}>
+                {/* Personal Information Section */}
+                <View style={styles.formSection}>
+                  <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Personal Information</Text>
+                  
+                  <FullNameField
+                    label="Full Name"
+                    value={form.name}
+                    onChangeText={(text) => setForm((prev) => ({ ...prev, name: text }))}
+                    validation={validation.name as ValidationState}
+                    onValidationChange={(newValidation) => 
+                      setValidation(prev => ({
+                        ...prev,
+                        name: newValidation
+                      }))
+                    }
+                    resetField={() => resetField('name')}
+                    placeholder="Enter your full name"
+                  />
 
-            <PasswordField
-              label="Password"
-              value={form.password}
-              onChangeText={(text) => setForm((prev) => ({ ...prev, password: text }))}
-              validation={validation.password as ValidationState}
-              onValidationChange={(newValidation) => 
-                setValidation(prev => ({
-                  ...prev,
-                  password: newValidation
-                }))
-              }
-              resetField={() => resetField('password')}
-              placeholder="Create a password"
-              enableValidation={true}
-              showStrengthMeter={true}
-            />
-            
-            <ConfirmPasswordField
-              label="Confirm Password"
-              value={form.confirmPassword}
-              password={form.password}
-              onChangeText={(text) => setForm((prev) => ({ ...prev, confirmPassword: text }))}
-              validation={validation.confirmPassword as ConfirmPasswordValidationState}
-              onValidationChange={(newValidation) => 
-                setValidation(prev => ({
-                  ...prev,
-                  confirmPassword: newValidation
-                }))
-              }
-              resetField={() => resetField('confirmPassword')}
-              placeholder="Confirm your password"
-            />
+                  <EmailField
+                    label="Email Address"
+                    value={form.email}
+                    onChangeText={(text) => setForm((prev) => ({ ...prev, email: text }))}
+                    validation={validation.email as ValidationState}
+                    onValidationChange={(newValidation) => 
+                      setValidation(prev => ({
+                        ...prev,
+                        email: newValidation
+                      }))
+                    }
+                    resetField={() => resetField('email')}
+                    placeholder="Enter your email address"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
+                  
+                  <PhoneNumberField
+                    label="Phone Number"
+                    value={form.phoneNumber}
+                    onChangeText={(text) => setForm((prev) => ({ ...prev, phoneNumber: text }))}
+                    validation={validation.phoneNumber as PhoneNumberValidationState}
+                    onValidationChange={(newValidation) => 
+                      setValidation(prev => ({
+                        ...prev,
+                        phoneNumber: newValidation
+                      }))
+                    }
+                    resetField={() => resetField('phoneNumber')}
+                    countryCode={countryCode}
+                    onCountryCodeChange={setCountryCode}
+                    placeholder="Phone number"
+                    keyboardType="phone-pad"
+                  />
+                </View>
 
-            <TouchableOpacity
-              style={[styles.button, isSubmitting && styles.buttonDisabled]}
-              onPress={submit}
-              disabled={isSubmitting}
-            >
-              <Text style={styles.buttonText}>
-                {isSubmitting ? "Creating Account..." : "Create Account"}
+                {/* Stylish Divider */}
+                <View style={styles.sectionDivider}>
+                  <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+                  <View style={[styles.dividerIconContainer, { backgroundColor: colors.card }]}>
+                    <MaterialIcons name="security" size={16} color={colors.tintPrimary} />
+                  </View>
+                  <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+                </View>
+
+                {/* Security Section */}
+                <View style={styles.formSection}>
+                  <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Account Security</Text>
+                  
+                  <PasswordField
+                    label="Password"
+                    value={form.password}
+                    onChangeText={(text) => setForm((prev) => ({ ...prev, password: text }))}
+                    validation={validation.password as ValidationState}
+                    onValidationChange={(newValidation) => 
+                      setValidation(prev => ({
+                        ...prev,
+                        password: newValidation
+                      }))
+                    }
+                    resetField={() => resetField('password')}
+                    placeholder="Create a secure password"
+                    enableValidation={true}
+                    showStrengthMeter={true}
+                  />
+                  
+                  <ConfirmPasswordField
+                    label="Confirm Password"
+                    value={form.confirmPassword}
+                    password={form.password}
+                    onChangeText={(text) => setForm((prev) => ({ ...prev, confirmPassword: text }))}
+                    validation={validation.confirmPassword as ConfirmPasswordValidationState}
+                    onValidationChange={(newValidation) => 
+                      setValidation(prev => ({
+                        ...prev,
+                        confirmPassword: newValidation
+                      }))
+                    }
+                    resetField={() => resetField('confirmPassword')}
+                    placeholder="Re-enter your password"
+                  />
+                </View>
+
+                <LinearGradient
+                  colors={[colors.tintPrimary, withAlpha(colors.tintPrimary, 0.8)]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={[
+                    styles.gradientButton,
+                    isSubmitting && styles.buttonDisabled
+                  ]}
+                >
+                  <TouchableOpacity
+                    style={styles.buttonInner}
+                    onPress={submit}
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? (
+                      <View style={styles.loadingContainer}>
+                        <MaterialIcons name="hourglass-empty" size={20} color="#FFFFFF" />
+                        <Text style={styles.loadingText}>Creating Account...</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.buttonContent}>
+                        <Text style={styles.gradientButtonText}>Create Account</Text>
+                        <MaterialIcons name="arrow-forward" size={20} color="#FFFFFF" />
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                </LinearGradient>
+              </View>
+            </View>
+
+            {/* Footer */}
+            <View style={styles.authFooter}>
+              <Text style={[styles.footerText, { color: colors.textSecondary }]}>
+                Already have an account?
               </Text>
-            </TouchableOpacity>
-
-            <View style={styles.footer}>
-              <Text style={styles.footerText}>Already have an account? </Text>
-              <Link href="/(auth)/sign-in" style={styles.link}>
-                <Text style={styles.linkText}>Sign In</Text>
+              <Link href="/(auth)/sign-in" style={styles.footerLink}>
+                <Text style={[styles.footerLinkText, { color: colors.tintPrimary }]}>
+                  Sign In
+                </Text>
               </Link>
             </View>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </LinearGradient>
       
-      {/* Render the country selection modal */}
+      {/* Enhanced Country Selection Modal */}
       {renderCountrySelectionModal()}
     </SafeAreaView>
   );
@@ -972,8 +1047,183 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  gradient: {
+    flex: 1,
+  },
   keyboardContainer: {
     flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 24,
+  },
+  
+  // Hero Section Styles
+  heroSection: {
+    alignItems: 'center',
+    paddingTop: 50,
+    paddingBottom: 30,
+  },
+  logoContainer: {
+    marginBottom: 20,
+  },
+  logoCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroTitle: {
+    fontSize: 34,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  heroSubtitle: {
+    fontSize: 16,
+    color: '#FFFFFF',
+    opacity: 0.9,
+    textAlign: 'center',
+    lineHeight: 24,
+    maxWidth: 300,
+  },
+  
+  // Form Card Styles
+  formCard: {
+    borderRadius: 24,
+    padding: 0,
+    marginBottom: 32,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 8,
+    },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  formHeader: {
+    padding: 32,
+    paddingBottom: 24,
+    alignItems: 'center',
+  },
+  formTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  formSubtitle: {
+    fontSize: 15,
+    opacity: 0.7,
+  },
+  formContent: {
+    paddingHorizontal: 32,
+    paddingBottom: 32,
+  },
+  
+  // Form Section Styles
+  formSection: {
+    marginBottom: 8,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 16,
+    opacity: 0.8,
+  },
+  
+  // Stylish Divider Styles
+  sectionDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 20,
+    marginHorizontal: -8,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    opacity: 0.3,
+  },
+  dividerIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#0F766E',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  
+  // Button Styles
+  gradientButton: {
+    borderRadius: 16,
+    marginTop: 16,
+    shadowColor: '#0F766E',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  buttonInner: {
+    paddingVertical: 18,
+    paddingHorizontal: 24,
+    borderRadius: 16,
+  },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gradientButtonText: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginRight: 8,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginLeft: 8,
+  },
+  buttonDisabled: {
+    opacity: 0.7,
+  },
+  
+  // Footer Styles
+  authFooter: {
+    alignItems: 'center',
+    paddingBottom: 40,
+  },
+  footerText: {
+    fontSize: 15,
+    marginBottom: 8,
+  },
+  footerLink: {
+    padding: 8,
+  },
+  footerLinkText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   content: {
     flex: 1,
@@ -1002,11 +1252,11 @@ const styles = StyleSheet.create({
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
-      height: 4,
+      height: 2,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 3,
   },
   inputContainer: {
     marginBottom: 20,
@@ -1183,9 +1433,9 @@ const styles = StyleSheet.create({
       width: 0,
       height: 2,
     },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
   },
   modalHeader: {
     flexDirection: "row",
