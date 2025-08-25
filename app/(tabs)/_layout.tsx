@@ -9,7 +9,7 @@ export default function TabLayout() {
   const { isAuthenticated } = useAuthStore();
   const { colors } = useTheme();
 
-  if (!isAuthenticated) return <Redirect href="/sign-in" />;
+  if (!isAuthenticated) return <Redirect href="/(auth)/sign-in" />;
 
   return (
     <Tabs
@@ -19,11 +19,11 @@ export default function TabLayout() {
           backgroundColor: colors.card,
           borderTopWidth: 1,
           borderTopColor: colors.border,
-          height: 80 + insets.bottom,
-          paddingBottom: 20 + insets.bottom,
+          height: 60 + insets.bottom,
+          paddingBottom: 8 + insets.bottom,
           paddingTop: 8,
           position: "absolute",
-          bottom: -35,
+          bottom: 0,
           left: 0,
           right: 0,
         },
