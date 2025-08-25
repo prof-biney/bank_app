@@ -1,6 +1,7 @@
-import { Check } from "lucide-react-native";
 import React from "react";
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useTheme } from "@/context/ThemeContext";
+import { Check } from "lucide-react-native";
 
 interface DateFilterModalProps {
   visible: boolean;
@@ -11,9 +12,10 @@ interface DateFilterModalProps {
 
 const filterOptions = [
   { key: "today", label: "Today" },
-  { key: "week", label: "This Week" },
-  { key: "month", label: "This Month" },
-  { key: "all", label: "All Time" },
+  { key: "week", label: "Week" },
+  { key: "month", label: "Month" },
+  { key: "year", label: "Year" },
+  { key: "all", label: "All" },
 ];
 
 export function DateFilterModal({
@@ -22,6 +24,8 @@ export function DateFilterModal({
   selectedFilter,
   onFilterSelect,
 }: DateFilterModalProps) {
+  const { colors } = useTheme();
+
   const handleFilterSelect = (filter: string) => {
     onFilterSelect(filter);
     onClose();
@@ -35,18 +39,18 @@ export function DateFilterModal({
       onRequestClose={onClose}
     >
       <TouchableOpacity style={styles.overlay} onPress={onClose}>
-        <View style={styles.modal}>
-          <Text style={styles.title}>Filter Transactions</Text>
+        <View style={[styles.modal, { backgroundColor: colors.card }]}>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>Filter Transactions</Text>
 
           {filterOptions.map((option) => (
             <TouchableOpacity
               key={option.key}
-              style={styles.option}
+              style={[styles.option, { borderBottomColor: colors.border }]}
               onPress={() => handleFilterSelect(option.key)}
             >
-              <Text style={styles.optionText}>{option.label}</Text>
+              <Text style={[styles.optionText, { color: colors.textPrimary }]}>{option.label}</Text>
               {selectedFilter === option.key && (
-                <Check color="#0F766E" size={20} />
+                <Check color={colors.tintPrimary} size={20} />
               )}
             </TouchableOpacity>
           ))}
@@ -65,7 +69,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   modal: {
-    backgroundColor: "white",
     borderRadius: 16,
     padding: 20,
     width: "100%",
@@ -74,7 +77,6 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: "bold",
-    color: "#1F2937",
     marginBottom: 16,
     textAlign: "center",
   },
@@ -84,10 +86,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
   },
   optionText: {
     fontSize: 16,
-    color: "#374151",
+  },
+  chipRow: {
+    flexDirection: 'row',
+    gap: 0,
+    paddingVertical: 4,
+  },
+  chipItem: {
+    marginBottom: 8,
   },
 });

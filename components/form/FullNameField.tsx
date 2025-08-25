@@ -2,7 +2,7 @@ import React, { useEffect } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
 import { Feather, MaterialIcons } from "@expo/vector-icons";
 import { FormFieldProps, ValidationState, validateName } from "./types";
-import { formStyles } from "./styles";
+import { useFormStyles } from "./styles";
 
 /**
  * Props for the FullNameField component
@@ -49,47 +49,49 @@ const FullNameField: React.FC<FullNameFieldProps> = ({
     }
   };
 
+  const styles = useFormStyles();
   return (
-    <View style={formStyles.inputContainer}>
-      <Text style={formStyles.label}>{label}</Text>
-      <View style={formStyles.inputWrapper}>
+    <View style={styles.inputContainer}>
+      <Text style={styles.label}>{label}</Text>
+      <View style={styles.inputWrapper}>
         <TextInput
           style={[
-            formStyles.input,
+            styles.input,
             validation.isTouched && (
               validation.isValid 
-                ? formStyles.validInput 
+                ? styles.validInput 
                 : validation.errorMessage 
-                  ? formStyles.invalidInput 
+                  ? styles.invalidInput 
                   : null
             )
           ]}
           value={value}
           onChangeText={handleChangeText}
           placeholder={placeholder}
+          placeholderTextColor={undefined}
           {...rest}
         />
         {value.length > 0 && (
           <TouchableOpacity 
-            style={formStyles.nameResetButton} 
+            style={styles.nameResetButton} 
             onPress={resetField}
           >
-            <Feather name="x" size={18} color="#6B7280" />
+            <Feather name="x" size={18} color={styles?.label?.color || '#6B7280'} />
           </TouchableOpacity>
         )}
         {validation.isTouched && validation.isValid && (
-          <View style={formStyles.nameValidationIcon}>
-            <MaterialIcons name="check-circle" size={20} color="#10B981" />
+          <View style={styles.nameValidationIcon}>
+            <MaterialIcons name="check-circle" size={20} color={styles?.validInput?.borderColor || '#10B981'} />
           </View>
         )}
         {validation.isTouched && !validation.isValid && value.length > 0 && (
-          <View style={formStyles.nameValidationIcon}>
-            <MaterialIcons name="error" size={20} color="#EF4444" />
+          <View style={styles.nameValidationIcon}>
+            <MaterialIcons name="error" size={20} color={styles?.invalidInput?.borderColor || '#EF4444'} />
           </View>
         )}
       </View>
       {validation.isTouched && validation.errorMessage ? (
-        <Text style={formStyles.errorText}>{validation.errorMessage}</Text>
+        <Text style={styles.errorText}>{validation.errorMessage}</Text>
       ) : null}
     </View>
   );

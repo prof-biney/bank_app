@@ -14,7 +14,7 @@ import {
   FormFieldProps, 
   PhoneNumberValidationState
 } from "./types";
-import { formStyles } from "./styles";
+import { useFormStyles } from "./styles";
 import { 
   parsePhoneNumberFromString, 
   getCountryCallingCode, 
@@ -343,15 +343,15 @@ const PhoneNumberField: React.FC<PhoneNumberFieldProps> = ({
         animationType="slide"
         onRequestClose={() => setShowCountryModal(false)}
       >
-        <View style={formStyles.modalOverlay}>
-          <View style={formStyles.modalContainer}>
-            <View style={formStyles.modalHeader}>
-              <Text style={formStyles.modalTitle}>Select Country</Text>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Country</Text>
               <TouchableOpacity 
-                style={formStyles.modalCloseButton}
+                style={styles.modalCloseButton}
                 onPress={() => setShowCountryModal(false)}
               >
-                <Feather name="x" size={24} color="#374151" />
+                <Feather name="x" size={24} color={styles?.label?.color || '#374151'} />
               </TouchableOpacity>
             </View>
             
@@ -360,20 +360,20 @@ const PhoneNumberField: React.FC<PhoneNumberFieldProps> = ({
               keyExtractor={(item) => item.code}
               renderItem={({ item }) => (
                 <TouchableOpacity
-                  style={formStyles.countryItem}
+                  style={styles.countryItem}
                   onPress={() => handleCountrySelect(item.code)}
                 >
-                  <Text style={formStyles.countryFlag}>{item.flag}</Text>
-                  <View style={formStyles.countryInfo}>
-                    <Text style={formStyles.countryName}>{item.name}</Text>
-                    <Text style={formStyles.countryCode}>+{getCountryCallingCode(item.code)}</Text>
+                  <Text style={styles.countryFlag}>{item.flag}</Text>
+                  <View style={styles.countryInfo}>
+                    <Text style={styles.countryName}>{item.name}</Text>
+                    <Text style={styles.countryCode}>+{getCountryCallingCode(item.code)}</Text>
                   </View>
                   {countryCode === item.code && (
-                    <MaterialIcons name="check" size={20} color="#10B981" />
+                    <MaterialIcons name="check" size={20} color={styles?.validInput?.borderColor || '#10B981'} />
                   )}
                 </TouchableOpacity>
               )}
-              style={formStyles.countryList}
+              style={styles.countryList}
             />
           </View>
         </View>
@@ -381,55 +381,57 @@ const PhoneNumberField: React.FC<PhoneNumberFieldProps> = ({
     );
   };
 
+  const styles = useFormStyles();
   return (
-    <View style={formStyles.inputContainer}>
-      <Text style={formStyles.label}>{label}</Text>
-      <View style={formStyles.phoneInputContainer}>
+    <View style={styles.inputContainer}>
+      <Text style={styles.label}>{label}</Text>
+      <View style={styles.phoneInputContainer}>
         {/* Country code selector */}
         <TouchableOpacity 
-          style={formStyles.countryCodeSelector}
+          style={styles.countryCodeSelector}
           onPress={() => setShowCountryModal(true)}
         >
-          <Text style={formStyles.countryFlag}>{getCurrentCountry().flag}</Text>
-          <Text style={formStyles.countryCodeText}>+{getCountryCallingCode(countryCode)}</Text>
-          <Feather name="chevron-down" size={16} color="#6B7280" />
+          <Text style={styles.countryFlag}>{getCurrentCountry().flag}</Text>
+          <Text style={styles.countryCodeText}>+{getCountryCallingCode(countryCode)}</Text>
+          <Feather name="chevron-down" size={16} color={styles?.label?.color || '#6B7280'} />
         </TouchableOpacity>
         
         {/* Phone number input */}
-        <View style={formStyles.phoneInputWrapper}>
+        <View style={styles.phoneInputWrapper}>
           <TextInput
             style={[
-              formStyles.phoneInput,
+              styles.phoneInput,
               validation.isTouched && (
                 validation.isValid 
-                  ? formStyles.validInput 
+                  ? styles.validInput 
                   : validation.errorMessage 
-                    ? formStyles.invalidInput 
+                    ? styles.invalidInput 
                     : null
               )
             ]}
             value={value}
             onChangeText={handleChangeText}
             placeholder={placeholder}
+            placeholderTextColor={undefined}
             keyboardType="phone-pad"
             {...rest}
           />
           {value.length > 0 && (
             <TouchableOpacity 
-              style={formStyles.phoneResetButton} 
+              style={styles.phoneResetButton} 
               onPress={handleReset}
             >
-              <Feather name="x" size={18} color="#6B7280" />
+              <Feather name="x" size={18} color={styles?.label?.color || '#6B7280'} />
             </TouchableOpacity>
           )}
           {validation.isTouched && validation.isValid && (
-            <View style={formStyles.phoneValidationIcon}>
-              <MaterialIcons name="check-circle" size={20} color="#10B981" />
+            <View style={styles.phoneValidationIcon}>
+              <MaterialIcons name="check-circle" size={20} color={styles?.validInput?.borderColor || '#10B981'} />
             </View>
           )}
           {validation.isTouched && !validation.isValid && value.length > 0 && (
-            <View style={formStyles.phoneValidationIcon}>
-              <MaterialIcons name="error" size={20} color="#EF4444" />
+            <View style={styles.phoneValidationIcon}>
+              <MaterialIcons name="error" size={20} color={styles?.invalidInput?.borderColor || '#EF4444'} />
             </View>
           )}
         </View>
@@ -437,21 +439,21 @@ const PhoneNumberField: React.FC<PhoneNumberFieldProps> = ({
       
       {/* Digit count validator */}
       {value.length > 0 && (
-        <View style={formStyles.phoneDigitContainer}>
-          <View style={formStyles.phoneDigitLabels}>
-            <Text style={formStyles.phoneDigitText}>
+        <View style={styles.phoneDigitContainer}>
+          <View style={styles.phoneDigitLabels}>
+            <Text style={styles.phoneDigitText}>
               Digit Count: {validation.digitCount}/{validation.maxDigits}
             </Text>
-            <Text style={[formStyles.phoneDigitStatusText, { color: phoneDigitProgress.color }]}>
+            <Text style={[styles.phoneDigitStatusText, { color: phoneDigitProgress.color }] }>
               {validation.digitCount === validation.maxDigits 
                 ? "Complete" 
                 : `${validation.maxDigits - validation.digitCount} more needed`}
             </Text>
           </View>
-          <View style={formStyles.phoneDigitTrack}>
+          <View style={styles.phoneDigitTrack}>
             <Animated.View 
               style={[
-                formStyles.phoneDigitBar, 
+                styles.phoneDigitBar, 
                 { 
                   width: phoneAnimatedWidth.interpolate({
                     inputRange: [0, 100],
@@ -466,7 +468,7 @@ const PhoneNumberField: React.FC<PhoneNumberFieldProps> = ({
       )}
       
       {validation.isTouched && validation.errorMessage ? (
-        <Text style={formStyles.errorText}>{validation.errorMessage}</Text>
+        <Text style={styles.errorText}>{validation.errorMessage}</Text>
       ) : null}
       
       {/* Render the country selection modal */}

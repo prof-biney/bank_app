@@ -23,7 +23,10 @@ import { DateFilterModal } from "../../components/DateFilterModal";
 import { NotificationModal } from "../../components/NotificationModal";
 import { QuickAction } from "../../components/QuickAction";
 import { TransactionItem } from "../../components/TransactionItem";
+import { ProfilePicture } from "../../components/ProfilePicture";
 import { useApp } from "../../context/AppContext";
+
+import { useTheme } from "@/context/ThemeContext";
 
 export default function HomeScreen() {
   const { cards, activeCard, setActiveCard, transactions } = useApp();
@@ -32,8 +35,18 @@ export default function HomeScreen() {
   const [dateFilter, setDateFilter] = React.useState("all");
 
   const { user } = useAuthStore();
-
-  console.log("AuthStore", user);
+  const { notifications } = useApp();
+  const unreadCount = React.useMemo(() => {
+    const unreadNotifications = notifications.filter(n => n.unread && !n.archived);
+    const count = unreadNotifications.length;
+    console.log('[HomeScreen] Notification count calculation:', {
+      totalNotifications: notifications.length,
+      unreadCount: count,
+      unreadNotifications: unreadNotifications,
+      allNotifications: notifications,
+    });
+    return count;
+  }, [notifications]);
 
   const getFilteredTransactions = () => {
     const now = new Date();
@@ -67,6 +80,7 @@ export default function HomeScreen() {
 
   const recentTransactions = getFilteredTransactions();
 
+
   const getDateFilterLabel = () => {
     switch (dateFilter) {
       case "today":
@@ -84,24 +98,38 @@ export default function HomeScreen() {
     router.push("/transfer");
   };
 
+  const { colors } = useTheme();
+
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <ScrollView showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
-            <View>
-              <Text style={styles.greeting}>Welcome back!</Text>
-              <Text style={styles.userName}>{user?.name}</Text>
+            <View style={styles.headerLeft}>
+              <ProfilePicture
+                name={user?.name}
+                imageUrl={user?.avatar}
+                size="medium"
+                style={styles.headerProfilePicture}
+              />
+              <View style={styles.greetingContainer}>
+                <Text style={[styles.greeting, { color: colors.textSecondary }]}>Welcome back!</Text>
+                <Text style={[styles.userName, { color: colors.textPrimary }]}>{user?.name}</Text>
+              </View>
             </View>
             <TouchableOpacity
-              style={styles.notificationButton}
+              style={[styles.notificationButton, { backgroundColor: colors.card }]}
               onPress={() => setShowNotifications(true)}
             >
-              <Bell color="#374151" size={24} />
-              <View style={styles.notificationBadge} />
+              <Bell color={colors.textSecondary} size={24} />
+              {unreadCount > 0 && (
+                <View style={[styles.notificationBadgeCount, { backgroundColor: colors.negative }]}>
+                  <Text style={styles.notificationBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                </View>
+              )}
             </TouchableOpacity>
           </View>
 
@@ -124,45 +152,71 @@ export default function HomeScreen() {
 
           <View style={styles.quickActions}>
             <QuickAction
-              icon={<ArrowDownLeft color="#0F766E" size={24} />}
+              icon={<ArrowDownLeft color={colors.tintPrimary} size={24} />}
               label="Deposit"
               onPress={() => {}}
             />
             <QuickAction
-              icon={<ArrowUpRight color="#0F766E" size={24} />}
+              icon={<ArrowUpRight color={colors.tintPrimary} size={24} />}
               label="Transfer"
               onPress={handleTransfer}
             />
             <QuickAction
-              icon={<CreditCard color="#0F766E" size={24} />}
+              icon={<CreditCard color={colors.tintPrimary} size={24} />}
               label="Withdraw"
               onPress={() => {}}
             />
             <QuickAction
-              icon={<MoreHorizontal color="#0F766E" size={24} />}
+              icon={<MoreHorizontal color={colors.tintPrimary} size={24} />}
               label="More"
               onPress={() => {}}
             />
           </View>
 
-          <View style={styles.transactionsSection}>
+          <View style={[styles.transactionsSection, { backgroundColor: colors.card }]}>
             <View style={styles.sectionHeader}>
-              <TouchableOpacity onPress={() => setShowDateFilter(true)}>
-                <Text style={styles.sectionTitle}>{getDateFilterLabel()}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => router.push("/(tabs)/activity")}>
-                <Text style={styles.seeAllText}>All transactions</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <TouchableOpacity onPress={() => setShowDateFilter(true)}>
+                  <Text style={[styles.sectionTitle, { color: colors.textPrimary, textDecorationColor: colors.tintPrimary }]}>{getDateFilterLabel()}</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <TouchableOpacity onPress={() => router.push("/(tabs)/activity")}>
+                  <Text style={[styles.seeAllText, { color: colors.tintPrimary }]}>All transactions</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
-            <View style={styles.transactionsList}>
-              {recentTransactions.map((transaction) => (
-                <TransactionItem
-                  key={transaction.id}
-                  transaction={transaction}
-                />
-              ))}
-            </View>
+            <ScrollView 
+              style={styles.transactionsList}
+              contentContainerStyle={styles.transactionsScrollContent}
+              showsVerticalScrollIndicator={true}
+              nestedScrollEnabled={true}
+            >
+              {/* Empty state when no transactions */}
+              {recentTransactions.length === 0 ? (
+                <View style={styles.emptyStateContainer}>
+                  <CreditCard color={colors.textSecondary} size={48} style={{ opacity: 0.5 }} />
+                  <Text style={[styles.emptyStateTitle, { color: colors.textPrimary }]}>No transactions yet</Text>
+                  <Text style={[styles.emptyStateDescription, { color: colors.textSecondary }]}>
+                    Start by making a transfer or payment to see your transaction history here.
+                  </Text>
+                  <TouchableOpacity 
+                    style={[styles.emptyStateButton, { backgroundColor: colors.tintPrimary }]}
+                    onPress={handleTransfer}
+                  >
+                    <Text style={styles.emptyStateButtonText}>Make a Transfer</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                recentTransactions.map((transaction) => (
+                  <TransactionItem
+                    key={transaction.id}
+                    transaction={transaction}
+                  />
+                ))
+              )}
+            </ScrollView>
           </View>
         </ScrollView>
 
@@ -185,7 +239,6 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
   },
   keyboardContainer: {
     flex: 1,
@@ -198,22 +251,30 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 24,
   },
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  headerProfilePicture: {
+    marginRight: 12,
+  },
+  greetingContainer: {
+    flex: 1,
+  },
   greeting: {
     fontSize: 16,
-    color: "#6B7280",
     marginBottom: 4,
   },
   userName: {
     fontSize: 24,
     fontWeight: "bold",
-    color: "#1F2937",
   },
   notificationButton: {
     position: "relative",
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "white",
     justifyContent: "center",
     alignItems: "center",
     shadowColor: "#000",
@@ -232,7 +293,22 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "#EF4444",
+  },
+  notificationBadgeCount: {
+    position: "absolute",
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  notificationBadgeText: {
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: "700",
   },
   cardSection: {
     flex: 1,
@@ -247,7 +323,6 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   transactionsSection: {
-    backgroundColor: "white",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingTop: 24,
@@ -263,16 +338,45 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: "bold",
-    color: "#1F2937",
     textDecorationLine: "underline",
-    textDecorationColor: "#0F766E",
   },
   seeAllText: {
-    color: "#0F766E",
     fontSize: 14,
     fontWeight: "500",
   },
   transactionsList: {
     flex: 1,
+    maxHeight: 400, // Limit height so it can scroll within the section
+  },
+  transactionsScrollContent: {
+    paddingBottom: 20,
+  },
+  emptyStateContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    paddingHorizontal: 32,
+  },
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  emptyStateDescription: {
+    marginTop: 8,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  emptyStateButton: {
+    marginTop: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  emptyStateButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

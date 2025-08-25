@@ -86,6 +86,30 @@ After registering your platforms, you need to configure your environment variabl
    - Ensure `EXPO_PUBLIC_APPWRITE_PLATFORM` matches exactly the package name you registered
    - Replace `your_database_id` and `your_user_collection_id` with your actual IDs
 
+## Notifications Collection Setup
+
+Create a "notifications" collection to power realtime notifications in the app.
+
+- Collection ID: your_notifications_collection_id (set in .env as EXPO_PUBLIC_APPWRITE_NOTIFICATIONS_COLLECTION_ID)
+- Attributes:
+  - userId: string, size 50, required — Appwrite account ID of the recipient
+  - title: string, size 120, required — short title for the notification
+  - message: string, size 2000, required — human-readable content
+  - type: enum ['payment','transaction','statement','system'], optional — category to render an icon
+  - unread: boolean, default true — mark as read when the user views it
+  - createdAt: string (ISO), optional — Appwrite provides $createdAt; you may omit this attribute and use $createdAt
+- Indexes:
+  - by_user_createdAt: key ['userId', '$createdAt'] ordered — for efficient queries; order by $createdAt desc in clients
+- Permissions (recommended):
+  - Collection-level: disable anonymous read
+  - Document-level on create (server/API layer):
+    - read: role:user:{USER_ID}
+    - update: role:user:{USER_ID}
+    - delete: role:user:{USER_ID} OR role:server (if you maintain a server API)
+  - Writes should be performed by your server using APPWRITE_API_KEY or by Cloud Functions to ensure integrity
+
+The app subscribes to Realtime on this collection (databases.{DB}.collections.{COL}.documents) and also performs an initial listDocuments read to load existing notifications for the current user. Make sure the client's session has permission to read the user's notifications.
+
 ## Testing Your Configuration
 
 To verify that your Appwrite configuration is correct:

@@ -1,5 +1,6 @@
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useTheme } from "@/context/ThemeContext";
 
 interface QuickActionProps {
   icon: React.ReactNode;
@@ -8,10 +9,11 @@ interface QuickActionProps {
 }
 
 export function QuickAction({ icon, label, onPress }: QuickActionProps) {
+  const { colors } = useTheme();
   return (
     <TouchableOpacity style={styles.container} onPress={onPress}>
-      <View style={styles.iconContainer}>{icon}</View>
-      <Text style={styles.label}>{label}</Text>
+      <View style={[styles.iconContainer, { backgroundColor: colors.background }]}>{icon}</View>
+      <Text style={[styles.label, { color: colors.textSecondary }]}>{label}</Text>
     </TouchableOpacity>
   );
 }
@@ -25,14 +27,12 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: "#F1F5F9",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 8,
   },
   label: {
     fontSize: 14,
-    color: "#374151",
     fontWeight: "500",
   },
 });

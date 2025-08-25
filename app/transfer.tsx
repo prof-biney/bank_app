@@ -1,7 +1,7 @@
 import { router } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
 import React, { useState } from "react";
-import {
+import { 
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -10,24 +10,30 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Pressable,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BankCard } from "../components/BankCard";
-import { RecipientItem } from "../components/RecipientItem";
 import { useApp } from "../context/AppContext";
 import { useAlert } from "../context/AlertContext";
-import { mockRecipients } from "../lib/mockdata";
+import { showAlertWithNotification } from "../lib/notificationService";
 import { Recipient } from "../types/index";
+import { useTheme } from "@/context/ThemeContext";
+import { getChipStyles } from "@/theme/variants";
+import CustomButton from "@/components/CustomButton";
+import { withAlpha } from "@/theme/color-utils";
+import Badge from "@/components/ui/Badge";
+import { getBadgeVisuals } from "@/theme/badge-utils";
 
 export default function TransferScreen() {
-  const { cards, activeCard, setActiveCard, addTransaction } = useApp();
+  const { cards, activeCard, setActiveCard, makeTransfer } = useApp();
   const { showAlert } = useAlert();
-  const [selectedRecipient, setSelectedRecipient] = useState<Recipient | null>(
-    null
-  );
+  const [recipientCardNumber, setRecipientCardNumber] = useState("");
+  const [recipientName, setRecipientName] = useState("");
   const [amount, setAmount] = useState("");
+  const [isTransferring, setIsTransferring] = useState(false);
   const [step, setStep] = useState<
-    "select-card" | "select-recipient" | "enter-amount"
+    "select-card" | "select-recipient" | "enter-amount" | "confirm-transfer"
   >("select-card");
 
   const handleCardSelect = (card: any) => {
@@ -35,59 +41,123 @@ export default function TransferScreen() {
     setStep("select-recipient");
   };
 
-  const handleRecipientSelect = (recipient: Recipient) => {
-    setSelectedRecipient(recipient);
+  const formatCardNumber = (input: string) => {
+    // Remove all non-digits
+    const digits = input.replace(/\D/g, '');
+    // Format as XXXX XXXX XXXX XXXX
+    return digits.replace(/(\d{4})(?=\d)/g, '$1 ');
+  };
+
+  const handleCardNumberChange = (input: string) => {
+    const formatted = formatCardNumber(input);
+    // Limit to 19 characters (16 digits + 3 spaces)
+    if (formatted.length <= 19) {
+      setRecipientCardNumber(formatted);
+    }
+  };
+
+  const handleRecipientSelect = (cardNumber: string) => {
     setStep("enter-amount");
   };
 
-  const handleTransfer = () => {
-    if (!activeCard || !selectedRecipient || !amount) {
-      showAlert('error', 'Please complete all required fields.', 'Transfer Error');
+  const validateCardNumber = (cardNumber: string) => {
+    const digits = cardNumber.replace(/\s/g, '');
+    return digits.length >= 12; // Minimum 12 digits for a card number
+  };
+
+  const findCardByNumber = (cardNumber: string) => {
+    const digits = cardNumber.replace(/\s/g, '');
+    return cards.find(card => {
+      const cardDigits = card.cardNumber.replace(/[^\d]/g, '');
+      return cardDigits === digits;
+    });
+  };
+
+  const handleTransfer = async () => {
+    console.log('[TransferScreen] handleTransfer called');
+    
+    if (!activeCard || !recipientCardNumber || !amount) {
+      console.log('[TransferScreen] Missing required fields:', { activeCard: !!activeCard, recipientCardNumber, amount });
+      showAlertWithNotification(showAlert, 'error', 'Please complete all required fields.', 'Transfer Error');
+      return;
+    }
+
+    // Validate card number format
+    if (!validateCardNumber(recipientCardNumber)) {
+      showAlertWithNotification(showAlert, 'error', 'Please enter a valid card number (minimum 12 digits).', 'Invalid Card Number');
       return;
     }
 
     const transferAmount = parseFloat(amount);
     
     if (isNaN(transferAmount) || transferAmount <= 0) {
-      showAlert('error', 'Please enter a valid amount.', 'Transfer Error');
+      console.log('[TransferScreen] Invalid amount:', { amount, transferAmount });
+      showAlertWithNotification(showAlert, 'error', 'Please enter a valid amount.', 'Transfer Error');
       return;
     }
     
     if (transferAmount > activeCard.balance) {
-      showAlert('error', 'Insufficient funds for this transfer.', 'Transfer Error');
+      console.log('[TransferScreen] Insufficient funds:', { transferAmount, balance: activeCard.balance });
+      showAlertWithNotification(showAlert, 'error', 'Insufficient funds for this transfer.', 'Transfer Error');
       return;
     }
 
-    try {
-      addTransaction({
-        userId: "user1",
-        cardId: activeCard.id,
-        type: "transfer",
-        amount: -transferAmount,
-        description: `To ${selectedRecipient.name}`,
-        recipient: selectedRecipient.name,
-        category: "Transfer",
-        status: "completed",
-      });
+    // Check if transferring to the same card
+    const sourceCardDigits = activeCard.cardNumber.replace(/[^\d]/g, '');
+    const recipientCardDigits = recipientCardNumber.replace(/\s/g, '');
+    
+    if (sourceCardDigits === recipientCardDigits) {
+      showAlertWithNotification(showAlert, 'error', 'Cannot transfer to the same card. Please select a different recipient card.', 'Transfer Error');
+      return;
+    }
 
-      showAlert(
-        'success', 
-        `$${transferAmount.toFixed(2)} has been successfully transferred to ${selectedRecipient.name}.`,
-        'Transfer Successful'
+    console.log('[TransferScreen] Starting transfer:', {
+      cardId: activeCard.id,
+      amount: transferAmount,
+      recipientCardNumber
+    });
+    
+    setIsTransferring(true);
+    
+    try {
+      const result = await makeTransfer(
+        activeCard.id,
+        transferAmount,
+        recipientCardNumber,
+        `Transfer To: ${recipientCardNumber}`
       );
       
-      // Navigate back after a short delay to allow the user to see the alert
-      setTimeout(() => {
-        router.back();
-      }, 1500);
+      if (result.success) {
+        const recipientCard = findCardByNumber(recipientCardNumber);
+        const recipientDisplay = recipientCard ? 
+          `${recipientCard.cardHolderName} (${recipientCardNumber})` : 
+          recipientName ? `${recipientName} (${recipientCardNumber})` : recipientCardNumber;
+        
+        showAlertWithNotification(
+          showAlert,
+          'success', 
+          `GHS ${transferAmount.toFixed(2)} has been successfully transferred to ${recipientDisplay}.${result.recipientNewBalance ? ` Recipient balance: GHS ${result.recipientNewBalance.toFixed(2)}.` : ''} Your balance: GHS ${result.newBalance?.toFixed(2) || 'N/A'}`,
+          'Transfer Successful'
+        );
+        
+        // Navigate back after a short delay to allow the user to see the alert
+        setTimeout(() => {
+          router.back();
+        }, 2000);
+      } else {
+        showAlertWithNotification(showAlert, 'error', result.error || 'An error occurred while processing your transfer.', 'Transfer Failed');
+      }
     } catch (error) {
-      showAlert('error', 'An error occurred while processing your transfer. Please try again.', 'Transfer Failed');
+      showAlertWithNotification(showAlert, 'error', 'An unexpected error occurred. Please try again.', 'Transfer Failed');
       console.error('Transfer error:', error);
+    } finally {
+      setIsTransferring(false);
     }
   };
 
+  const { colors } = useTheme();
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -95,17 +165,17 @@ export default function TransferScreen() {
         <View style={styles.header}>
           <TouchableOpacity
             onPress={() => router.back()}
-            style={styles.backButton}
+            style={[styles.backButton, { backgroundColor: colors.card }]}
           >
-            <ArrowLeft color="#374151" size={24} />
+            <ArrowLeft color={colors.textSecondary} size={24} />
           </TouchableOpacity>
-          <Text style={styles.title}>Transfer</Text>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>Transfer</Text>
           <View style={styles.placeholder} />
         </View>
 
         {step === "select-card" && (
           <View style={styles.content}>
-            <Text style={styles.sectionTitle}>Choose cards</Text>
+            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Choose cards</Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -121,103 +191,202 @@ export default function TransferScreen() {
               ))}
             </ScrollView>
 
-            <TouchableOpacity
-              style={[
-                styles.continueButton,
-                !activeCard && styles.continueButtonDisabled,
-              ]}
-              onPress={() => setStep("select-recipient")}
+            <CustomButton
+              title="Continue"
+              variant="primary"
               disabled={!activeCard}
-            >
-              <Text style={styles.continueButtonText}>Continue</Text>
-            </TouchableOpacity>
+              onPress={() => setStep("select-recipient")}
+            />
           </View>
         )}
 
-        {step === "select-recipient" && (
+{step === "select-recipient" && (
           <View style={styles.content}>
-            <Text style={styles.sectionTitle}>Choose recipients</Text>
+            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Enter recipient details</Text>
 
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.recipientsScroll}
-            >
-              {mockRecipients.map((recipient) => (
-                <RecipientItem
-                  key={recipient.id}
-                  recipient={recipient}
-                  selected={selectedRecipient?.id === recipient.id}
-                  onPress={() => handleRecipientSelect(recipient)}
+            <ScrollView style={styles.recipientForm} showsVerticalScrollIndicator={false}>
+              {/* Recipient Name Field */}
+              <View style={[styles.inputSection, { backgroundColor: colors.card }]}>
+                <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Recipient Name</Text>
+                <TextInput
+                  style={[styles.textInput, { color: colors.textPrimary, borderBottomColor: colors.border }]}
+                  value={recipientName}
+                  onChangeText={setRecipientName}
+                  placeholder="Enter recipient's full name"
+                  placeholderTextColor={colors.textSecondary}
+                  autoCapitalize="words"
                 />
-              ))}
+              </View>
+
+              {/* Card Number Field */}
+              <View style={[styles.inputSection, { backgroundColor: colors.card }]}>
+                <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Recipient Card Number</Text>
+                <TextInput
+                  style={[styles.cardNumberTextInput, { color: colors.textPrimary, borderBottomColor: colors.border }]}
+                  value={recipientCardNumber}
+                  onChangeText={handleCardNumberChange}
+                  placeholder="XXXX XXXX XXXX XXXX"
+                  placeholderTextColor={colors.textSecondary}
+                  keyboardType="numeric"
+                />
+                
+                {/* Show matched card holder name if found */}
+                {recipientCardNumber && validateCardNumber(recipientCardNumber) && (
+                  <View style={styles.cardHolderInfo}>
+                    {(() => {
+                      const matchedCard = findCardByNumber(recipientCardNumber);
+                      if (matchedCard) {
+                        return (
+                          <Text style={[styles.cardHolderName, { color: colors.positive }]}>
+                            ✓ {matchedCard.cardHolderName} (Your Card)
+                          </Text>
+                        );
+                      }
+                      return (
+                        <Text style={[styles.cardHolderName, { color: colors.textSecondary }]}>
+                          External Card
+                        </Text>
+                      );
+                    })()}
+                  </View>
+                )}
+              </View>
             </ScrollView>
 
-            <TouchableOpacity
-              style={[
-                styles.continueButton,
-                !selectedRecipient && styles.continueButtonDisabled,
-              ]}
-              onPress={() => setStep("enter-amount")}
-              disabled={!selectedRecipient}
-            >
-              <Text style={styles.continueButtonText}>Continue</Text>
-            </TouchableOpacity>
+            <View style={styles.recipientButtonContainer}>
+              <CustomButton
+                title="Continue"
+                variant="primary"
+                disabled={!validateCardNumber(recipientCardNumber) || !recipientName.trim()}
+                onPress={() => handleRecipientSelect(recipientCardNumber.trim())}
+              />
+            </View>
           </View>
         )}
 
         {step === "enter-amount" && (
           <View style={styles.content}>
-            <Text style={styles.sectionTitle}>Enter amount</Text>
+            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Enter amount</Text>
 
-            <View style={styles.amountSection}>
-              <Text style={styles.amountLabel}>Amount</Text>
+            <View style={[styles.amountSection, { backgroundColor: colors.card }]}>
+              <Text style={[styles.amountLabel, { color: colors.textSecondary }]}>Amount</Text>
               <View style={styles.amountInputContainer}>
-                <Text style={styles.currencySymbol}>$</Text>
+                <Text style={[styles.currencySymbol, { color: colors.textPrimary }]}>GHS</Text>
                 <TextInput
-                  style={styles.amountInput}
+                  style={[styles.amountInput, { color: colors.textPrimary }]}
                   value={amount}
                   onChangeText={setAmount}
                   placeholder="0"
+                  placeholderTextColor={colors.textSecondary}
                   keyboardType="numeric"
                 />
               </View>
             </View>
 
             <View style={styles.quickAmounts}>
-              {["5", "10", "15", "20", "50", "100", "200", "500"].map(
-                (value) => (
-                  <TouchableOpacity
+              {["5", "10", "15", "20", "50", "100", "200", "500"].map((value) => {
+                const v = getBadgeVisuals(colors, { tone: 'accent', selected: amount === value, size: 'md' });
+                return (
+                  <Badge
                     key={value}
-                    style={[
-                      styles.quickAmountButton,
-                      amount === value && styles.quickAmountButtonActive,
-                    ]}
                     onPress={() => setAmount(value)}
+                    bordered
+                    borderColor={v.borderColor}
+                    backgroundColor={v.backgroundColor}
+                    textColor={v.textColor}
+                    style={[styles.quickAmountButton]}
                   >
-                    <Text
-                      style={[
-                        styles.quickAmountText,
-                        amount === value && styles.quickAmountTextActive,
-                      ]}
-                    >
-                      ${value}
-                    </Text>
-                  </TouchableOpacity>
-                )
-              )}
+                    <Text style={[styles.quickAmountText, { color: v.textColor }]}>GHS {value}</Text>
+                  </Badge>
+                );
+              })}
             </View>
 
-            <TouchableOpacity
-              style={[
-                styles.transferButton,
-                !amount && styles.transferButtonDisabled,
-              ]}
-              onPress={handleTransfer}
+            <CustomButton
+              title="Review Transfer"
+              variant="primary"
               disabled={!amount}
-            >
-              <Text style={styles.transferButtonText}>Transfer</Text>
-            </TouchableOpacity>
+              onPress={() => setStep("confirm-transfer")}
+            />
+          </View>
+        )}
+
+        {step === "confirm-transfer" && (
+          <View style={styles.content}>
+            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Confirm Transfer</Text>
+
+            <ScrollView style={styles.confirmationScroll}>
+              {/* Transfer Summary */}
+              <View style={[styles.summarySection, { backgroundColor: colors.card }]}>
+                <Text style={[styles.summaryTitle, { color: colors.textPrimary }]}>Transfer Details</Text>
+                
+                <View style={styles.summaryRow}>
+                  <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Amount</Text>
+                  <Text style={[styles.summaryValue, { color: colors.textPrimary }]}>GHS {parseFloat(amount || '0').toFixed(2)}</Text>
+                </View>
+                
+                <View style={styles.summaryRow}>
+                  <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>From</Text>
+                  <View style={styles.summaryCardInfo}>
+                    <Text style={[styles.summaryValue, { color: colors.textPrimary }]}>{activeCard?.cardHolderName}</Text>
+                    <Text style={[styles.summarySecondary, { color: colors.textSecondary }]}>{activeCard?.cardNumber}</Text>
+                  </View>
+                </View>
+                
+                <View style={styles.summaryRow}>
+                  <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>To</Text>
+                  <View style={styles.summaryCardInfo}>
+                    {(() => {
+                      const recipientCard = findCardByNumber(recipientCardNumber);
+                      if (recipientCard) {
+                        return (
+                          <>
+                            <Text style={[styles.summaryValue, { color: colors.textPrimary }]}>{recipientCard.cardHolderName}</Text>
+                            <Text style={[styles.summarySecondary, { color: colors.positive }]}>{recipientCardNumber} (Your Card)</Text>
+                          </>
+                        );
+                      }
+                      return (
+                        <>
+                          <Text style={[styles.summaryValue, { color: colors.textPrimary }]}>{recipientName || 'External Card'}</Text>
+                          <Text style={[styles.summarySecondary, { color: colors.textSecondary }]}>{recipientCardNumber}</Text>
+                        </>
+                      );
+                    })()}
+                  </View>
+                </View>
+                
+                <View style={styles.summaryRow}>
+                  <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Transfer Type</Text>
+                  <Text style={[styles.summaryValue, { color: colors.textPrimary }]}>
+                    {findCardByNumber(recipientCardNumber) ? 'Internal Transfer' : 'External Transfer'}
+                  </Text>
+                </View>
+                
+                {activeCard && (
+                  <View style={styles.summaryRow}>
+                    <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Remaining Balance</Text>
+                    <Text style={[styles.summaryValue, { color: colors.textPrimary }]}>GHS {(activeCard.balance - parseFloat(amount || '0')).toFixed(2)}</Text>
+                  </View>
+                )}
+              </View>
+            </ScrollView>
+
+            <View style={styles.confirmationButtons}>
+              <CustomButton
+                title="Edit Transfer"
+                variant="secondary"
+                onPress={() => setStep("enter-amount")}
+                style={styles.editButton}
+              />
+              <CustomButton
+                title={isTransferring ? "Processing..." : "Confirm Transfer"}
+                variant="primary"
+                disabled={isTransferring}
+                onPress={handleTransfer}
+                style={styles.confirmButton}
+              />
+            </View>
           </View>
         )}
       </KeyboardAvoidingView>
@@ -228,7 +397,6 @@ export default function TransferScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
   },
   keyboardContainer: {
     flex: 1,
@@ -245,14 +413,12 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "white",
     justifyContent: "center",
     alignItems: "center",
   },
   title: {
     fontSize: 20,
     fontWeight: "bold",
-    color: "#1F2937",
   },
   placeholder: {
     width: 44,
@@ -264,7 +430,6 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: "bold",
-    color: "#1F2937",
     marginBottom: 20,
   },
   cardsScroll: {
@@ -275,7 +440,6 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
   },
   amountSection: {
-    backgroundColor: "white",
     borderRadius: 16,
     padding: 24,
     marginBottom: 24,
@@ -283,7 +447,6 @@ const styles = StyleSheet.create({
   },
   amountLabel: {
     fontSize: 16,
-    color: "#6B7280",
     marginBottom: 16,
   },
   amountInputContainer: {
@@ -293,14 +456,28 @@ const styles = StyleSheet.create({
   currencySymbol: {
     fontSize: 32,
     fontWeight: "bold",
-    color: "#1F2937",
     marginRight: 8,
   },
   amountInput: {
     fontSize: 48,
     fontWeight: "bold",
-    color: "#1F2937",
     minWidth: 100,
+    textAlign: "center",
+  },
+  cardNumberInput: {
+    fontSize: 24,
+    fontWeight: "bold",
+    minWidth: 200,
+    textAlign: "center",
+    letterSpacing: 2,
+  },
+  cardHolderInfo: {
+    marginTop: 16,
+    alignItems: "center",
+  },
+  cardHolderName: {
+    fontSize: 16,
+    fontWeight: "600",
     textAlign: "center",
   },
   quickAmounts: {
@@ -311,25 +488,19 @@ const styles = StyleSheet.create({
   },
   quickAmountButton: {
     width: "22%",
-    paddingVertical: 16,
     borderRadius: 12,
-    backgroundColor: "white",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 5,
   },
   quickAmountButtonActive: {
-    backgroundColor: "#0F766E",
   },
   quickAmountText: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#374151",
   },
   quickAmountTextActive: {
-    color: "white",
   },
   continueButton: {
-    backgroundColor: "#1F2937",
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: "center",
@@ -339,15 +510,12 @@ const styles = StyleSheet.create({
     right: 20,
   },
   continueButtonDisabled: {
-    backgroundColor: "#D1D5DB",
   },
   continueButtonText: {
-    color: "white",
     fontSize: 16,
     fontWeight: "600",
   },
   transferButton: {
-    backgroundColor: "#1F2937",
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: "center",
@@ -357,11 +525,92 @@ const styles = StyleSheet.create({
     right: 20,
   },
   transferButtonDisabled: {
-    backgroundColor: "#D1D5DB",
   },
   transferButtonText: {
-    color: "white",
     fontSize: 16,
     fontWeight: "600",
+  },
+  confirmationScroll: {
+    flex: 1,
+    marginBottom: 20,
+  },
+  summarySection: {
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
+  },
+  summaryTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 16,
+  },
+  summaryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 16,
+  },
+  summaryLabel: {
+    fontSize: 14,
+    flex: 1,
+  },
+  summaryValue: {
+    fontSize: 16,
+    fontWeight: "600",
+    flex: 1,
+    textAlign: "right",
+  },
+  summaryCardInfo: {
+    flex: 1,
+    alignItems: "flex-end",
+  },
+  summarySecondary: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  confirmationButtons: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  editButton: {
+    flex: 1,
+  },
+  confirmButton: {
+    flex: 1,
+  },
+  recipientForm: {
+    flex: 1,
+    marginBottom: 80,
+  },
+  inputSection: {
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    marginBottom: 12,
+  },
+  textInput: {
+    fontSize: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 0,
+    borderBottomWidth: 1,
+  },
+  cardNumberTextInput: {
+    fontSize: 18,
+    fontWeight: "600",
+    letterSpacing: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 0,
+    borderBottomWidth: 1,
+    textAlign: "center",
+  },
+  recipientButtonContainer: {
+    position: "absolute",
+    bottom: 20,
+    left: 20,
+    right: 20,
   },
 });

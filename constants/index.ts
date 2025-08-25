@@ -21,9 +21,11 @@ export interface Card {
   cardHolderName: string;
   expiryDate: string;
   balance: number;
-  cardType: "visa" | "mastercard" | "amex";
+  cardType: "visa" | "mastercard" | "amex" | "discover" | "card";
   isActive: boolean;
   cardColor: string;
+  token?: string;
+  currency?: string;
 }
 
 export interface Transaction {

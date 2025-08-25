@@ -6,7 +6,7 @@ import {
   ConfirmPasswordValidationState, 
   validateConfirmPassword 
 } from "./types";
-import { formStyles } from "./styles";
+import { useFormStyles } from "./styles";
 
 /**
  * Props for the ConfirmPasswordField component
@@ -78,38 +78,40 @@ const ConfirmPasswordField: React.FC<ConfirmPasswordFieldProps> = ({
     setShowPassword(!showPassword);
   };
 
+  const styles = useFormStyles();
   return (
-    <View style={formStyles.inputContainer}>
-      <Text style={formStyles.label}>{label}</Text>
-      <View style={formStyles.inputWrapper}>
+    <View style={styles.inputContainer}>
+      <Text style={styles.label}>{label}</Text>
+      <View style={styles.inputWrapper}>
         <TextInput
           style={[
-            formStyles.input,
+            styles.input,
             validation.isTouched && (
               validation.isValid 
-                ? formStyles.validInput 
+                ? styles.validInput 
                 : validation.isPartialMatch
-                  ? formStyles.partialMatchInput
+                  ? styles.partialMatchInput
                   : validation.errorMessage 
-                    ? formStyles.invalidInput 
+                    ? styles.invalidInput 
                     : null
             )
           ]}
           value={value}
           onChangeText={handleChangeText}
           placeholder={placeholder}
+          placeholderTextColor={undefined}
           secureTextEntry={!showPassword}
           {...rest}
         />
         {/* Password visibility toggle */}
         <TouchableOpacity 
-          style={formStyles.visibilityToggle} 
+          style={styles.visibilityToggle} 
           onPress={togglePasswordVisibility}
         >
           <Feather 
             name={showPassword ? "eye-off" : "eye"} 
             size={20} 
-            color="#6B7280" 
+            color={styles?.label?.color || '#6B7280'} 
           />
         </TouchableOpacity>
         
@@ -118,37 +120,37 @@ const ConfirmPasswordField: React.FC<ConfirmPasswordFieldProps> = ({
             style={
               // Use the appropriate style based on whether validation icon is present
               validation.isTouched && (validation.isValid || validation.isPartialMatch || (!validation.isValid && !validation.isPartialMatch && value.length > 0))
-                ? formStyles.resetButton  // Validation icon is present
-                : formStyles.resetButtonNoValidation  // Validation icon is not present
+                ? styles.resetButton  // Validation icon is present
+                : styles.resetButtonNoValidation  // Validation icon is not present
             } 
             onPress={resetField}
           >
-            <Feather name="x" size={18} color="#6B7280" />
+            <Feather name="x" size={18} color={styles?.label?.color || '#6B7280'} />
           </TouchableOpacity>
         )}
         
         {validation.isTouched && validation.isValid && (
-          <View style={formStyles.validationIcon}>
-            <MaterialIcons name="check-circle" size={20} color="#10B981" />
+          <View style={styles.validationIcon}>
+            <MaterialIcons name="check-circle" size={20} color={styles?.validInput?.borderColor || '#10B981'} />
           </View>
         )}
         
         {validation.isTouched && validation.isPartialMatch && (
-          <View style={formStyles.validationIcon}>
-            <MaterialIcons name="timelapse" size={20} color="#F59E0B" />
+          <View style={styles.validationIcon}>
+            <MaterialIcons name="timelapse" size={20} color={styles?.partialMatchInput?.borderColor || '#F59E0B'} />
           </View>
         )}
         
         {validation.isTouched && !validation.isValid && 
           !validation.isPartialMatch && value.length > 0 && (
-          <View style={formStyles.validationIcon}>
-            <MaterialIcons name="error" size={20} color="#EF4444" />
+          <View style={styles.validationIcon}>
+            <MaterialIcons name="error" size={20} color={styles?.invalidInput?.borderColor || '#EF4444'} />
           </View>
         )}
       </View>
       
       {validation.isTouched && validation.errorMessage ? (
-        <Text style={formStyles.errorText}>{validation.errorMessage}</Text>
+        <Text style={styles.errorText}>{validation.errorMessage}</Text>
       ) : null}
     </View>
   );

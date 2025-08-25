@@ -1,51 +1,72 @@
-import { CreditCard, Wifi } from "lucide-react-native";
+import { CreditCard, Wifi, Trash2, Check } from "lucide-react-native";
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Card } from "../types/index";
+import { useTheme } from "@/context/ThemeContext";
+import { chooseReadableText, withAlpha } from "@/theme/color-utils";
 
 interface BankCardProps {
   card: Card;
   onPress?: () => void;
   selected?: boolean;
+  onDelete?: () => void;
 }
 
-export function BankCard({ card, onPress, selected }: BankCardProps) {
+export function BankCard({ card, onPress, selected, onDelete }: BankCardProps) {
+  const { colors } = useTheme();
+  const bg = card.cardColor;
+  const textOnCard = chooseReadableText(bg);
+  const subTextOnCard = withAlpha(textOnCard, 0.7);
+
   return (
     <TouchableOpacity
       style={[
         styles.card,
-        { backgroundColor: card.cardColor },
-        selected && styles.selectedCard,
+        { backgroundColor: bg, borderColor: selected ? colors.tintPrimary : undefined, borderWidth: selected ? 2 : 0 },
       ]}
       onPress={onPress}
       disabled={!onPress}
+      activeOpacity={0.9}
     >
+      {onDelete && (
+        <TouchableOpacity
+          onPress={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          style={[styles.deleteFab, { backgroundColor: '#dc2626' }]}
+          accessibilityLabel="Delete card"
+          activeOpacity={0.8}
+        >
+          <Trash2 color="white" size={18} />
+        </TouchableOpacity>
+      )}
+
       <View style={styles.cardHeader}>
-        <CreditCard color="white" size={24} />
-        <Wifi color="white" size={20} />
+        <CreditCard color={textOnCard} size={24} />
+        <Wifi color={textOnCard} size={20} />
       </View>
 
       <View style={styles.cardNumber}>
-        <Text style={styles.cardNumberText}>{card.cardNumber}</Text>
+        <Text style={[styles.cardNumberText, { color: textOnCard }]}>{card.cardNumber}</Text>
       </View>
 
       <View style={styles.cardFooter}>
         <View>
-          <Text style={styles.balanceLabel}>Balance</Text>
-          <Text style={styles.balanceAmount}>
-            $
-            {card.balance.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+          <Text style={[styles.balanceLabel, { color: subTextOnCard }]}>Balance</Text>
+          <Text style={[styles.balanceAmount, { color: textOnCard }]}>
+            GHS {card.balance.toLocaleString("en-US", { minimumFractionDigits: 2 })}
           </Text>
         </View>
         <View style={styles.cardInfo}>
-          <Text style={styles.cardHolderName}>{card.cardHolderName}</Text>
-          <Text style={styles.expiryDate}>{card.expiryDate}</Text>
+          <Text style={[styles.cardHolderName, { color: textOnCard }]}>{card.cardHolderName}</Text>
+          <Text style={[styles.expiryDate, { color: subTextOnCard }]}>{card.expiryDate}</Text>
         </View>
       </View>
 
       {selected && (
-        <View style={styles.selectedIndicator}>
-          <View style={styles.checkmark} />
+        <View style={[styles.selectedIndicator, { backgroundColor: colors.tintPrimary }]}>
+          <View style={[styles.checkmark, { backgroundColor: chooseReadableText(colors.tintPrimary) }]} />
         </View>
       )}
     </TouchableOpacity>
@@ -68,9 +89,24 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
-  selectedCard: {
-    borderWidth: 2,
-    borderColor: "#0F766E",
+  deleteFab: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    zIndex: 2,
+    borderRadius: 16,
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 4,
   },
   cardHeader: {
     flexDirection: "row",
@@ -82,7 +118,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   cardNumberText: {
-    color: "white",
     fontSize: 18,
     fontWeight: "600",
     letterSpacing: 2,
@@ -93,12 +128,10 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
   },
   balanceLabel: {
-    color: "rgba(255, 255, 255, 0.7)",
     fontSize: 12,
     marginBottom: 4,
   },
   balanceAmount: {
-    color: "white",
     fontSize: 24,
     fontWeight: "bold",
   },
@@ -106,12 +139,10 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
   },
   cardHolderName: {
-    color: "white",
     fontSize: 12,
     fontWeight: "500",
   },
   expiryDate: {
-    color: "rgba(255, 255, 255, 0.7)",
     fontSize: 12,
   },
   selectedIndicator: {
@@ -121,7 +152,6 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: "#0F766E",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -129,6 +159,5 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "white",
   },
 });

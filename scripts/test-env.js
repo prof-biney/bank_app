@@ -8,15 +8,13 @@ console.log('EXPO_PUBLIC_APPWRITE_PROJECT_ID:', process.env.EXPO_PUBLIC_APPWRITE
 console.log('EXPO_PUBLIC_APPWRITE_PLATFORM:', process.env.EXPO_PUBLIC_APPWRITE_PLATFORM || 'Not defined');
 console.log('EXPO_PUBLIC_APPWRITE_DATABASE_ID:', process.env.EXPO_PUBLIC_APPWRITE_DATABASE_ID || 'Not defined');
 console.log('EXPO_PUBLIC_APPWRITE_USER_COLLECTION_ID:', process.env.EXPO_PUBLIC_APPWRITE_USER_COLLECTION_ID || 'Not defined');
+console.log('EXPO_PUBLIC_APPWRITE_NOTIFICATIONS_COLLECTION_ID:', process.env.EXPO_PUBLIC_APPWRITE_NOTIFICATIONS_COLLECTION_ID || 'Not defined');
 
-// Check Paystack configuration
-console.log('EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY:', 
-  process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY 
-    ? `${process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY.substring(0, 5)}...` // Show only first 5 chars for security
-    : 'Not defined'
-);
-console.log('EXPO_PUBLIC_PAYSTACK_DEFAULT_EMAIL:', process.env.EXPO_PUBLIC_PAYSTACK_DEFAULT_EMAIL || 'Not defined');
-console.log('EXPO_PUBLIC_PAYSTACK_CURRENCY:', process.env.EXPO_PUBLIC_PAYSTACK_CURRENCY || 'Not defined');
+// Check API Base
+console.log('AWS_ENDPOINT_URL_S3:', process.env.AWS_ENDPOINT_URL_S3 || 'Not defined');
+console.log('EXPO_PUBLIC_AWS_ENDPOINT_URL_S3:', process.env.EXPO_PUBLIC_AWS_ENDPOINT_URL_S3 || 'Not defined');
+console.log('EXPO_PUBLIC_API_BASE_URL:', process.env.EXPO_PUBLIC_API_BASE_URL || 'Not defined');
+console.log('EXPO_PUBLIC_FLY_API_URL:', process.env.EXPO_PUBLIC_FLY_API_URL || 'Not defined');
 
 // Check application environment
 console.log('EXPO_PUBLIC_APP_ENV:', process.env.EXPO_PUBLIC_APP_ENV || 'Not defined');

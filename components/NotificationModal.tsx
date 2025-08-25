@@ -1,4 +1,5 @@
-import { Bell, CreditCard, TrendingUp, X } from "lucide-react-native";
+import { Bell, CreditCard, TrendingUp, X, Mail, MailOpen, Trash2, Eraser, Archive, ArchiveRestore } from "lucide-react-native";
+import ConfirmDialog from '@/components/modals/ConfirmDialog';
 import React from "react";
 import {
   Modal,
@@ -7,52 +8,68 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Alert,
 } from "react-native";
+import { useTheme } from "@/context/ThemeContext";
+import { withAlpha } from "@/theme/color-utils";
+import { getChipStyles } from "@/theme/variants";
+import { ScrollView as GHScrollView, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { Pressable } from 'react-native';
+import CustomButton from "@/components/CustomButton";
+import { getBadgeVisuals } from "@/theme/badge-utils";
+import { useApp } from "@/context/AppContext";
 
 interface NotificationModalProps {
   visible: boolean;
   onClose: () => void;
 }
 
-const mockNotifications = [
-  {
-    id: "1",
-    title: "Payment Received",
-    message: "You received $1,320.00 from Bank of America",
-    time: "2 hours ago",
-    type: "payment",
-    unread: true,
-  },
-  {
-    id: "2",
-    title: "Card Transaction",
-    message: "Gym Payment of $45.99 was processed",
-    time: "1 day ago",
-    type: "transaction",
-    unread: true,
-  },
-  {
-    id: "3",
-    title: "Monthly Statement",
-    message: "Your January statement is now available",
-    time: "3 days ago",
-    type: "statement",
-    unread: false,
-  },
-];
-
 export function NotificationModal({
   visible,
   onClose,
 }: NotificationModalProps) {
+  const { colors } = useTheme();
+  const { 
+    notifications, 
+    markNotificationRead, 
+    deleteNotification, 
+    markAllNotificationsRead, 
+    deleteAllReadNotifications, 
+    clearAllNotifications, 
+    toggleNotificationRead, 
+    markAllNotificationsUnread,
+    archiveNotification,
+    unarchiveNotification,
+    toggleNotificationArchive,
+    archiveAllReadNotifications
+  } = useApp();
+
+  const [confirm, setConfirm] = React.useState<{ 
+    visible: boolean; 
+    title: string; 
+    message: string; 
+    tone?: 'default' | 'danger' | 'success'; 
+    onConfirm?: () => void 
+  } | null>(null);
+
+  const [filter, setFilter] = React.useState<'all' | 'unread' | 'archived' | 'payment' | 'transaction' | 'statement' | 'system'>('all');
+  
+  const filtered = React.useMemo(() => {
+    const base = notifications;
+    if (filter === 'all') return base.filter(n => !n.archived);
+    if (filter === 'unread') return base.filter(n => n.unread && !n.archived);
+    if (filter === 'archived') return base.filter(n => n.archived);
+    return base.filter(n => n.type === filter && !n.archived);
+  }, [notifications, filter]);
+
   const getNotificationIcon = (type: string) => {
     switch (type) {
       case "payment":
-        return <TrendingUp color="#10B981" size={20} />;
+        return <TrendingUp color={colors.tintPrimary} size={20} />;
       case "transaction":
-        return <CreditCard color="#0F766E" size={20} />;
+        return <CreditCard color={colors.tintPrimary} size={20} />;
       default:
-        return <Bell color="#6B7280" size={20} />;
+        return <Bell color={colors.textSecondary} size={20} />;
     }
   };
 
@@ -63,42 +80,219 @@ export function NotificationModal({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Notifications</Text>
-          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <X color="#374151" size={24} />
-          </TouchableOpacity>
-        </View>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <View style={[styles.container, { backgroundColor: colors.background }]}>
+          <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+            <Text style={[styles.title, { color: colors.textPrimary }]}>Notifications</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <TouchableOpacity 
+                onPress={() => {
+                  setConfirm({
+                    visible: true,
+                    title: 'Mark all as read?',
+                    message: 'This will mark your latest notifications as read.',
+                    onConfirm: async () => {
+                      await markAllNotificationsRead();
+                    }
+                  });
+                }} 
+                style={[styles.markAllButton, { backgroundColor: colors.background, borderColor: colors.border }]}
+              >
+                <MailOpen color={colors.textSecondary} size={16} />
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                onPress={() => {
+                  setConfirm({
+                    visible: true,
+                    title: 'Mark all as unread?',
+                    message: 'This will mark your latest notifications as unread.',
+                    onConfirm: async () => {
+                      await markAllNotificationsUnread();
+                    }
+                  });
+                }} 
+                style={[styles.markAllButton, { backgroundColor: colors.background, borderColor: colors.border }]}
+              > 
+                <Mail color={colors.textSecondary} size={16} />
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                onPress={() => {
+                  setConfirm({
+                    visible: true,
+                    title: 'Archive all read notifications?',
+                    message: 'This will archive all read notifications. You can find them in the Archived filter.',
+                    onConfirm: async () => {
+                      await archiveAllReadNotifications();
+                    }
+                  });
+                }} 
+                style={[styles.markAllButton, { backgroundColor: colors.background, borderColor: colors.border }]}
+              > 
+                <Archive color={colors.textSecondary} size={16} />
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                onPress={() => {
+                  setConfirm({
+                    visible: true,
+                    title: 'Clear all notifications?',
+                    message: 'This will permanently delete all notifications for your account.',
+                    tone: 'danger',
+                    onConfirm: async () => {
+                      await clearAllNotifications();
+                    },
+                  });
+                }} 
+                style={[styles.markAllButton, { backgroundColor: colors.background, borderColor: colors.border }]}
+              > 
+                <Eraser color={colors.negative} size={16} />
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                onPress={onClose} 
+                style={[styles.closeButton, { backgroundColor: colors.background }]}
+              >
+                <X color={colors.textPrimary} size={20} />
+              </TouchableOpacity>
+            </View>
+          </View>
+				
+					<View>
+						<GHScrollView 
+							horizontal 
+							showsHorizontalScrollIndicator={false} 
+							contentContainerStyle={{ flexDirection: 'row', gap: 0, paddingHorizontal: 16, paddingVertical: 8 }}
+						>
+							{(['all','unread','archived','payment','transaction','statement','system'] as const).map(key => {
+								const tone = key === 'all' ? 'neutral' :
+									key === 'unread' ? 'accent' :
+										key === 'archived' ? 'neutral' :
+											key === 'payment' ? 'success' :
+												key === 'transaction' ? 'accent' :
+													key === 'statement' ? 'neutral' :
+														'warning';
+								const v = getBadgeVisuals(colors, { tone: tone as any, selected: filter === key, size: 'sm' });
+								const label = key[0].toUpperCase() + key.slice(1);
+								return (
+									<View key={key} style={{ marginRight: 5 }}>
+										<CustomButton
+											onPress={() => setFilter(key)}
+											title={label}
+											size="sm"
+											isFilterAction
+											variant={v.textColor === '#fff' ? 'primary' : 'secondary'}
+											style={{ backgroundColor: v.backgroundColor, borderColor: v.borderColor, borderWidth: 1 }}
+											textStyle={{ color: v.textColor }}
+										/>
+									</View>
+								);
+							})}
+						</GHScrollView>
+					</View>
 
-        <ScrollView
-          style={styles.notificationsList}
-          showsVerticalScrollIndicator={false}
-        >
-          {mockNotifications.map((notification) => (
-            <TouchableOpacity
-              key={notification.id}
-              style={styles.notificationItem}
-            >
-              <View style={styles.notificationIcon}>
-                {getNotificationIcon(notification.type)}
-              </View>
-              <View style={styles.notificationContent}>
-                <View style={styles.notificationHeader}>
-                  <Text style={styles.notificationTitle}>
-                    {notification.title}
-                  </Text>
-                  {notification.unread && <View style={styles.unreadDot} />}
-                </View>
-                <Text style={styles.notificationMessage}>
-                  {notification.message}
+          <ScrollView
+            style={styles.notificationsList}
+            showsVerticalScrollIndicator={false}
+          >
+            {filtered.length === 0 ? (
+              <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 48 }}>
+                <Text style={{ fontSize: 18, fontWeight: '700', color: colors.textPrimary }}>No notifications</Text>
+                <Text style={{ marginTop: 8, color: colors.textSecondary, textAlign: 'center', paddingHorizontal: 32 }}>
+                  {notifications.length === 0 ? 'You\'ll see alerts about payments, cards, and account updates here.' : 'No items match this filter.'}
                 </Text>
-                <Text style={styles.notificationTime}>{notification.time}</Text>
               </View>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
+            ) : (
+              filtered.map((notification) => (
+                <TouchableOpacity
+                  key={notification.id}
+                  style={[styles.notificationItem, { backgroundColor: colors.card }]}
+                  onPress={async () => { 
+                    if (notification.unread) await markNotificationRead(notification.id); 
+                  }}
+                  onLongPress={async () => { 
+                    await toggleNotificationRead(notification.id); 
+                  }}
+                >
+                  <View style={[styles.notificationIcon, { backgroundColor: colors.background }]}> 
+                    {getNotificationIcon(notification.type as string)}
+                  </View>
+                  <View style={styles.notificationContent}>
+                    <View style={styles.notificationHeader}>
+                      <Text style={[styles.notificationTitle, { color: colors.textPrimary }]}>
+                        {notification.title}
+                      </Text>
+                      {notification.unread && <View style={[styles.unreadDot, { backgroundColor: colors.tintPrimary }]} />}
+                    </View>
+                    <Text style={[styles.notificationMessage, { color: colors.textSecondary }]}>
+                      {notification.message}
+                    </Text>
+                    <Text style={[styles.notificationTime, { color: colors.textSecondary }]}>
+                      {notification.createdAt ? new Date(notification.createdAt).toLocaleString() : ''}
+                    </Text>
+                    
+                    {/* Individual Action Buttons */}
+                    <View style={styles.actionButtons}>
+                      <TouchableOpacity
+                        onPress={() => {
+                          setConfirm({
+                            visible: true,
+                            title: notification.archived ? 'Unarchive this notification?' : 'Archive this notification?',
+                            message: notification.archived ? 'This notification will be moved back to your active notifications.' : 'This notification will be archived and moved out of your main list.',
+                            tone: notification.archived ? 'success' : 'default',
+                            onConfirm: async () => {
+                              await toggleNotificationArchive(notification.id);
+                            }
+                          });
+                        }}
+                        style={[styles.actionButton, { backgroundColor: colors.background, borderColor: colors.border }]}
+                      >
+                        {notification.archived ? <ArchiveRestore color={colors.textSecondary} size={16} /> : <Archive color={colors.textSecondary} size={16} />}
+                      </TouchableOpacity>
+                      
+                      <TouchableOpacity
+                        onPress={() => {
+                          setConfirm({
+                            visible: true,
+                            title: 'Delete this notification?',
+                            message: 'This item will be permanently removed.',
+                            tone: 'danger',
+                            onConfirm: async () => {
+                              await deleteNotification(notification.id);
+                            }
+                          });
+                        }}
+                        style={[styles.actionButton, { backgroundColor: colors.background, borderColor: colors.border }]}
+                      >
+                        <Trash2 color={colors.negative} size={16} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              ))
+            )}
+          </ScrollView>
+          
+          {/* Confirm Dialog */}
+          <ConfirmDialog
+            visible={Boolean(confirm?.visible)}
+            title={confirm?.title || ''}
+            message={confirm?.message || ''}
+            confirmText="Confirm"
+            cancelText="Cancel"
+            tone={confirm?.tone || 'default'}
+            onConfirm={() => { 
+              try { 
+                confirm?.onConfirm?.(); 
+              } finally { 
+                setConfirm(null); 
+              } 
+            }}
+            onCancel={() => setConfirm(null)}
+          />
+        </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
@@ -106,7 +300,6 @@ export function NotificationModal({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
   },
   header: {
     flexDirection: "row",
@@ -115,20 +308,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 24,
-    backgroundColor: "white",
     borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
   },
   title: {
     fontSize: 20,
     fontWeight: "bold",
-    color: "#1F2937",
   },
   closeButton: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "#F3F4F6",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -137,13 +326,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 16,
   },
+  markAllButton: {
+    paddingHorizontal: 6,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    minWidth: 32,
+    minHeight: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  filterChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
   notificationItem: {
     flexDirection: "row",
-    backgroundColor: "white",
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
-    shadowColor: "#000",
     shadowOffset: {
       width: 0,
       height: 1,
@@ -156,7 +359,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "#F9FAFB",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
@@ -172,22 +374,34 @@ const styles = StyleSheet.create({
   notificationTitle: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#1F2937",
     flex: 1,
   },
   unreadDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "#0F766E",
   },
   notificationMessage: {
     fontSize: 14,
-    color: "#6B7280",
     marginBottom: 4,
   },
   notificationTime: {
     fontSize: 12,
-    color: "#9CA3AF",
+    marginBottom: 8,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  actionButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

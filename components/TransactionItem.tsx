@@ -7,29 +7,31 @@ import {
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Transaction } from "../types/index";
+import { useTheme } from "@/context/ThemeContext";
 
 interface TransactionItemProps {
   transaction: Transaction;
 }
 
 export function TransactionItem({ transaction }: TransactionItemProps) {
+  const { colors } = useTheme();
   const getTransactionIcon = () => {
     switch (transaction.type) {
       case "deposit":
-        return <ArrowDownLeft color="#10B981" size={20} />;
+        return <ArrowDownLeft color={colors.positive} size={20} />;
       case "transfer":
-        return <ArrowUpRight color="#EF4444" size={20} />;
+        return <ArrowUpRight color={colors.negative} size={20} />;
       case "withdraw":
-        return <Banknote color="#EF4444" size={20} />;
+        return <Banknote color={colors.negative} size={20} />;
       case "payment":
-        return <CreditCard color="#EF4444" size={20} />;
+        return <CreditCard color={colors.negative} size={20} />;
       default:
-        return <CreditCard color="#6B7280" size={20} />;
+        return <CreditCard color={colors.textSecondary} size={20} />;
     }
   };
 
   const getAmountColor = () => {
-    return transaction.amount > 0 ? "#10B981" : "#EF4444";
+    return transaction.amount > 0 ? colors.positive : colors.negative;
   };
 
   const formatDate = (dateString: string) => {
@@ -41,20 +43,39 @@ export function TransactionItem({ transaction }: TransactionItemProps) {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.iconContainer}>{getTransactionIcon()}</View>
+    <View style={[styles.container, { 
+      backgroundColor: colors.card,
+      shadowColor: colors.textPrimary,
+    }]}>
+      <View style={[styles.iconContainer, { backgroundColor: colors.background }]}>{getTransactionIcon()}</View>
 
       <View style={styles.details}>
-        <Text style={styles.description}>{transaction.description}</Text>
-        <Text style={styles.category}>{transaction.category}</Text>
+        <Text 
+          style={[styles.description, { color: colors.textPrimary }]}
+          numberOfLines={1}
+          ellipsizeMode="tail"
+          adjustsFontSizeToFit
+          minimumFontScale={0.7}
+        >
+          {transaction.description}
+        </Text>
+        <Text 
+          style={[styles.category, { color: colors.textSecondary }]}
+          numberOfLines={1}
+          ellipsizeMode="tail"
+          adjustsFontSizeToFit
+          minimumFontScale={0.8}
+        >
+          {transaction.category}
+        </Text>
       </View>
 
       <View style={styles.amountContainer}>
         <Text style={[styles.amount, { color: getAmountColor() }]}>
-          {transaction.amount > 0 ? "+" : ""}$
+          {transaction.amount > 0 ? "+" : ""}GHS 
           {Math.abs(transaction.amount).toFixed(2)}
         </Text>
-        <Text style={styles.date}>{formatDate(transaction.date)}</Text>
+        <Text style={[styles.date, { color: colors.textSecondary }]}>{formatDate(transaction.date)}</Text>
       </View>
     </View>
   );
@@ -65,16 +86,22 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 16,
-    paddingHorizontal: 20,
-    backgroundColor: "white",
-    borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
+    paddingHorizontal: 16,
+    marginHorizontal: 16,
+    marginVertical: 6,
+    borderRadius: 12,
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   iconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#F9FAFB",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
@@ -85,12 +112,10 @@ const styles = StyleSheet.create({
   description: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#1F2937",
     marginBottom: 4,
   },
   category: {
     fontSize: 14,
-    color: "#6B7280",
   },
   amountContainer: {
     alignItems: "flex-end",
@@ -102,6 +127,5 @@ const styles = StyleSheet.create({
   },
   date: {
     fontSize: 12,
-    color: "#9CA3AF",
   },
 });

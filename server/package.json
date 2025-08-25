@@ -1,0 +1,19 @@
+{
+  "name": "bank-app-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun ./src/index.ts",
+    "start": "bun ./src/index.ts",
+    "build": "echo 'Bun runtime - no build step'",
+    "check:appwrite": "bun scripts/check-appwrite.ts",
+    "migrate:card-balances": "bun scripts/migrate-card-balances.ts"
+  },
+  "dependencies": {
+    "hono": "^4.6.8",
+    "zod": "^3.23.8",
+    "node-appwrite": "^14.0.0"
+  }
+}
+

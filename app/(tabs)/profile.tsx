@@ -4,9 +4,8 @@ import {
   CircleHelp as HelpCircle,
   LogOut,
   Settings,
-  User as UserIcon,
 } from "lucide-react-native";
-import React from "react";
+import React, { useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -18,8 +17,14 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { useTheme } from "@/context/ThemeContext";
+import { ProfilePicture } from "@/components/ProfilePicture";
+import { ImagePickerModal } from "@/components/ImagePickerModal";
+
 export default function ProfileScreen() {
-  const { user, logout } = useAuthStore();
+  const { user, logout, updateProfilePicture, isLoading } = useAuthStore();
+  const [showImagePicker, setShowImagePicker] = useState(false);
+  const [isUpdatingPicture, setIsUpdatingPicture] = useState(false);
 
   const handleSignOut = () => {
     Alert.alert("Sign Out", "Are you sure you want to sign out?", [
@@ -43,49 +48,83 @@ export default function ProfileScreen() {
     router.push("/help-support");
   };
 
+  const handleProfilePicturePress = () => {
+    setShowImagePicker(true);
+  };
+
+  const handleImageSelected = async (imageUri: string) => {
+    try {
+      setIsUpdatingPicture(true);
+      await updateProfilePicture(imageUri);
+      Alert.alert('Success', 'Profile picture updated successfully!');
+    } catch (error) {
+      console.error('Profile picture update error:', error);
+      Alert.alert(
+        'Error',
+        error instanceof Error ? error.message : 'Failed to update profile picture'
+      );
+    } finally {
+      setIsUpdatingPicture(false);
+    }
+  };
+
+  const { colors } = useTheme();
+
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <View style={styles.header}>
-          <Text style={styles.title}>Profile</Text>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>Profile</Text>
         </View>
 
-        <View style={styles.userSection}>
-          <View style={styles.avatar}>
-            <UserIcon color="#0F766E" size={32} />
-          </View>
-          <Text style={styles.userName}>{user?.name}</Text>
-          <Text style={styles.userEmail}>{user?.email}</Text>
+        <View style={[styles.userSection, { backgroundColor: colors.card }]}>
+          <ProfilePicture
+            name={user?.name}
+            imageUrl={user?.avatar}
+            size="large"
+            editable
+            loading={isUpdatingPicture}
+            onPress={handleProfilePicturePress}
+            style={styles.profilePicture}
+          />
+          <Text style={[styles.userName, { color: colors.textPrimary }]}>{user?.name}</Text>
+          <Text style={[styles.userEmail, { color: colors.textSecondary }]}>{user?.email}</Text>
         </View>
 
-        <View style={styles.menuSection}>
-          <TouchableOpacity style={styles.menuItem} onPress={handleSettings}>
+        <View style={[styles.menuSection, { backgroundColor: colors.card }]}>
+          <TouchableOpacity style={[styles.menuItem, { borderBottomColor: colors.border }]} onPress={handleSettings}>
             <View style={styles.menuItemLeft}>
-              <Settings color="#374151" size={20} />
-              <Text style={styles.menuItemText}>Settings</Text>
+              <Settings color={colors.textSecondary} size={20} />
+              <Text style={[styles.menuItemText, { color: colors.textPrimary }]}>Settings</Text>
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.menuItem} onPress={handleHelpSupport}>
+          <TouchableOpacity style={[styles.menuItem, { borderBottomColor: colors.border }]} onPress={handleHelpSupport}>
             <View style={styles.menuItemLeft}>
-              <HelpCircle color="#374151" size={20} />
-              <Text style={styles.menuItemText}>Help & Support</Text>
+              <HelpCircle color={colors.textSecondary} size={20} />
+              <Text style={[styles.menuItemText, { color: colors.textPrimary }]}>Help & Support</Text>
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.menuItem} onPress={handleSignOut}>
+          <TouchableOpacity style={[styles.menuItem, { borderBottomColor: colors.border }]} onPress={handleSignOut}>
             <View style={styles.menuItemLeft}>
-              <LogOut color="#EF4444" size={20} />
-              <Text style={[styles.menuItemText, { color: "#EF4444" }]}>
+              <LogOut color={colors.negative} size={20} />
+              <Text style={[styles.menuItemText, { color: colors.negative }] }>
                 Sign Out
               </Text>
             </View>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+      
+      <ImagePickerModal
+        visible={showImagePicker}
+        onClose={() => setShowImagePicker(false)}
+        onImageSelected={handleImageSelected}
+      />
     </SafeAreaView>
   );
 }
@@ -93,7 +132,6 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
   },
   keyboardContainer: {
     flex: 1,
@@ -106,10 +144,8 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: "bold",
-    color: "#1F2937",
   },
   userSection: {
-    backgroundColor: "white",
     alignItems: "center",
     paddingVertical: 32,
     marginHorizontal: 20,
@@ -124,27 +160,18 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: "#F0FDFA",
-    justifyContent: "center",
-    alignItems: "center",
+  profilePicture: {
     marginBottom: 16,
   },
   userName: {
     fontSize: 20,
     fontWeight: "bold",
-    color: "#1F2937",
     marginBottom: 4,
   },
   userEmail: {
     fontSize: 14,
-    color: "#6B7280",
   },
   menuSection: {
-    backgroundColor: "white",
     marginHorizontal: 20,
     borderRadius: 16,
     overflow: "hidden",
@@ -161,7 +188,6 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 20,
     borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
   },
   menuItemLeft: {
     flexDirection: "row",
@@ -169,7 +195,6 @@ const styles = StyleSheet.create({
   },
   menuItemText: {
     fontSize: 16,
-    color: "#374151",
     marginLeft: 12,
     fontWeight: "500",
   },

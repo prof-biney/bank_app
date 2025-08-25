@@ -7,7 +7,15 @@
  * 
  * @module store/auth
  */
-import { account, getCurrentUser, signIn, signOut } from "@/lib/appwrite";
+import { 
+  account, 
+  getCurrentUser, 
+  signIn, 
+  signOut,
+  uploadProfilePicture,
+  deleteProfilePicture,
+  updateUserProfile 
+} from "@/lib/appwrite";
 import { User } from "@/types";
 import { create } from "zustand";
 
@@ -65,6 +73,14 @@ type AuthState = {
    * @returns A promise that resolves when logout completes
    */
   logout: () => void;
+  
+  /**
+   * Updates the user's profile picture
+   * @param imageUri - Local URI of the image to upload
+   * @returns A promise that resolves when the update completes
+   * @throws Error if upload or update fails
+   */
+  updateProfilePicture: (imageUri: string) => Promise<void>;
 };
 
 /**
@@ -116,12 +132,33 @@ const useAuthStore = create<AuthState>((set) => ({
             isAuthenticated: true,
             user: user as unknown as User,
           });
+          // Obtain an Appwrite JWT for server API calls and stash globally
+          try {
+            const jwt = await account.createJWT();
+            (global as any).__APPWRITE_JWT__ = jwt?.jwt;
+            // Seed demo transactions on sign-in (idempotent if transactions exist)
+            try {
+              const { getApiBase } = require('../lib/api');
+              const url = `${getApiBase()}/v1/dev/seed-transactions`;
+              if (jwt?.jwt) {
+                await fetch(url, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt.jwt}` },
+                  body: JSON.stringify({ count: 20, skipIfNotEmpty: true })
+                }).catch(() => {});
+              }
+            } catch {}
+          } catch (e) {
+            // Non-fatal if JWT cannot be created
+            (global as any).__APPWRITE_JWT__ = undefined;
+          }
         }
       } else {
         set({
           isAuthenticated: false,
           user: null,
         });
+        (global as any).__APPWRITE_JWT__ = undefined;
       }
     } catch (error) {
       console.log("fetchAuthenticatedUser error", error);
@@ -130,6 +167,7 @@ const useAuthStore = create<AuthState>((set) => ({
         isAuthenticated: false,
         user: null,
       });
+      (global as any).__APPWRITE_JWT__ = undefined;
     } finally {
       set({ isLoading: false });
     }
@@ -159,6 +197,25 @@ const useAuthStore = create<AuthState>((set) => ({
             isAuthenticated: true,
             user: user as unknown as User,
           });
+          // Obtain and cache Appwrite JWT for server API calls
+          try {
+            const jwt = await account.createJWT();
+            (global as any).__APPWRITE_JWT__ = jwt?.jwt;
+            // Seed demo transactions on login (idempotent if transactions exist)
+            try {
+              const { getApiBase } = require('../lib/api');
+              const url = `${getApiBase()}/v1/dev/seed-transactions`;
+              if (jwt?.jwt) {
+                await fetch(url, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt.jwt}` },
+                  body: JSON.stringify({ count: 20, skipIfNotEmpty: true })
+                }).catch(() => {});
+              }
+            } catch {}
+          } catch (e) {
+            (global as any).__APPWRITE_JWT__ = undefined;
+          }
         }
       }
     } catch (error: any) {
@@ -168,6 +225,7 @@ const useAuthStore = create<AuthState>((set) => ({
         isAuthenticated: false,
         user: null,
       });
+      (global as any).__APPWRITE_JWT__ = undefined;
       throw error;
     } finally {
       set({ isLoading: false });
@@ -194,6 +252,57 @@ const useAuthStore = create<AuthState>((set) => ({
         isAuthenticated: false,
         user: null,
       });
+    } finally {
+      (global as any).__APPWRITE_JWT__ = undefined;
+      set({ isLoading: false });
+    }
+  },
+
+  /**
+   * Updates the user's profile picture
+   * Uploads the new image to Appwrite Storage and updates the user document
+   * @param imageUri - Local URI of the image to upload
+   * @throws Error if upload or update fails
+   */
+  updateProfilePicture: async (imageUri: string) => {
+    const { user } = useAuthStore.getState();
+    
+    if (!user) {
+      throw new Error('No authenticated user found');
+    }
+
+    set({ isLoading: true });
+    
+    try {
+      // Delete old profile picture if it exists
+      if (user.avatarFileId) {
+        try {
+          await deleteProfilePicture(user.avatarFileId);
+        } catch (error) {
+          console.log('Failed to delete old profile picture:', error);
+          // Don't throw here, continue with upload
+        }
+      }
+
+      // Upload new profile picture
+      const { fileId, fileUrl } = await uploadProfilePicture(imageUri, user.id);
+      
+      // Update user document with new avatar information
+      const updatedUser = await updateUserProfile(user.id, fileUrl, fileId);
+      
+      // Update local state with new user data
+      set({
+        user: {
+          ...user,
+          avatar: fileUrl,
+          avatarFileId: fileId,
+        } as User,
+      });
+      
+      console.log('Profile picture updated successfully');
+    } catch (error) {
+      console.error('Update profile picture error:', error);
+      throw error;
     } finally {
       set({ isLoading: false });
     }

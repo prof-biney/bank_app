@@ -6,10 +6,13 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
+  Pressable,
+  TouchableOpacity,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useTheme } from "@/context/ThemeContext";
+import { chooseReadableText } from "@/theme/color-utils";
 
 interface FAQ {
   id: string;
@@ -28,7 +31,7 @@ const faqs: FAQ[] = [
     id: "2",
     question: "Is my money safe with this app?",
     answer:
-      "Yes, we use bank-level security with 256-bit encryption. Your funds are FDIC insured up to $250,000 and we never store your sensitive information.",
+      "Yes, we use bank-level security with 256-bit encryption. Your funds are FDIC insured up to GHS 250,000 and we never store your sensitive information.",
   },
   {
     id: "3",
@@ -51,6 +54,7 @@ const faqs: FAQ[] = [
 ];
 
 export default function HelpSupportScreen() {
+  const { colors } = useTheme();
   const [expandedFAQ, setExpandedFAQ] = useState<string | null>(null);
 
   const toggleFAQ = (id: string) => {
@@ -64,50 +68,63 @@ export default function HelpSupportScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => router.back()}
-          style={styles.backButton}
+          style={[styles.backButton, { backgroundColor: colors.card }]}
         >
-          <ArrowLeft color="#374151" size={24} />
+          <ArrowLeft color={colors.textSecondary} size={24} />
         </TouchableOpacity>
-        <Text style={styles.title}>Help & Support</Text>
+        <Text style={[styles.title, { color: colors.textPrimary }]}>Help & Support</Text>
         <View style={styles.placeholder} />
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.contactSection}>
-          <Text style={styles.contactTitle}>Need immediate help?</Text>
-          <TouchableOpacity
-            style={styles.emailButton}
+        <View style={[styles.contactSection, { backgroundColor: colors.card }]}>
+          <Text style={[styles.contactTitle, { color: colors.textPrimary }]}>Need immediate help?</Text>
+          <Pressable
             onPress={handleEmailSupport}
+            style={({ pressed }) => [
+              styles.emailButton,
+              { backgroundColor: pressed ? colors.tintPrimary : colors.tintSoftBg },
+            ]}
+            android_ripple={{ color: colors.tintPrimary }}
           >
-            <Mail color="#0F766E" size={20} />
-            <Text style={styles.emailText}>support@yourbankapp.com</Text>
-          </TouchableOpacity>
+            {({ pressed }) => (
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Mail color={pressed ? chooseReadableText(colors.tintPrimary) : colors.tintPrimary} size={20} />
+                <Text style={[
+                  styles.emailText,
+                  { color: pressed ? chooseReadableText(colors.tintPrimary) : colors.tintPrimary },
+                ]}>
+                  support@yourbankapp.com
+                </Text>
+              </View>
+            )}
+          </Pressable>
         </View>
 
-        <View style={styles.faqSection}>
-          <Text style={styles.sectionTitle}>Frequently Asked Questions</Text>
+        <View style={[styles.faqSection, { backgroundColor: colors.card }]}>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Frequently Asked Questions</Text>
 
           {faqs.map((faq) => (
-            <View key={faq.id} style={styles.faqItem}>
+            <View key={faq.id} style={[styles.faqItem, { borderBottomColor: colors.border }]}>
               <TouchableOpacity
                 style={styles.faqQuestion}
                 onPress={() => toggleFAQ(faq.id)}
               >
-                <Text style={styles.questionText}>{faq.question}</Text>
+                <Text style={[styles.questionText, { color: colors.textPrimary }]}>{faq.question}</Text>
                 {expandedFAQ === faq.id ? (
-                  <ChevronUp color="#6B7280" size={20} />
+                  <ChevronUp color={colors.textSecondary} size={20} />
                 ) : (
-                  <ChevronDown color="#6B7280" size={20} />
+                  <ChevronDown color={colors.textSecondary} size={20} />
                 )}
               </TouchableOpacity>
 
               {expandedFAQ === faq.id && (
-                <View style={styles.faqAnswer}>
-                  <Text style={styles.answerText}>{faq.answer}</Text>
+                <View style={[styles.faqAnswer, { borderTopColor: colors.border }]}>
+                  <Text style={[styles.answerText, { color: colors.textSecondary }]}>{faq.answer}</Text>
                 </View>
               )}
             </View>
@@ -121,7 +138,6 @@ export default function HelpSupportScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
   },
   header: {
     flexDirection: "row",
@@ -135,14 +151,12 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "white",
     justifyContent: "center",
     alignItems: "center",
   },
   title: {
     fontSize: 20,
     fontWeight: "bold",
-    color: "#1F2937",
   },
   placeholder: {
     width: 44,
@@ -152,7 +166,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   contactSection: {
-    backgroundColor: "white",
     borderRadius: 16,
     padding: 20,
     marginBottom: 24,
@@ -169,25 +182,21 @@ const styles = StyleSheet.create({
   contactTitle: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#1F2937",
     marginBottom: 16,
   },
   emailButton: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F0FDFA",
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 8,
   },
   emailText: {
     fontSize: 16,
-    color: "#0F766E",
     fontWeight: "500",
     marginLeft: 8,
   },
   faqSection: {
-    backgroundColor: "white",
     borderRadius: 16,
     padding: 20,
     shadowColor: "#000",
@@ -202,12 +211,10 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: "bold",
-    color: "#1F2937",
     marginBottom: 20,
   },
   faqItem: {
     borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
     paddingBottom: 16,
     marginBottom: 16,
   },
@@ -219,7 +226,6 @@ const styles = StyleSheet.create({
   questionText: {
     fontSize: 16,
     fontWeight: "500",
-    color: "#1F2937",
     flex: 1,
     marginRight: 12,
   },
@@ -227,11 +233,9 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: "#F9FAFB",
   },
   answerText: {
     fontSize: 14,
-    color: "#6B7280",
     lineHeight: 20,
   },
 });

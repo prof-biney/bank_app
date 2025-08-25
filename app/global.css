@@ -17,15 +17,15 @@
 }
 
 @layer components {
-  .label {
-    @apply text-base text-start w-full font-inter-medium text-gray-800 mb-1 pl-0.5;
+.label {
+    @apply text-base text-start w-full font-inter-medium mb-1 pl-0.5;
   }
 
   .input {
-    @apply rounded-lg p-3 w-full text-base font-inter-semibold text-dark-100 border leading-5;
+    @apply rounded-lg p-3 w-full text-base font-inter-semibold border leading-5;
   }
 
   .custom-btn {
-    @apply bg-primary rounded-full p-3 w-full flex flex-row justify-center;
+    @apply rounded-full p-3 w-full flex flex-row justify-center;
   }
 }

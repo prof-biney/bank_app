@@ -325,27 +325,6 @@ The application uses Appwrite's database service for CRUD operations on collecti
 - **Update Recipient**: Updates a recipient document
 - **Delete Recipient**: Deletes a recipient document
 
-### Mock Data (Development)
-
-For development and testing, the application uses mock data implemented in `lib/mockdata.ts` and `context/AppContext.tsx`:
-
-```typescript
-// AppContext.tsx
-const [cards] = useState<Card[]>(mockCards);
-const [transactions, setTransactions] = useState<Transaction[]>(mockTransactions);
-const [activeCard, setActiveCard] = useState<Card | null>(mockCards[0]);
-
-const addTransaction = (
-  transactionData: Omit<Transaction, "id" | "date">
-) => {
-  const newTransaction: Transaction = {
-    ...transactionData,
-    id: Date.now().toString(),
-    date: new Date().toISOString(),
-  };
-  setTransactions((prev) => [newTransaction, ...prev]);
-};
-```
 
 ## Error Handling
 
@@ -370,7 +349,7 @@ The application requires the following environment variables to be set in a `.en
 ```
 EXPO_PUBLIC_APPWRITE_ENDPOINT=your_appwrite_endpoint
 EXPO_PUBLIC_APPWRITE_PROJECT_ID=your_appwrite_project_id
-EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY=your_paystack_public_key
+AWS_ENDPOINT_URL_S3=https://your-app.fly.dev
 ```
 
 ### Appwrite Setup
