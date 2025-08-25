@@ -1,7 +1,7 @@
 import { Check } from "lucide-react-native";
 import React from "react";
 import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { Recipient } from "../types/index";
+import { Recipient } from "@/types/index";
 import { useTheme } from "@/context/ThemeContext";
 
 interface RecipientItemProps {

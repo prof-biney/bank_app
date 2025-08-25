@@ -1,6 +1,6 @@
 import React, { createContext, ReactNode, useContext, useEffect, useState, useRef } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Card, Transaction } from "../constants/index";
+import { Card, Transaction } from "@/constants/index";
 import type { Notification } from "@/types";
 import { ActivityEvent } from "@/types/activity";
 import { appwriteConfig, client, logCardEvent, databases } from "@/lib/appwrite";
@@ -47,10 +47,12 @@ interface AppContextType {
   isLoadingTransactions: boolean;
   refreshTransactions: () => Promise<void>;
   loadMoreTransactions: () => Promise<void>;
+  clearAllTransactions: () => Promise<void>;
   // Activity events
   activity: ActivityEvent[];
   pushActivity: (evt: ActivityEvent) => void;
   setActivity: React.Dispatch<React.SetStateAction<ActivityEvent[]>>;
+  clearAllActivity: () => Promise<void>;
   // Notifications
   notifications: Notification[];
   setNotifications: React.Dispatch<React.SetStateAction<Notification[]>>;
@@ -83,7 +85,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading: authLoading, user } = useAuthStore();
 
   // Initialize notification service with AppContext functions
-  React.useEffect(() => {
+  useEffect(() => {
     initNotificationService({ setNotifications });
   }, []);
 
@@ -698,13 +700,17 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
   useEffect(() => {
     // Don't load cards if authentication is still loading
     if (authLoading) {
-      console.log('[LoadCards] Waiting for authentication to complete...');
+      if (__DEV__) {
+        console.log('[LoadCards] Waiting for authentication to complete...');
+      }
       return;
     }
     
     // Don't load cards if user is not authenticated
     if (!isAuthenticated || !user) {
-      console.log('[LoadCards] Skipping card load - user not authenticated');
+      if (__DEV__) {
+        console.log('[LoadCards] Skipping card load - user not authenticated');
+      }
       setIsLoadingCards(false);
       return;
     }
@@ -717,10 +723,14 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
       try {
         // Try to load from Appwrite first since user is authenticated
         try {
-          console.log('[LoadCards] Attempting to load cards from Appwrite for user:', user.$id || user.id);
+          if (__DEV__) {
+            console.log('[LoadCards] Attempting to load cards from Appwrite for user:', user.$id || user.id);
+          }
           const appwriteCards = await getAppwriteActiveCards();
           if (appwriteCards.length > 0) {
-            console.log('[LoadCards] Loaded', appwriteCards.length, 'cards from Appwrite');
+            if (__DEV__) {
+              console.log('[LoadCards] Loaded', appwriteCards.length, 'cards from Appwrite');
+            }
             const cards = appwriteCards.map(doc => ({
               id: doc.$id,
               userId: doc.userId,
@@ -1181,6 +1191,54 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
     }
   };
 
+  const clearAllTransactions: AppContextType['clearAllTransactions'] = async () => {
+    // Clear local state
+    setTransactions([]);
+    setTransactionsCursor(null);
+    
+    // Clear transaction-related activity events
+    setActivity(prev => prev.filter(a => a.category !== 'transaction'));
+    
+    try {
+      // Clear cached transactions
+      await StorageManager.clearTransactionCache();
+      
+      // Clear cached activity events (transaction-related)
+      const currentActivity = await StorageManager.getCachedActivityEvents();
+      if (currentActivity) {
+        const nonTransactionEvents = currentActivity.events.filter(evt => evt.category !== 'transaction');
+        await StorageManager.cacheActivityEvents({ 
+          ...currentActivity,
+          events: nonTransactionEvents 
+        });
+      }
+      
+      console.log('[clearAllTransactions] Transaction data cleared successfully');
+    } catch (error) {
+      console.warn('[clearAllTransactions] Failed to clear cached data:', error);
+    }
+    
+    // Note: We don't delete transactions from Appwrite server as this would be destructive
+    // The user can refresh to reload transactions from server if needed
+  };
+
+  const clearAllActivity: AppContextType['clearAllActivity'] = async () => {
+    // Clear local activity state
+    setActivity([]);
+    
+    try {
+      // Clear cached activity events
+      await StorageManager.clearActivityCache();
+      
+      console.log('[clearAllActivity] Activity data cleared successfully');
+    } catch (error) {
+      console.warn('[clearAllActivity] Failed to clear cached activity:', error);
+    }
+    
+    // Note: We don't delete activity from Appwrite server as this would be destructive
+    // The user can refresh to reload activity from server if needed
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -1197,9 +1255,11 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
         isLoadingTransactions,
         refreshTransactions: refreshTransactionsImpl,
         loadMoreTransactions: loadMoreTransactionsImpl,
+        clearAllTransactions,
         activity,
         pushActivity,
         setActivity,
+        clearAllActivity,
         notifications,
         setNotifications,
         markNotificationRead,

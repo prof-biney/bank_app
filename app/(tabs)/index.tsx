@@ -18,24 +18,26 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { BankCard } from "../../components/BankCard";
-import { DateFilterModal } from "../../components/DateFilterModal";
-import { NotificationModal } from "../../components/NotificationModal";
-import { QuickAction } from "../../components/QuickAction";
-import { TransactionItem } from "../../components/TransactionItem";
-import { ProfilePicture } from "../../components/ProfilePicture";
-import { useApp } from "../../context/AppContext";
+import { BankCard } from "@/components/BankCard";
+import { DateFilterModal } from "@/components/DateFilterModal";
+import { NotificationModal } from "@/components/NotificationModal";
+import { QuickAction } from "@/components/QuickAction";
+import { TransactionItem } from "@/components/TransactionItem";
+import { ProfilePicture } from "@/components/ProfilePicture";
+import { ClearDataModal } from "@/components/ClearDataModal";
+import { useApp } from "@/context/AppContext";
 
 import { useTheme } from "@/context/ThemeContext";
 
 export default function HomeScreen() {
-  const { cards, activeCard, setActiveCard, transactions } = useApp();
+  const { cards, activeCard, setActiveCard, transactions, clearAllTransactions, notifications } = useApp();
   const [showNotifications, setShowNotifications] = React.useState(false);
   const [showDateFilter, setShowDateFilter] = React.useState(false);
   const [dateFilter, setDateFilter] = React.useState("all");
+  const [showClearTransactions, setShowClearTransactions] = React.useState(false);
+  const [isClearingTransactions, setIsClearingTransactions] = React.useState(false);
 
   const { user } = useAuthStore();
-  const { notifications } = useApp();
   const unreadCount = React.useMemo(() => {
     const unreadNotifications = notifications.filter(n => n.unread && !n.archived);
     const count = unreadNotifications.length;
@@ -96,6 +98,18 @@ export default function HomeScreen() {
 
   const handleTransfer = () => {
     router.push("/transfer");
+  };
+
+  const handleClearTransactions = async () => {
+    setIsClearingTransactions(true);
+    try {
+      await clearAllTransactions();
+      setShowClearTransactions(false);
+    } catch (error) {
+      console.error('Failed to clear transactions:', error);
+    } finally {
+      setIsClearingTransactions(false);
+    }
   };
 
   const { colors } = useTheme();
@@ -180,11 +194,11 @@ export default function HomeScreen() {
                   <Text style={[styles.sectionTitle, { color: colors.textPrimary, textDecorationColor: colors.tintPrimary }]}>{getDateFilterLabel()}</Text>
                 </TouchableOpacity>
               </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <TouchableOpacity onPress={() => router.push("/(tabs)/activity")}>
-                  <Text style={[styles.seeAllText, { color: colors.tintPrimary }]}>All transactions</Text>
+              {transactions.length > 0 && (
+                <TouchableOpacity onPress={() => setShowClearTransactions(true)}>
+                  <Text style={[styles.clearAllText, { color: colors.negative }]}>Clear All</Text>
                 </TouchableOpacity>
-              </View>
+              )}
             </View>
 
             <ScrollView 
@@ -230,6 +244,15 @@ export default function HomeScreen() {
           onClose={() => setShowDateFilter(false)}
           selectedFilter={dateFilter}
           onFilterSelect={setDateFilter}
+        />
+
+        <ClearDataModal
+          visible={showClearTransactions}
+          onClose={() => setShowClearTransactions(false)}
+          onConfirm={handleClearTransactions}
+          dataType="transactions"
+          count={transactions.length}
+          isLoading={isClearingTransactions}
         />
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -341,6 +364,10 @@ const styles = StyleSheet.create({
     textDecorationLine: "underline",
   },
   seeAllText: {
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  clearAllText: {
     fontSize: 14,
     fontWeight: "500",
   },

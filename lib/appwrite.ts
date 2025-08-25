@@ -123,9 +123,8 @@ authenticatedClient
 // Note: setKey is not available in React Native Appwrite SDK
 // API keys are only used in server-side Node.js environments
 // In React Native, we use JWT tokens for authentication instead
-if (appwriteConfig.apiKey) {
+if (appwriteConfig.apiKey && __DEV__) {
   console.log('🔑 Appwrite API key found (will be used for server operations only)');
-  console.warn('Note: API keys cannot be used in React Native client - using JWT authentication instead');
 }
 
 export const account = new Account(client);
@@ -163,23 +162,45 @@ export const ensureAuthenticatedClient = async (): Promise<boolean> => {
       return true;
     }
 
-    // If no global JWT, try to create one
+    // Check if we have an active session before trying to create JWT
     try {
+      const session = await account.getSession('current');
+      if (!session) {
+        if (__DEV__) {
+          console.warn('[ensureAuthenticatedClient] No active session found');
+        }
+        return false;
+      }
+      
+      // If we have a session, try to create JWT
       const jwtResponse = await account.createJWT();
       if (jwtResponse?.jwt) {
         (global as any).__APPWRITE_JWT__ = jwtResponse.jwt;
         setAuthenticatedClientJWT(jwtResponse.jwt);
-        console.log('[ensureAuthenticatedClient] New JWT created and set');
+        if (__DEV__) {
+          console.log('[ensureAuthenticatedClient] New JWT created and set');
+        }
         return true;
       }
-    } catch (jwtError) {
-      console.error('[ensureAuthenticatedClient] Failed to create JWT:', jwtError);
+    } catch (jwtError: any) {
+      if (__DEV__) {
+        console.warn('[ensureAuthenticatedClient] Failed to refresh JWT:', jwtError.message);
+      }
+      
+      // Clear the invalid JWT
+      (global as any).__APPWRITE_JWT__ = undefined;
+      
+      // If JWT creation fails due to auth issues, the user needs to re-authenticate
+      if (jwtError.message?.includes('missing scope') || jwtError.message?.includes('guests')) {
+        return false;
+      }
     }
 
-    console.error('[ensureAuthenticatedClient] No valid JWT available');
     return false;
   } catch (error) {
-    console.error('[ensureAuthenticatedClient] Error ensuring authenticated client:', error);
+    if (__DEV__) {
+      console.error('[ensureAuthenticatedClient] Error ensuring authenticated client:', error);
+    }
     return false;
   }
 };
@@ -224,46 +245,222 @@ export const createUser = async ({
 
 export const signIn = async (email: string, password: string) => {
   try {
+    if (__DEV__) {
+      console.log('[signIn] Attempting to create email password session');
+    }
+    
+    // Clear any existing sessions first
+    try {
+      await account.deleteSession('current');
+    } catch (e) {
+      // Ignore errors when clearing sessions
+    }
+    
     const session = await account.createEmailPasswordSession(email, password);
+    
+    if (__DEV__) {
+      console.log('[signIn] Session created successfully:', { 
+        sessionId: session.$id,
+        userId: session.userId 
+      });
+    }
+    
+    // Immediately verify the session works by checking account
+    try {
+      const currentAccount = await account.get();
+      if (__DEV__) {
+        console.log('[signIn] Session verified, account accessible:', {
+          accountId: currentAccount.$id,
+          email: currentAccount.email
+        });
+      }
+    } catch (verifyError) {
+      console.error('[signIn] Session verification failed:', verifyError);
+      throw new Error('Authentication failed - session could not be verified');
+    }
+    
     return session;
   } catch (error) {
-    console.error("Sign in error:", error);
+    console.error("[signIn] Sign in error:", error);
+    
+    // Provide more specific error messaging
+    if (error instanceof Error) {
+      if (error.message.includes('Invalid credentials')) {
+        throw new Error('Invalid email or password. Please check your credentials and try again.');
+      } else if (error.message.includes('too many requests')) {
+        throw new Error('Too many login attempts. Please wait a few minutes before trying again.');
+      } else if (error.message.includes('User not found')) {
+        throw new Error('No account found with this email. Please sign up first.');
+      } else if (error.message.includes('missing scope')) {
+        throw new Error('Authentication system error. Please contact support.');
+      }
+    }
+    
     throw error;
   }
 };
 
 export const signOut = async () => {
   try {
-    await account.deleteSession("current");
+    if (__DEV__) {
+      console.log('[signOut] Starting logout process with token expiration');
+    }
+    
+    // Import token manager functions
+    const { performCompleteCleanup } = await import('./tokenManager');
+    
+    // Perform comprehensive cleanup (expires tokens, deletes session, clears data)
+    await performCompleteCleanup();
+    
+    if (__DEV__) {
+      console.log('[signOut] Logout completed with token expiration');
+    }
   } catch (error) {
-    console.error("Sign out error:", error);
+    console.error('[signOut] Sign out error:', error);
+    
+    // Even if logout fails, ensure local cleanup
+    try {
+      const { clearTokenData, expireToken } = await import('./tokenManager');
+      expireToken();
+      clearTokenData();
+      if (__DEV__) {
+        console.log('[signOut] Performed emergency token cleanup');
+      }
+    } catch (cleanupError) {
+      console.error('[signOut] Emergency cleanup failed:', cleanupError);
+    }
+    
     throw error;
   }
 };
 
 export const getCurrentUser = async () => {
   try {
+    if (__DEV__) {
+      console.log('[getCurrentUser] Starting user retrieval process');
+    }
+    
+    // First verify we have an active session
+    try {
+      const session = await account.getSession('current');
+      if (!session) {
+        throw new Error('No active session found');
+      }
+      
+      if (__DEV__) {
+        console.log('[getCurrentUser] Active session verified:', { sessionId: session.$id });
+      }
+    } catch (sessionError: any) {
+      console.error('[getCurrentUser] Session verification failed:', sessionError.message);
+      
+      // Perform automatic token cleanup on session errors
+      try {
+        const { clearTokenData, expireToken } = await import('./tokenManager');
+        if (__DEV__) {
+          console.log('[getCurrentUser] Performing automatic token cleanup due to session error');
+        }
+        expireToken();
+        clearTokenData();
+      } catch (cleanupError) {
+        console.error('[getCurrentUser] Token cleanup failed:', cleanupError);
+      }
+      
+      if (sessionError.message?.includes('missing scope')) {
+        throw new Error('Authentication session invalid. Please sign in again.');
+      }
+      throw new Error('No valid authentication session. Please sign in.');
+    }
+    
     // get the current account
+    if (__DEV__) {
+      console.log('[getCurrentUser] Fetching current account details');
+    }
+    
     const currentAccount = await account.get();
-
-    if (!currentAccount) {
-      throw new Error("No user found");
+    
+    if (__DEV__) {
+      console.log('[getCurrentUser] Current account retrieved:', { 
+        accountId: currentAccount.$id,
+        email: currentAccount.email,
+        emailVerification: currentAccount.emailVerification 
+      });
     }
 
+    if (!currentAccount) {
+      throw new Error("No authenticated user account found");
+    }
+
+    // Ensure we have a JWT for database operations
+    if (__DEV__) {
+      console.log('[getCurrentUser] Ensuring authenticated client for database access');
+    }
+    
+    const hasJWT = await ensureAuthenticatedClient();
+    if (!hasJWT) {
+      console.warn('[getCurrentUser] Warning: No JWT available for database operations, attempting without JWT');
+    }
+
+    if (__DEV__) {
+      console.log('[getCurrentUser] Querying user document from database');
+    }
+    
     // get the user from the database
     const currentUser = await databases.listDocuments(
-      appwriteConfig.databaseId,
-      appwriteConfig.userCollectionId,
+      appwriteConfig.databaseId!,
+      appwriteConfig.userCollectionId!,
       [Query.equal("accountId", currentAccount.$id)]
     );
+    
+    if (__DEV__) {
+      console.log('[getCurrentUser] Database query completed:', { 
+        documentsFound: currentUser.documents.length,
+        totalDocuments: currentUser.total 
+      });
+    }
 
-    if (!currentUser) throw Error;
+    if (!currentUser || currentUser.documents.length === 0) {
+      console.error('[getCurrentUser] No user document found for authenticated account');
+      console.error('[getCurrentUser] This suggests the user account exists in Appwrite Auth but not in the users collection');
+      throw new Error(`No user profile found for account ID: ${currentAccount.$id}. Please contact support.`);
+    }
 
+    const userDocument = currentUser.documents[0];
+    
+    if (__DEV__) {
+      console.log('[getCurrentUser] User document retrieved successfully:', {
+        documentId: userDocument.$id,
+        name: userDocument.name,
+        email: userDocument.email
+      });
+    }
+    
     // return the user
-    return currentUser.documents[0];
+    return userDocument;
   } catch (error) {
-    console.error("Get current user error:", error);
-    throw new Error(error as string);
+    console.error('[getCurrentUser] Get current user error:', error);
+    
+    // Provide more specific error information
+    if (error instanceof Error) {
+      if (error.message.includes('missing scope (account)')) {
+        throw new Error('Authentication system error: missing account scope. Please sign in again.');
+      } else if (error.message.includes('missing scope (databases)')) {
+        throw new Error('Database access denied: missing permissions. Please contact support.');
+      } else if (error.message.includes('missing scope')) {
+        throw new Error('Authentication session has insufficient permissions. Please sign in again.');
+      } else if (error.message.includes('Unauthorized')) {
+        throw new Error('Access denied to user data. Please check your authentication and try again.');
+      } else if (error.message.includes('role: guests')) {
+        throw new Error('You are not properly authenticated. Please sign in to access your account.');
+      } else if (error.message.includes('No valid authentication session')) {
+        // Re-throw our custom session errors as-is
+        throw error;
+      } else if (error.message.includes('No user profile found')) {
+        // Re-throw our custom user document errors as-is
+        throw error;
+      }
+    }
+    
+    throw error;
   }
 };
 

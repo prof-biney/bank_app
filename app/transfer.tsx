@@ -13,11 +13,11 @@ import {
   Pressable,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { BankCard } from "../components/BankCard";
-import { useApp } from "../context/AppContext";
-import { useAlert } from "../context/AlertContext";
-import { showAlertWithNotification } from "../lib/notificationService";
-import { Recipient } from "../types/index";
+import { BankCard } from "@/components/BankCard";
+import { useApp } from "@/context/AppContext";
+import { useAlert } from "@/context/AlertContext";
+import { showAlertWithNotification } from "@/lib/notificationService";
+import { Recipient } from "@/types/index";
 import { useTheme } from "@/context/ThemeContext";
 import { getChipStyles } from "@/theme/variants";
 import CustomButton from "@/components/CustomButton";

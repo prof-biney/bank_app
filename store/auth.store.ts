@@ -138,7 +138,7 @@ const useAuthStore = create<AuthState>((set) => ({
             (global as any).__APPWRITE_JWT__ = jwt?.jwt;
             // Seed demo transactions on sign-in (idempotent if transactions exist)
             try {
-              const { getApiBase } = require('../lib/api');
+              const { getApiBase } = require('@/lib/api');
               const url = `${getApiBase()}/v1/dev/seed-transactions`;
               if (jwt?.jwt) {
                 await fetch(url, {
@@ -183,50 +183,108 @@ const useAuthStore = create<AuthState>((set) => ({
   login: async (email: string, password: string) => {
     set({ isLoading: true });
     try {
+      if (__DEV__) {
+        console.log('[Auth Store] Starting login process for:', email);
+      }
+      
       const session = await signIn(email, password);
-      console.log("Session:", session);
+      
+      if (__DEV__) {
+        console.log('[Auth Store] Session created:', { sessionId: session.$id, userId: session.userId });
+      }
 
       if (session) {
-        // If login is successful, fetch the user
-        const user = await account.get();
-
-        if (!user) console.log("No user found");
-
-        if (user) {
-          set({
-            isAuthenticated: true,
-            user: user as unknown as User,
-          });
-          // Obtain and cache Appwrite JWT for server API calls
-          try {
-            const jwt = await account.createJWT();
-            (global as any).__APPWRITE_JWT__ = jwt?.jwt;
-            // Seed demo transactions on login (idempotent if transactions exist)
-            try {
-              const { getApiBase } = require('../lib/api');
-              const url = `${getApiBase()}/v1/dev/seed-transactions`;
-              if (jwt?.jwt) {
-                await fetch(url, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt.jwt}` },
-                  body: JSON.stringify({ count: 20, skipIfNotEmpty: true })
-                }).catch(() => {});
-              }
-            } catch {}
-          } catch (e) {
-            (global as any).__APPWRITE_JWT__ = undefined;
-          }
+        // If login is successful, fetch the user using getCurrentUser which handles the database lookup
+        if (__DEV__) {
+          console.log('[Auth Store] Fetching user data from database');
         }
+        
+        const user = await getCurrentUser();
+
+        if (!user) {
+          console.error('[Auth Store] No user found in database for authenticated session');
+          throw new Error('User not found in database. Your account may not be properly configured.');
+        }
+
+        if (__DEV__) {
+          console.log('[Auth Store] User data retrieved:', { userId: user.$id, email: user.email });
+        }
+        
+        set({
+          isAuthenticated: true,
+          user: user as unknown as User,
+        });
+        
+        // Obtain and cache Appwrite JWT for server API calls
+        try {
+          if (__DEV__) {
+            console.log('[Auth Store] Creating JWT token for server API calls');
+          }
+          
+          const jwt = await account.createJWT();
+          (global as any).__APPWRITE_JWT__ = jwt?.jwt;
+          
+          if (__DEV__) {
+            console.log('[Auth Store] JWT created successfully');
+          }
+          
+          // Seed demo transactions on login (idempotent if transactions exist)
+          try {
+            const { getApiBase } = require('@/lib/api');
+            const url = `${getApiBase()}/v1/dev/seed-transactions`;
+            if (jwt?.jwt) {
+              await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt.jwt}` },
+                body: JSON.stringify({ count: 20, skipIfNotEmpty: true })
+              }).catch(() => {});
+            }
+          } catch {}
+        } catch (jwtError) {
+          console.error('[Auth Store] JWT creation failed:', jwtError);
+          
+          // Check if this is a scope error
+          if (jwtError instanceof Error && jwtError.message.includes('missing scope')) {
+            console.error('[Auth Store] Missing scope error detected - this indicates authentication configuration issues');
+            console.error('[Auth Store] Please verify Appwrite project settings and user permissions');
+          }
+          
+          (global as any).__APPWRITE_JWT__ = undefined;
+          // Don't throw here - the user is authenticated, just JWT creation failed
+          console.warn('[Auth Store] Continuing without JWT token');
+        }
+      } else {
+        console.error('[Auth Store] No session returned from signIn');
+        throw new Error('Failed to create authentication session');
       }
     } catch (error: any) {
-      // Removed Alert.alert to prevent scheduling updates during render phase
-      console.log("Login error:", error);
+      console.error('[Auth Store] Login error:', error);
+      
+      // Provide more specific error messages
+      let errorMessage = 'Authentication failed';
+      if (error.message) {
+        if (error.message.includes('Invalid credentials')) {
+          errorMessage = 'Invalid email or password. Please check your credentials.';
+        } else if (error.message.includes('User not found')) {
+          errorMessage = 'No account found with this email. Please sign up first.';
+        } else if (error.message.includes('missing scope')) {
+          errorMessage = 'Authentication system error. Please contact support.';
+        } else if (error.message.includes('too many requests')) {
+          errorMessage = 'Too many login attempts. Please wait before trying again.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
       set({
         isAuthenticated: false,
         user: null,
       });
       (global as any).__APPWRITE_JWT__ = undefined;
-      throw error;
+      
+      const enhancedError = new Error(errorMessage);
+      enhancedError.stack = error.stack;
+      throw enhancedError;
     } finally {
       set({ isLoading: false });
     }
@@ -234,25 +292,61 @@ const useAuthStore = create<AuthState>((set) => ({
 
   /**
    * Logs out the current user
-   * Invalidates the session on Appwrite and clears local authentication state
+   * Invalidates the session on Appwrite, expires tokens, and clears local authentication state
    * Will clear local state even if the remote logout fails
    */
   logout: async () => {
     set({ isLoading: true });
     try {
-      await signOut(); // This invalidates the session on Appwrite
+      if (__DEV__) {
+        console.log('[Auth Store] Starting logout with token expiration');
+      }
+      
+      // signOut now handles complete token cleanup including expiration
+      await signOut();
+      
+      if (__DEV__) {
+        console.log('[Auth Store] Appwrite logout completed, clearing local state');
+      }
+      
       set({
         isAuthenticated: false,
         user: null,
       });
+      
+      if (__DEV__) {
+        console.log('[Auth Store] Logout completed successfully');
+      }
     } catch (error) {
-      console.log("Logout error:", error);
-      // Even if logout fails, clear local state
+      console.error('[Auth Store] Logout error:', error);
+      
+      // Even if logout fails, perform emergency cleanup
+      try {
+        if (__DEV__) {
+          console.log('[Auth Store] Performing emergency token cleanup');
+        }
+        
+        // Import and use token manager for emergency cleanup
+        const { expireToken, clearTokenData } = await import('@/lib/tokenManager');
+        expireToken();
+        clearTokenData();
+        
+        if (__DEV__) {
+          console.log('[Auth Store] Emergency cleanup completed');
+        }
+      } catch (cleanupError) {
+        console.error('[Auth Store] Emergency cleanup failed:', cleanupError);
+        // Force clear the global JWT as last resort
+        (global as any).__APPWRITE_JWT__ = undefined;
+      }
+      
+      // Always clear local state, even on error
       set({
         isAuthenticated: false,
         user: null,
       });
     } finally {
+      // Ensure JWT is cleared (redundant but safe)
       (global as any).__APPWRITE_JWT__ = undefined;
       set({ isLoading: false });
     }
