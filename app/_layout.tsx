@@ -36,6 +36,8 @@ function RootLayoutContent() {
     return () => clearTimeout(timer);
   }, []);
 
+  // Don't render navigation stack until providers are ready
+  // This prevents navigation errors during authentication state changes
   if (isLoading || !providersReady) {
     return null;
   }

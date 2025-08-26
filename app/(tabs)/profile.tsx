@@ -1,5 +1,6 @@
 import useAuthStore from "@/store/auth.store";
 import { router } from "expo-router";
+import { navigateAfterLogout } from "@/lib/safeNavigation";
 import {
   CircleHelp as HelpCircle,
   LogOut,
@@ -38,9 +39,12 @@ export default function ProfileScreen() {
       setIsLoggingOut(true);
       await logout();
       setShowLogoutModal(false);
-      router.replace("/sign-in");
+      
+      // Use safe navigation utility to handle post-logout navigation
+      await navigateAfterLogout('/sign-in');
     } catch (error) {
       console.error('Logout error:', error);
+      setShowLogoutModal(false);
       Alert.alert(
         'Error',
         'Failed to sign out. Please try again.'
