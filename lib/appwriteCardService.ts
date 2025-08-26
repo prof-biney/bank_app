@@ -181,26 +181,47 @@ export async function updateAppwriteCard(
       throw new Error('Unauthorized: Card does not belong to current user');
     }
 
+    // Transform updateData to match Appwrite schema
+    const transformedUpdateData: any = {};
+    
+    if (updateData.balance !== undefined) {
+      transformedUpdateData.balance = Math.round(updateData.balance * 100); // Convert to cents
+    }
+    if (updateData.cardHolderName !== undefined) {
+      transformedUpdateData.holder = updateData.cardHolderName;
+    }
+    if (updateData.cardColor !== undefined) {
+      transformedUpdateData.color = updateData.cardColor;
+    }
+    if (updateData.isActive !== undefined) {
+      transformedUpdateData.status = updateData.isActive ? 'active' : 'inactive';
+    }
+    if (updateData.expiryDate !== undefined) {
+      const [expMonth, expYear] = updateData.expiryDate.split('/');
+      transformedUpdateData.exp_month = parseInt(expMonth);
+      transformedUpdateData.exp_year = expYear.length === 2 ? 2000 + parseInt(expYear) : parseInt(expYear);
+    }
+
     const document = await databases.updateDocument(
       databaseId,
       cardsCollectionId,
       cardId,
-      updateData
+      transformedUpdateData
     );
 
-    // Convert Appwrite document to Card type
+    // Convert Appwrite document to Card type (mapping schema fields)
     const card: Card = {
       id: document.$id,
       userId: document.userId,
-      cardNumber: document.cardNumber,
-      cardHolderName: document.cardHolderName,
-      expiryDate: document.expiryDate,
-      cardType: document.cardType,
-      cardColor: document.cardColor,
-      balance: document.balance,
+      cardNumber: `****-****-****-${document.last4}`, // Reconstruct from last4
+      cardHolderName: document.holder,
+      expiryDate: `${document.exp_month.toString().padStart(2, '0')}/${document.exp_year.toString().slice(-2)}`,
+      cardType: document.brand || 'card',
+      cardColor: document.color || '#1e40af',
+      balance: document.balance / 100, // Convert from cents to dollars
       currency: document.currency,
       token: document.token,
-      isActive: document.isActive !== undefined ? document.isActive : true, // Default to true if field doesn't exist
+      isActive: document.status !== 'inactive', // Map status to isActive
     };
 
     console.log('[updateAppwriteCard] Card updated successfully:', card.id);

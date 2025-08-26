@@ -172,26 +172,46 @@ export const ensureAuthenticatedClient = async (): Promise<boolean> => {
         return false;
       }
       
+      if (__DEV__) {
+        console.log('[ensureAuthenticatedClient] Active session found, creating JWT');
+      }
+      
       // If we have a session, try to create JWT
       const jwtResponse = await account.createJWT();
       if (jwtResponse?.jwt) {
         (global as any).__APPWRITE_JWT__ = jwtResponse.jwt;
         setAuthenticatedClientJWT(jwtResponse.jwt);
         if (__DEV__) {
-          console.log('[ensureAuthenticatedClient] New JWT created and set');
+          console.log('[ensureAuthenticatedClient] New JWT created and set successfully');
         }
         return true;
+      } else {
+        if (__DEV__) {
+          console.warn('[ensureAuthenticatedClient] JWT creation returned no token');
+        }
+        return false;
       }
     } catch (jwtError: any) {
       if (__DEV__) {
-        console.warn('[ensureAuthenticatedClient] Failed to refresh JWT:', jwtError.message);
+        console.error('[ensureAuthenticatedClient] JWT creation failed:', jwtError);
       }
       
       // Clear the invalid JWT
       (global as any).__APPWRITE_JWT__ = undefined;
       
-      // If JWT creation fails due to auth issues, the user needs to re-authenticate
-      if (jwtError.message?.includes('missing scope') || jwtError.message?.includes('guests')) {
+      // Handle specific JWT creation errors
+      if (jwtError.message?.includes('missing scope (account)')) {
+        console.error('[ensureAuthenticatedClient] Critical: Missing account scope - user needs to re-authenticate');
+        return false;
+      } else if (jwtError.message?.includes('role: guests')) {
+        console.error('[ensureAuthenticatedClient] Critical: User has guest role - authentication failed');
+        return false;
+      } else if (jwtError.message?.includes('missing scope')) {
+        console.error('[ensureAuthenticatedClient] Missing required scopes:', jwtError.message);
+        return false;
+      } else {
+        // Other JWT errors (network, server issues, etc.)
+        console.warn('[ensureAuthenticatedClient] JWT creation failed with unknown error:', jwtError.message);
         return false;
       }
     }
