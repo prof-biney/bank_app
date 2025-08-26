@@ -10,7 +10,7 @@ import {
   Dimensions
 } from "react-native";
 import { Feather, MaterialIcons } from "@expo/vector-icons";
-import { 
+import {
   FormFieldProps, 
   PhoneNumberValidationState
 } from "./types";
