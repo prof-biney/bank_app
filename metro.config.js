@@ -24,4 +24,22 @@ path.relative = function(from, to) {
 
 const config = getDefaultConfig(__dirname);
 
+// Disable error overlay in development
+if (process.env.NODE_ENV === 'development') {
+  config.server = {
+    ...config.server,
+    enhanceMiddleware: (middleware) => {
+      return (req, res, next) => {
+        // Disable error overlay by intercepting error requests
+        if (req.url && req.url.includes('__metro_error_overlay')) {
+          res.writeHead(404);
+          res.end();
+          return;
+        }
+        return middleware(req, res, next);
+      };
+    },
+  };
+}
+
 module.exports = withNativeWind(config, { input: "./app/global.css" });
