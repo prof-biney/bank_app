@@ -362,28 +362,44 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
       };
     }
     
-    // Check if recipient is one of user's own cards (internal transfer)
+    // Get source card details
     const sourceCard = cards.find(card => card.id === cardId);
-    const recipientCardNumberClean = recipientCardNumber.replace(/\s/g, ''); // Remove spaces for comparison
+    if (!sourceCard) {
+      console.error('[MakeTransfer] Source card not found');
+      return {
+        success: false,
+        error: 'Source card not found. Please try again.'
+      };
+    }
     
+    // Check if sufficient funds
+    if (sourceCard.balance < amount) {
+      return {
+        success: false,
+        error: 'Insufficient funds for this transfer.'
+      };
+    }
+    
+    // Check if recipient is one of user's own cards (internal transfer)
+    const recipientCardNumberClean = recipientCardNumber.replace(/\s/g, ''); // Remove spaces for comparison
     const recipientCard = cards.find(card => {
       const cardDigits = card.cardNumber.replace(/[^\d]/g, '');
       return cardDigits === recipientCardNumberClean;
     });
     
-    // Handle internal transfer (between user's own cards)
+    // Prevent self-transfers (same card to same card)
+    if (recipientCard && recipientCard.id === cardId) {
+      return {
+        success: false,
+        error: 'Cannot transfer to the same card. Please select a different recipient.'
+      };
+    }
+    
+    // Handle internal transfer (between user's own cards) - local only
     if (recipientCard && sourceCard) {
-      console.log('[MakeTransfer] Internal transfer detected');
+      console.log('[MakeTransfer] Internal transfer detected - handling locally');
       
       try {
-        // Check if sufficient funds
-        if (sourceCard.balance < amount) {
-          return {
-            success: false,
-            error: 'Insufficient funds for this transfer.'
-          };
-        }
-        
         const newSourceBalance = sourceCard.balance - amount;
         const newRecipientBalance = recipientCard.balance + amount;
         
@@ -412,6 +428,10 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
           recipient: `${sourceCard.cardHolderName} (${sourceCard.cardNumber})`,
           status: 'completed'
         });
+        
+        // Send notification for recipient (internal transfer)
+        const { pushTransferNotification } = require('../lib/notificationService');
+        pushTransferNotification('received', amount, sourceCard.cardHolderName, newRecipientBalance);
         
         console.log('[MakeTransfer] Internal transfer completed successfully');
         
@@ -451,7 +471,7 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
     // Try server-based transfer first, fall back to local simulation
     try {
       const { getApiBase } = require('../lib/api');
-      const { getValidJWT, refreshAppwriteJWT } = require('../lib/jwt');
+      const { getValidJWTWithAutoRefresh, refreshAppwriteJWTWithRetry } = require('../lib/jwt');
       
       const apiBase = getApiBase();
       if (!apiBase || apiBase.includes('undefined') || apiBase === 'undefined') {
@@ -463,13 +483,13 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
       
       console.log('[MakeTransfer] API Base:', apiBase);
       
-      // Ensure we have a valid JWT before making the API call
-      let jwt = await getValidJWT();
+      // Use improved JWT handling with auto-refresh
+      let jwt = await getValidJWTWithAutoRefresh();
       if (!jwt) {
-        console.log('[MakeTransfer] No JWT available, attempting to create one');
-        jwt = await refreshAppwriteJWT();
+        console.log('[MakeTransfer] No JWT available, attempting refresh with retry');
+        jwt = await refreshAppwriteJWTWithRetry();
         if (!jwt) {
-          console.warn('[MakeTransfer] Could not obtain JWT, using local simulation');
+          console.warn('[MakeTransfer] Could not obtain JWT after retries, using local simulation');
           throw new Error('Authentication failed');
         }
       }
@@ -480,6 +500,7 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
         amount,
         currency: 'GHS',
         recipient: recipientCardNumber,
+        recipientName: undefined, // TODO: Extract recipient name from transfer form
         description: description || `Transfer To: ${recipientCardNumber}`
       };
       
@@ -731,18 +752,19 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
             if (__DEV__) {
               console.log('[LoadCards] Loaded', appwriteCards.length, 'cards from Appwrite');
             }
-            const cards = appwriteCards.map(doc => ({
-              id: doc.$id,
-              userId: doc.userId,
-              cardNumber: doc.cardNumber,
-              cardHolderName: doc.cardHolderName,
-              expiryDate: doc.expiryDate,
-              balance: doc.balance,
-              cardType: doc.cardType,
-              isActive: doc.isActive,
-              cardColor: doc.cardColor,
-              token: doc.token,
-              currency: doc.currency || 'GHS',
+            // Cards already have correct structure from getAppwriteActiveCards
+            const cards = appwriteCards.map(card => ({
+              id: card.id, // Already mapped correctly in getAppwriteActiveCards
+              userId: card.userId,
+              cardNumber: card.cardNumber,
+              cardHolderName: card.cardHolderName,
+              expiryDate: card.expiryDate,
+              balance: card.balance,
+              cardType: card.cardType,
+              isActive: card.isActive,
+              cardColor: card.cardColor,
+              token: card.token,
+              currency: card.currency || 'GHS',
             }));
             setCards(cards);
             setActiveCard(cards[0] || null);
@@ -977,7 +999,10 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
     setNotifications(cur => cur.map(n => ({ ...n, unread: false })));
     
     // Only try database update if configured
-    if (!dbId || !notifCol) return;
+    if (!dbId || !notifCol) {
+      console.log('[markAllNotificationsRead] Database not configured, using local-only mode');
+      return;
+    }
     
     try {
       // Fire updates sequentially to keep it simple; could be parallel
@@ -985,7 +1010,9 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
         // eslint-disable-next-line no-await-in-loop
         await databases.updateDocument(dbId, notifCol, id, { unread: false });
       }
+      console.log(`[markAllNotificationsRead] Successfully marked ${unread.length} notifications as read`);
     } catch (e) {
+      console.error('[markAllNotificationsRead] Database update failed:', e);
       setNotifications(prev);
     }
   };
@@ -1012,7 +1039,8 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
   const toggleNotificationRead: AppContextType['toggleNotificationRead'] = async (id) => {
     const dbId = appwriteConfig.databaseId;
     const notifCol = (appwriteConfig as any).notificationsCollectionId as string | undefined;
-    if (!dbId || !notifCol) return;
+    
+    // Optimistic update (always perform for local state)
     let prev: Notification[] | null = null;
     let nextUnread = true;
     setNotifications(cur => {
@@ -1026,9 +1054,18 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
       });
       return updated;
     });
+    
+    // Only try database update if configured
+    if (!dbId || !notifCol) {
+      console.log('[toggleNotificationRead] Database not configured, using local-only mode');
+      return;
+    }
+    
     try {
       await databases.updateDocument(dbId, notifCol, id, { unread: nextUnread });
+      console.log(`[toggleNotificationRead] Successfully toggled notification ${id} to ${nextUnread ? 'unread' : 'read'}`);
     } catch (e) {
+      console.error('[toggleNotificationRead] Database update failed:', e);
       if (prev) setNotifications(prev);
     }
   };
@@ -1036,17 +1073,27 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
   const markAllNotificationsUnread: AppContextType['markAllNotificationsUnread'] = async () => {
     const dbId = appwriteConfig.databaseId;
     const notifCol = (appwriteConfig as any).notificationsCollectionId as string | undefined;
-    if (!dbId || !notifCol) return;
     const readIds = notifications.filter(n => !n.unread).map(n => n.id);
     if (readIds.length === 0) return;
+    
+    // Optimistic update (always perform for local state)
     const prev = notifications;
     setNotifications(cur => cur.map(n => ({ ...n, unread: true })));
+    
+    // Only try database update if configured
+    if (!dbId || !notifCol) {
+      console.log('[markAllNotificationsUnread] Database not configured, using local-only mode');
+      return;
+    }
+    
     try {
       for (const id of readIds) {
         // eslint-disable-next-line no-await-in-loop
         await databases.updateDocument(dbId, notifCol, id, { unread: true });
       }
+      console.log(`[markAllNotificationsUnread] Successfully marked ${readIds.length} notifications as unread`);
     } catch (e) {
+      console.error('[markAllNotificationsUnread] Database update failed:', e);
       setNotifications(prev);
     }
   };
