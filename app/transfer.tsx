@@ -66,10 +66,13 @@ export default function TransferScreen() {
   };
 
   const findCardByNumber = (cardNumber: string) => {
-    const digits = cardNumber.replace(/\s/g, '');
+    // Extract last 4 digits from input
+    const inputLast4 = cardNumber.replace(/\s/g, '').slice(-4);
+    
+    // Find card by matching last 4 digits
     return cards.find(card => {
-      const cardDigits = card.cardNumber.replace(/[^\d]/g, '');
-      return cardDigits === digits;
+      const cardLast4 = card.cardNumber.replace(/[^\d]/g, '').slice(-4);
+      return cardLast4 === inputLast4;
     });
   };
 
