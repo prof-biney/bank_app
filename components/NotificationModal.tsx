@@ -56,10 +56,25 @@ export function NotificationModal({
   
   const filtered = React.useMemo(() => {
     const base = notifications;
-    if (filter === 'all') return base.filter(n => !n.archived);
-    if (filter === 'unread') return base.filter(n => n.unread && !n.archived);
-    if (filter === 'archived') return base.filter(n => n.archived);
-    return base.filter(n => n.type === filter && !n.archived);
+    console.log('[NotificationModal] Filtering notifications:', {
+      total: base.length,
+      filter,
+      unreadCount: base.filter(n => n.unread).length,
+      notifications: base.map(n => ({ id: n.id, title: n.title.substring(0, 20), unread: n.unread, archived: n.archived }))
+    });
+    
+    let result;
+    if (filter === 'all') result = base.filter(n => !n.archived);
+    else if (filter === 'unread') result = base.filter(n => n.unread && !n.archived);
+    else if (filter === 'archived') result = base.filter(n => n.archived);
+    else result = base.filter(n => n.type === filter && !n.archived);
+    
+    console.log('[NotificationModal] Filtered result:', {
+      count: result.length,
+      unreadInResult: result.filter(n => n.unread).length
+    });
+    
+    return result;
   }, [notifications, filter]);
 
   const getNotificationIcon = (type: string) => {
@@ -194,7 +209,8 @@ export function NotificationModal({
 
           <ScrollView
             style={styles.notificationsList}
-            showsVerticalScrollIndicator={false}
+            showsVerticalScrollIndicator={true}
+            indicatorStyle="default"
           >
             {filtered.length === 0 ? (
               <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 48 }}>

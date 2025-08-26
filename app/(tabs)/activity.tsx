@@ -550,25 +550,30 @@ export default function ActivityScreen() {
 				</View>
 				</View>
 
-				{/* Horizontal separator bar */}
-				<View style={[styles.horizontalBar, { backgroundColor: colors.border }]} />
-
-				{/* Clear All Button positioned closer to activity cards */}
-				{activity.length > 0 && (
-					<View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 20, marginTop: 12, marginBottom: 8 }}>
-						<TouchableOpacity onPress={() => setShowClearActivity(true)}>
-							<Text style={[styles.clearAllText, { color: colors.negative }]}>Clear All</Text>
-						</TouchableOpacity>
+				<View style={[styles.transactionsContainer, { backgroundColor: colors.background }]}>
+					{/* Sticky Header with Clear All Button */}
+					<View style={[styles.stickyActivityHeader, { backgroundColor: colors.background }]}>
+						{/* Horizontal separator bar */}
+						<View style={[styles.horizontalBar, { backgroundColor: colors.border }]} />
+						
+						{/* Clear All Button */}
+						{activity.length > 0 && (
+							<View style={styles.clearAllContainer}>
+								<TouchableOpacity onPress={() => setShowClearActivity(true)}>
+									<Text style={[styles.clearAllText, { color: colors.negative }]}>Clear All</Text>
+								</TouchableOpacity>
+							</View>
+						)}
 					</View>
-				)}
 
-				<View style={styles.transactionsContainer}>
 					<ScrollView
 						style={styles.transactionsList}
-						contentContainerStyle={styles.scrollContent}
+						contentContainerStyle={[styles.scrollContent, { paddingTop: 52 }]}
 						showsVerticalScrollIndicator={true}
+						scrollEventThrottle={16}
 						alwaysBounceVertical={true}
 						nestedScrollEnabled={true}
+						indicatorStyle="default"
 					>
 						{/* Empty state when there are no activities */}
 						{!loading && !error && allActivities.length === 0 && (
@@ -752,6 +757,33 @@ const styles = StyleSheet.create({
 		borderTopLeftRadius: 24,
 		borderTopRightRadius: 24,
 		marginTop: 0,
+		position: 'relative',
+	},
+	stickyActivityHeader: {
+		position: 'absolute',
+		top: 0,
+		left: 0,
+		right: 0,
+		zIndex: 10,
+		// Subtle shadow for gentle visual separation
+		shadowColor: "#000",
+		shadowOffset: {
+			width: 0,
+			height: 1.5,
+		},
+		shadowOpacity: 0.06,
+		shadowRadius: 3,
+		elevation: 2,
+		// Add subtle border at the bottom
+		borderBottomWidth: Platform.OS === 'ios' ? 0.5 : 1,
+		borderBottomColor: 'rgba(0, 0, 0, 0.04)',
+	},
+	clearAllContainer: {
+		flexDirection: 'row',
+		justifyContent: 'flex-end',
+		paddingHorizontal: 20,
+		marginTop: 12,
+		marginBottom: 8,
 	},
 	transactionsList: {
 		flex: 1,

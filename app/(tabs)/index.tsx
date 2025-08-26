@@ -120,7 +120,7 @@ export default function HomeScreen() {
         style={styles.keyboardContainer}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        <ScrollView showsVerticalScrollIndicator={false}>
+        <View style={styles.content}>
           <View style={styles.header}>
             <View style={styles.headerLeft}>
               <ProfilePicture
@@ -188,24 +188,30 @@ export default function HomeScreen() {
           </View>
 
           <View style={[styles.transactionsSection, { backgroundColor: colors.card }]}>
-            <View style={styles.sectionHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <TouchableOpacity onPress={() => setShowDateFilter(true)}>
-                  <Text style={[styles.sectionTitle, { color: colors.textPrimary, textDecorationColor: colors.tintPrimary }]}>{getDateFilterLabel()}</Text>
-                </TouchableOpacity>
+            {/* Sticky Header */}
+            <View style={[styles.stickyHeader, { backgroundColor: colors.card }]}>
+              <View style={styles.sectionHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <TouchableOpacity onPress={() => setShowDateFilter(true)}>
+                    <Text style={[styles.sectionTitle, { color: colors.textPrimary, textDecorationColor: colors.tintPrimary }]}>{getDateFilterLabel()}</Text>
+                  </TouchableOpacity>
+                </View>
+                {transactions.length > 0 && (
+                  <TouchableOpacity onPress={() => setShowClearTransactions(true)}>
+                    <Text style={[styles.clearAllText, { color: colors.negative }]}>Clear All</Text>
+                  </TouchableOpacity>
+                )}
               </View>
-              {transactions.length > 0 && (
-                <TouchableOpacity onPress={() => setShowClearTransactions(true)}>
-                  <Text style={[styles.clearAllText, { color: colors.negative }]}>Clear All</Text>
-                </TouchableOpacity>
-              )}
             </View>
 
+            {/* Scrollable Content */}
             <ScrollView 
               style={styles.transactionsList}
-              contentContainerStyle={styles.transactionsScrollContent}
+              contentContainerStyle={[styles.transactionsScrollContent, { paddingTop: 64 }]}
               showsVerticalScrollIndicator={true}
+              scrollEventThrottle={16}
               nestedScrollEnabled={true}
+              indicatorStyle="default"
             >
               {/* Empty state when no transactions */}
               {recentTransactions.length === 0 ? (
@@ -232,7 +238,7 @@ export default function HomeScreen() {
               )}
             </ScrollView>
           </View>
-        </ScrollView>
+        </View>
 
         <NotificationModal
           visible={showNotifications}
@@ -264,6 +270,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   keyboardContainer: {
+    flex: 1,
+  },
+  content: {
     flex: 1,
   },
   header: {
@@ -334,7 +343,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   cardSection: {
-    flex: 1,
     paddingHorizontal: 20,
   },
   cardsScroll: {
@@ -350,6 +358,29 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     paddingTop: 24,
     minHeight: 300,
+    flex: 1,
+  },
+  stickyHeader: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    // Subtle shadow for gentle separation
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
+    paddingTop: 24,
+    // Add a subtle border at the bottom for better separation
+    borderBottomWidth: Platform.OS === 'ios' ? 0.5 : 1,
+    borderBottomColor: 'rgba(0, 0, 0, 0.05)',
   },
   sectionHeader: {
     flexDirection: "row",
