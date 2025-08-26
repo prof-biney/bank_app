@@ -9,6 +9,7 @@ import {
 } from "lucide-react-native";
 import React from "react";
 import {
+  Animated,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -112,10 +113,11 @@ export default function HomeScreen() {
     }
   };
 
-  const { colors } = useTheme();
+  const { colors, transitionStyle } = useTheme();
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <Animated.View style={[{ flex: 1 }, transitionStyle]}>
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -261,6 +263,7 @@ export default function HomeScreen() {
           isLoading={isClearingTransactions}
         />
       </KeyboardAvoidingView>
+      </Animated.View>
     </SafeAreaView>
   );
 }
