@@ -4,6 +4,7 @@ import { Card, Transaction } from "@/constants/index";
 import type { Notification } from "@/types";
 import { ActivityEvent } from "@/types/activity";
 import { appwriteConfig, client, logCardEvent, databases } from "@/lib/appwrite";
+import { Query } from 'react-native-appwrite';
 import { 
   fetchUserTransactions, 
   refreshTransactions, 
@@ -383,10 +384,13 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
     }
     
     // Check if recipient is one of user's own cards (internal transfer)
+    // Use last4 matching since cards are stored with masked numbers
     const recipientCardNumberClean = recipientCardNumber.replace(/\s/g, ''); // Remove spaces for comparison
+    const recipientLast4 = recipientCardNumberClean.slice(-4); // Get last 4 digits
+    
     const recipientCard = cards.find(card => {
-      const cardDigits = card.cardNumber.replace(/[^\d]/g, '');
-      return cardDigits === recipientCardNumberClean;
+      const cardLast4 = card.cardNumber.replace(/[^\d]/g, '').slice(-4);
+      return cardLast4 === recipientLast4;
     });
     
     // Prevent self-transfers (same card to same card)
@@ -841,7 +845,22 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
         const dbId = appwriteConfig.databaseId;
         const notifCol = (appwriteConfig as any).notificationsCollectionId as string | undefined;
         if (!dbId || !notifCol) return;
-        const resp: any = await databases.listDocuments(dbId, notifCol);
+        
+        // Get current user ID
+        const { user } = useAuthStore.getState();
+        const userId = user?.id || user?.$id;
+        if (!userId) {
+          console.log('[loadNotifications] No user ID available, skipping notifications load');
+          return;
+        }
+        
+        // User-scoped query for notifications
+        const resp: any = await databases.listDocuments(dbId, notifCol, [
+          Query.equal('userId', userId),
+          Query.orderDesc('$createdAt'),
+          Query.limit(50)
+        ]);
+        
         const docs = Array.isArray(resp?.documents) ? resp.documents : [];
         const fetched: Notification[] = docs.map((d: any) => ({
           id: d.$id,
