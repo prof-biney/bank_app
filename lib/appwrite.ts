@@ -520,7 +520,7 @@ export const logCardEvent = async (input: CardEventInput) => {
       userId: input.userId,
       last4: input.last4,
       brand: input.brand,
-      cardHolderName: input.cardHolderName,
+      holder: input.cardHolderName, // Use 'holder' instead of 'cardHolderName' to match schema
       expiryDate: input.expiryDate,
       title: input.title || (input.status === "added" ? "Card added" : "Card removed"),
       description: input.description,
