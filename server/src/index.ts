@@ -68,7 +68,8 @@ const TransferCreate = z.object({
   amount: z.number().positive().max(1_000_000_000),
   currency: z.literal('GHS'),
   cardId: z.string().min(1), // card ID
-  recipient: z.string().min(1).max(256),
+  recipient: z.string().min(1).max(256), // recipient card number
+  recipientName: z.string().min(1).max(128).optional(), // recipient card holder name
   description: z.string().max(256).optional()
 });
 
@@ -429,7 +430,7 @@ v1.post('/payments/:id/refund', appwriteAuth, async (c) => {
 return c.json({ id: updated.$id, status: 'refunded' });
 });
 
-// Transfers: create and update card balance
+// Transfers: create and update card balance with recipient crediting
 v1.post('/transfers', appwriteAuth, async (c) => {
   const idemKey = c.req.header('Idempotency-Key');
   const user = c.get('user') as { $id: string };
@@ -440,7 +441,7 @@ v1.post('/transfers', appwriteAuth, async (c) => {
   
   const parse = TransferCreate.safeParse(await c.req.json().catch(() => ({})));
   if (!parse.success) return c.json({ error: 'validation_error', details: parse.error.flatten() }, 400);
-  const { amount, currency, cardId, recipient, description } = parse.data;
+  const { amount, currency, cardId, recipient, recipientName, description } = parse.data;
   
   if ((currency || '').toUpperCase() !== 'GHS') return c.json({ error: 'unsupported_currency', expected: 'GHS' }, 400);
   
@@ -448,109 +449,197 @@ v1.post('/transfers', appwriteAuth, async (c) => {
   const databaseId = process.env.APPWRITE_DATABASE_ID!;
   const cardsCol = process.env.APPWRITE_CARDS_COLLECTION_ID!;
   const txCol = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID!;
+  const notifCol = process.env.APPWRITE_NOTIFICATIONS_COLLECTION_ID;
   if (!txCol || !cardsCol) return c.json({ error: 'server_missing_collections' }, 500);
   
   let balanceDebited = false;
   let originalBalance = 0;
-  let failedTransferDoc: any = null;
+  let recipientCredited = false;
+  let originalRecipientBalance = 0;
+  let recipientCard: any = null;
   
   try {
-    // Get the card to verify ownership and check balance
-    const card: any = await databases.getDocument(databaseId, cardsCol, cardId).catch(() => null);
-    if (!card) return c.json({ error: 'card_not_found' }, 404);
-    if (card.userId !== user.$id) return c.json({ error: 'forbidden' }, 403);
+    // Step 1: Get and validate sender card
+    const senderCard: any = await databases.getDocument(databaseId, cardsCol, cardId).catch(() => null);
+    if (!senderCard) return c.json({ error: 'card_not_found' }, 404);
+    if (senderCard.userId !== user.$id) return c.json({ error: 'forbidden' }, 403);
     
-    const currentBalance = typeof card.balance === 'number' ? card.balance : (typeof card.startingBalance === 'number' ? card.startingBalance : DEFAULT_CARD_BALANCE);
+    const currentBalance = typeof senderCard.balance === 'number' ? senderCard.balance : (typeof senderCard.startingBalance === 'number' ? senderCard.startingBalance : DEFAULT_CARD_BALANCE);
     if (amount > currentBalance) return c.json({ error: 'insufficient_funds', available: currentBalance }, 400);
     
     originalBalance = currentBalance;
     
-    // Step 1: Debit the card balance first
-    const newBalance = Math.max(currentBalance - amount, 0);
-    await databases.updateDocument(databaseId, cardsCol, cardId, { balance: newBalance });
-    balanceDebited = true;
+    // Step 2: Search for recipient card that matches both card number and holder name
+    const cleanRecipientNumber = recipient.replace(/[^0-9]/g, ''); // Remove all non-digits
+    console.log('[transfer.create] searching for recipient', { recipientNumber: cleanRecipientNumber, recipientName });
     
-    // Step 2: Simulate transfer processing (this could fail)
-    // In a real system, this would be an external API call to a payment processor
-    const transferSuccess = await simulateTransferProcessing(amount, recipient);
+    // Search for cards with matching last4 digits first
+    const last4 = cleanRecipientNumber.slice(-4);
+    const potentialCards = await databases.listDocuments(databaseId, cardsCol, [
+      Query.equal('last4', last4),
+      Query.limit(50) // Reasonable limit to avoid performance issues
+    ]);
     
-    if (!transferSuccess) {
-      // Transfer failed, create a failed transaction record
-      failedTransferDoc = await databases.createDocument(databaseId, txCol, ID.unique(), {
-        userId: user.$id,
-        cardId: cardId,
-        amount: -amount,
-        currency: currency.toUpperCase(),
-        recipient,
-        description: `FAILED: ${description || `Transfer to ${recipient}`}`,
-        status: 'failed',
-        type: 'transfer',
-        failureReason: 'transfer_processing_failed'
-      });
-      
-      // Refund the amount back to the card
-      await databases.updateDocument(databaseId, cardsCol, cardId, { balance: originalBalance });
-      
-      console.log('[transfer.create] failed and refunded', { userId: user.$id, cardId, amount, failedTransferDocId: failedTransferDoc.$id });
-      
-      return c.json({ 
-        error: 'transfer_failed', 
-        message: 'Transfer could not be processed. Amount has been refunded to your card.',
-        refunded: true,
-        failedTransactionId: failedTransferDoc.$id
-      }, 400);
+    console.log('[transfer.create] found', potentialCards.documents.length, 'cards with matching last4:', last4);
+    
+    // Filter by exact card number match and holder name (if provided)
+    for (const card of potentialCards.documents) {
+      // Reconstruct full card number for comparison
+      const cardLast4 = card.last4 || '';
+      if (cleanRecipientNumber.endsWith(cardLast4)) {
+        // Check if holder name matches (case-insensitive)
+        const cardHolderName = (card.holder || '').toLowerCase().trim();
+        const providedName = (recipientName || '').toLowerCase().trim();
+        
+        if (!recipientName || cardHolderName === providedName) {
+          recipientCard = card;
+          console.log('[transfer.create] found matching recipient card:', {
+            cardId: card.$id,
+            userId: card.userId,
+            holderName: card.holder,
+            last4: card.last4
+          });
+          break;
+        }
+      }
     }
     
-    // Step 3: Transfer succeeded, create success transaction record
-    const transferDoc = await databases.createDocument(databaseId, txCol, ID.unique(), {
+    // Step 3: Prevent self-transfers (same card to same card)
+    if (recipientCard && recipientCard.$id === cardId) {
+      return c.json({ error: 'self_transfer_not_allowed', message: 'Cannot transfer to the same card' }, 400);
+    }
+    
+    // Step 4: Debit sender card balance
+    const newSenderBalance = Math.max(currentBalance - amount, 0);
+    await databases.updateDocument(databaseId, cardsCol, cardId, { balance: newSenderBalance });
+    balanceDebited = true;
+    
+    // Step 5: Credit recipient card if found
+    let newRecipientBalance: number | undefined;
+    if (recipientCard) {
+      const recipientCurrentBalance = typeof recipientCard.balance === 'number' ? 
+        recipientCard.balance : 
+        (typeof recipientCard.startingBalance === 'number' ? recipientCard.startingBalance : DEFAULT_CARD_BALANCE);
+      
+      originalRecipientBalance = recipientCurrentBalance;
+      newRecipientBalance = recipientCurrentBalance + amount;
+      
+      await databases.updateDocument(databaseId, cardsCol, recipientCard.$id, { balance: newRecipientBalance });
+      recipientCredited = true;
+      
+      console.log('[transfer.create] credited recipient card', {
+        recipientCardId: recipientCard.$id,
+        previousBalance: recipientCurrentBalance,
+        newBalance: newRecipientBalance,
+        creditAmount: amount
+      });
+    }
+    
+    // Step 6: Create transaction record for sender (outgoing transfer)
+    const senderTransferDoc = await databases.createDocument(databaseId, txCol, ID.unique(), {
       userId: user.$id,
       cardId: cardId,
       amount: -amount, // Negative for outgoing transfer
       currency: currency.toUpperCase(),
-      recipient,
-      description: description || `Transfer to ${recipient}`,
+      recipient: recipientCard ? `${recipientCard.holder} (${recipient})` : recipient,
+      description: description || `Transfer to ${recipientCard ? recipientCard.holder : recipient}`,
       status: 'completed',
-      type: 'transfer',
+      type: 'transfer'
     });
     
+    // Step 7: Create transaction record for recipient (incoming transfer) if card was found
+    let recipientTransferDoc: any = null;
+    if (recipientCard) {
+      recipientTransferDoc = await databases.createDocument(databaseId, txCol, ID.unique(), {
+        userId: recipientCard.userId,
+        cardId: recipientCard.$id,
+        amount: amount, // Positive for incoming transfer
+        currency: currency.toUpperCase(),
+        recipient: `${senderCard.holder} (${senderCard.cardNumber || `•••• •••• •••• ${senderCard.last4}`})`,
+        description: `Transfer from ${senderCard.holder}`,
+        status: 'completed',
+        type: 'transfer'
+      });
+      
+      // Step 8: Create notification for recipient if notifications are enabled
+      if (notifCol && recipientCard.userId !== user.$id) {
+        try {
+          await databases.createDocument(databaseId, notifCol, ID.unique(), {
+            userId: recipientCard.userId,
+            type: 'transaction',
+            title: 'Money Received',
+            message: `You received GHS ${amount.toFixed(2)} from ${senderCard.holder}. Your new balance is GHS ${newRecipientBalance!.toFixed(2)}.`,
+            unread: true
+          });
+          console.log('[transfer.create] notification sent to recipient:', recipientCard.userId);
+        } catch (notifError) {
+          console.warn('[transfer.create] failed to send notification:', notifError);
+          // Don't fail the transfer if notification fails
+        }
+      }
+    }
+    
     const body = {
-      id: transferDoc.$id,
+      id: senderTransferDoc.$id,
       status: 'completed',
       amount: amount,
       currency: currency.toUpperCase(),
       recipient,
       cardId,
-      newBalance,
-      created: transferDoc.$createdAt
+      newBalance: newSenderBalance,
+      recipientFound: Boolean(recipientCard),
+      recipientCardId: recipientCard?.$id,
+      recipientNewBalance: newRecipientBalance,
+      recipientTransactionId: recipientTransferDoc?.$id,
+      created: senderTransferDoc.$createdAt
     };
     
     if (idemKey) idem.set(`${user.$id}:${idemKey}`, { status: 200, body, expiresAt: Date.now() + IDEM_TTL_MS });
-    console.log('[transfer.create] success', { userId: user.$id, cardId, amount, newBalance });
+    
+    console.log('[transfer.create] success', {
+      userId: user.$id,
+      cardId,
+      amount,
+      newSenderBalance,
+      recipientFound: Boolean(recipientCard),
+      recipientCardId: recipientCard?.$id,
+      newRecipientBalance
+    });
     
     return c.json(body);
+    
   } catch (e: any) {
-    // If balance was debited but something failed, refund it
+    // Rollback logic: if any balance was changed, restore it
+    console.error('[transfer.create] error occurred, attempting rollback', { error: e?.message });
+    
+    if (recipientCredited && recipientCard && originalRecipientBalance >= 0) {
+      try {
+        await databases.updateDocument(databaseId, cardsCol, recipientCard.$id, { balance: originalRecipientBalance });
+        console.log('[transfer.create] rolled back recipient balance', { recipientCardId: recipientCard.$id, originalBalance: originalRecipientBalance });
+      } catch (rollbackError) {
+        console.error('[transfer.create] failed to rollback recipient balance:', rollbackError);
+      }
+    }
+    
     if (balanceDebited && originalBalance > 0) {
       try {
         await databases.updateDocument(databaseId, cardsCol, cardId, { balance: originalBalance });
-        console.log('[transfer.create] refunded after error', { userId: user.$id, cardId, amount, originalBalance });
+        console.log('[transfer.create] rolled back sender balance', { cardId, originalBalance });
         
-        // Create a failed transaction record if we haven't already
-        if (!failedTransferDoc) {
-          await databases.createDocument(databaseId, txCol, ID.unique(), {
-            userId: user.$id,
-            cardId: cardId,
-            amount: -amount,
-            currency: currency.toUpperCase(),
-            recipient,
-            description: `FAILED: ${description || `Transfer to ${recipient}`}`,
-            status: 'failed',
-            type: 'transfer',
-            failureReason: 'system_error'
-          });
-        }
-      } catch (refundError) {
-        console.error('[transfer.create] failed to refund after error', { userId: user.$id, cardId, amount, refundError });
+        // Create a failed transaction record
+        await databases.createDocument(databaseId, txCol, ID.unique(), {
+          userId: user.$id,
+          cardId: cardId,
+          amount: -amount,
+          currency: currency.toUpperCase(),
+          recipient,
+          description: `FAILED: ${description || `Transfer to ${recipient}`}`,
+          status: 'failed',
+          type: 'transfer',
+          failureReason: 'system_error'
+        });
+      } catch (rollbackError) {
+        console.error('[transfer.create] failed to rollback sender balance:', rollbackError);
       }
     }
     
@@ -561,7 +650,7 @@ v1.post('/transfers', appwriteAuth, async (c) => {
       response: e?.response || undefined,
     };
     console.error('[transfer.create] error', { userId: user.$id, cardId, amount, ...errInfo });
-    return c.json({ error: 'server_error', message: 'Transfer failed. If amount was debited, it has been refunded.', ...errInfo }, 500);
+    return c.json({ error: 'server_error', message: 'Transfer failed. Any debited amounts have been refunded.', ...errInfo }, 500);
   }
 });
 
