@@ -8,6 +8,8 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import "./global.css";
+// Import URL polyfill for React Native compatibility with Appwrite SDK
+import 'react-native-url-polyfill/auto';
 import { Alert } from "@/components/Alert";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { initializeErrorSuppression } from "@/config/errorSuppression";

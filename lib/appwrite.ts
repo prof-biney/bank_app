@@ -308,6 +308,14 @@ export const signIn = async (email: string, password: string) => {
   try {
     if (__DEV__) {
       console.log('[signIn] Attempting to create email password session');
+      console.log('[signIn] Debug info:', {
+        accountObject: typeof account,
+        accountMethods: Object.getOwnPropertyNames(Object.getPrototypeOf(account)),
+        createEmailPasswordSessionMethod: typeof account.createEmailPasswordSession,
+        accountClientType: typeof account.client,
+        emailType: typeof email,
+        passwordType: typeof password
+      });
     }
     
     // Clear any existing sessions first
@@ -317,7 +325,30 @@ export const signIn = async (email: string, password: string) => {
       // Ignore errors when clearing sessions
     }
     
-    const session = await account.createEmailPasswordSession(email, password);
+    // Add specific debugging for the method call
+    if (__DEV__) {
+      console.log('[signIn] About to call createEmailPasswordSession');
+      console.log('[signIn] Method exists:', 'createEmailPasswordSession' in account);
+      console.log('[signIn] Method type:', typeof account.createEmailPasswordSession);
+    }
+    
+    let session;
+    try {
+      if (__DEV__) {
+        console.log('[signIn] Calling createEmailPasswordSession with bound context');
+      }
+      // Try with explicit binding
+      const createSessionMethod = account.createEmailPasswordSession.bind(account);
+      session = await createSessionMethod(email, password);
+    } catch (methodError: any) {
+      console.error('[signIn] Method execution failed:', methodError);
+      console.error('[signIn] Method error details:', {
+        name: methodError.name,
+        message: methodError.message,
+        stack: methodError.stack
+      });
+      throw methodError;
+    }
     
     if (__DEV__) {
       console.log('[signIn] Session created successfully:', { 
