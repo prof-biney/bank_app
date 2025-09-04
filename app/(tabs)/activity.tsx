@@ -14,6 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { DateFilterModal } from "@/components/DateFilterModal";
 import ActivityLogItem from "@/components/activity/ActivityLogItem";
 import ActivityDetailModal from "@/components/activity/ActivityDetailModal";
+import { ClearDataModal } from "@/components/ClearDataModal";
 import { useTheme } from "@/context/ThemeContext";
 import CustomButton from "@/components/CustomButton";
 import { getBadgeVisuals } from "@/theme/badge-utils";
@@ -54,12 +55,14 @@ export default function ActivityScreen() {
 			setPayments((prev) => prev.map((p) => (p.id === id ? { ...p, status: 'refunded' } : p)));
 		} catch (e) {}
 	};
-	const { transactions, activity } = useApp();
+	const { transactions, activity, clearAllActivity } = useApp();
 	const { getApiBase } = require('@/lib/api');
 	const [payments, setPayments] = React.useState<Payment[]>([]);
 	const [loading, setLoading] = React.useState(false);
 	const [loadingMore, setLoadingMore] = React.useState(false);
 	const [error, setError] = React.useState<string | null>(null);
+	const [showClearActivity, setShowClearActivity] = React.useState(false);
+	const [isClearingActivity, setIsClearingActivity] = React.useState(false);
 	const PAY_PAGE_SIZE = 10;
 	const [nextPaymentsCursor, setNextPaymentsCursor] = React.useState<string | null>(null);
 
@@ -215,6 +218,18 @@ export default function ActivityScreen() {
 	};
 
 	const setAllOn = () => setFilters({ income: true, expense: true, account: true, card: true });
+
+	const handleClearActivity = async () => {
+		setIsClearingActivity(true);
+		try {
+			await clearAllActivity();
+			setShowClearActivity(false);
+		} catch (error) {
+			console.error('Failed to clear activity:', error);
+		} finally {
+			setIsClearingActivity(false);
+		}
+	};
 
 	const getFilteredTransactions = () => {
 		if (!Array.isArray(transactions)) return [];
@@ -379,9 +394,7 @@ export default function ActivityScreen() {
 				behavior={Platform.OS === "ios" ? "padding" : "height"}
 			>
 				<View style={styles.header}>
-					<View style={{ flexDirection: 'row', alignItems: 'center' }}>
-						<Text style={[styles.title, { color: colors.textPrimary }]}>Activity</Text>
-					</View>
+					<Text style={[styles.title, { color: colors.textPrimary }]}>Activity</Text>
 					<View style={{ flexDirection: 'row', alignItems: 'center' }}>
 						<TouchableOpacity
 							style={[styles.filterButton, { backgroundColor: colors.card }]}
@@ -537,18 +550,30 @@ export default function ActivityScreen() {
 				</View>
 				</View>
 
-				
+				<View style={[styles.transactionsContainer, { backgroundColor: colors.background }]}>
+					{/* Sticky Header with Clear All Button */}
+					<View style={[styles.stickyActivityHeader, { backgroundColor: colors.background }]}>
+						{/* Horizontal separator bar */}
+						<View style={[styles.horizontalBar, { backgroundColor: colors.border }]} />
+						
+						{/* Clear All Button */}
+						{activity.length > 0 && (
+							<View style={styles.clearAllContainer}>
+								<TouchableOpacity onPress={() => setShowClearActivity(true)}>
+									<Text style={[styles.clearAllText, { color: colors.negative }]}>Clear All</Text>
+								</TouchableOpacity>
+							</View>
+						)}
+					</View>
 
-				{/* Horizontal separator bar */}
-				<View style={[styles.horizontalBar, { backgroundColor: colors.border }]} />
-
-				<View style={styles.transactionsContainer}>
 					<ScrollView
 						style={styles.transactionsList}
-						contentContainerStyle={styles.scrollContent}
+						contentContainerStyle={[styles.scrollContent, { paddingTop: 52 }]}
 						showsVerticalScrollIndicator={true}
+						scrollEventThrottle={16}
 						alwaysBounceVertical={true}
 						nestedScrollEnabled={true}
+						indicatorStyle="default"
 					>
 						{/* Empty state when there are no activities */}
 						{!loading && !error && allActivities.length === 0 && (
@@ -634,6 +659,15 @@ export default function ActivityScreen() {
 				/>
 
 				<ActivityDetailModal visible={showDetail} event={selected} onClose={() => setShowDetail(false)} />
+
+				<ClearDataModal
+					visible={showClearActivity}
+					onClose={() => setShowClearActivity(false)}
+					onConfirm={handleClearActivity}
+					dataType="activity"
+					count={activity.length}
+					isLoading={isClearingActivity}
+				/>
 			</KeyboardAvoidingView>
 		</SafeAreaView>
 	);
@@ -657,6 +691,10 @@ const styles = StyleSheet.create({
 	title: {
 		fontSize: 28,
 		fontWeight: "bold",
+	},
+	clearAllText: {
+		fontSize: 14,
+		fontWeight: "500",
 	},
 	filterButton: {
 		width: 44,
@@ -719,6 +757,33 @@ const styles = StyleSheet.create({
 		borderTopLeftRadius: 24,
 		borderTopRightRadius: 24,
 		marginTop: 0,
+		position: 'relative',
+	},
+	stickyActivityHeader: {
+		position: 'absolute',
+		top: 0,
+		left: 0,
+		right: 0,
+		zIndex: 10,
+		// Subtle shadow for gentle visual separation
+		shadowColor: "#000",
+		shadowOffset: {
+			width: 0,
+			height: 1.5,
+		},
+		shadowOpacity: 0.06,
+		shadowRadius: 3,
+		elevation: 2,
+		// Add subtle border at the bottom
+		borderBottomWidth: Platform.OS === 'ios' ? 0.5 : 1,
+		borderBottomColor: 'rgba(0, 0, 0, 0.04)',
+	},
+	clearAllContainer: {
+		flexDirection: 'row',
+		justifyContent: 'flex-end',
+		paddingHorizontal: 20,
+		marginTop: 12,
+		marginBottom: 8,
 	},
 	transactionsList: {
 		flex: 1,

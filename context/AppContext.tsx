@@ -1,9 +1,10 @@
 import React, { createContext, ReactNode, useContext, useEffect, useState, useRef } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Card, Transaction } from "../constants/index";
+import { Card, Transaction } from "@/constants/index";
 import type { Notification } from "@/types";
 import { ActivityEvent } from "@/types/activity";
 import { appwriteConfig, client, logCardEvent, databases } from "@/lib/appwrite";
+import { Query } from 'react-native-appwrite';
 import { 
   fetchUserTransactions, 
   refreshTransactions, 
@@ -47,10 +48,12 @@ interface AppContextType {
   isLoadingTransactions: boolean;
   refreshTransactions: () => Promise<void>;
   loadMoreTransactions: () => Promise<void>;
+  clearAllTransactions: () => Promise<void>;
   // Activity events
   activity: ActivityEvent[];
   pushActivity: (evt: ActivityEvent) => void;
   setActivity: React.Dispatch<React.SetStateAction<ActivityEvent[]>>;
+  clearAllActivity: () => Promise<void>;
   // Notifications
   notifications: Notification[];
   setNotifications: React.Dispatch<React.SetStateAction<Notification[]>>;
@@ -65,6 +68,8 @@ interface AppContextType {
   unarchiveNotification: (id: string) => Promise<void>;
   toggleNotificationArchive: (id: string) => Promise<void>;
   archiveAllReadNotifications: () => Promise<void>;
+  // Test function - remove in production
+  addTestNotifications?: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -83,7 +88,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading: authLoading, user } = useAuthStore();
 
   // Initialize notification service with AppContext functions
-  React.useEffect(() => {
+  useEffect(() => {
     initNotificationService({ setNotifications });
   }, []);
 
@@ -360,28 +365,47 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
       };
     }
     
-    // Check if recipient is one of user's own cards (internal transfer)
+    // Get source card details
     const sourceCard = cards.find(card => card.id === cardId);
+    if (!sourceCard) {
+      console.error('[MakeTransfer] Source card not found');
+      return {
+        success: false,
+        error: 'Source card not found. Please try again.'
+      };
+    }
+    
+    // Check if sufficient funds
+    if (sourceCard.balance < amount) {
+      return {
+        success: false,
+        error: 'Insufficient funds for this transfer.'
+      };
+    }
+    
+    // Check if recipient is one of user's own cards (internal transfer)
+    // Use last4 matching since cards are stored with masked numbers
     const recipientCardNumberClean = recipientCardNumber.replace(/\s/g, ''); // Remove spaces for comparison
+    const recipientLast4 = recipientCardNumberClean.slice(-4); // Get last 4 digits
     
     const recipientCard = cards.find(card => {
-      const cardDigits = card.cardNumber.replace(/[^\d]/g, '');
-      return cardDigits === recipientCardNumberClean;
+      const cardLast4 = card.cardNumber.replace(/[^\d]/g, '').slice(-4);
+      return cardLast4 === recipientLast4;
     });
     
-    // Handle internal transfer (between user's own cards)
+    // Prevent self-transfers (same card to same card)
+    if (recipientCard && recipientCard.id === cardId) {
+      return {
+        success: false,
+        error: 'Cannot transfer to the same card. Please select a different recipient.'
+      };
+    }
+    
+    // Handle internal transfer (between user's own cards) - local only
     if (recipientCard && sourceCard) {
-      console.log('[MakeTransfer] Internal transfer detected');
+      console.log('[MakeTransfer] Internal transfer detected - handling locally');
       
       try {
-        // Check if sufficient funds
-        if (sourceCard.balance < amount) {
-          return {
-            success: false,
-            error: 'Insufficient funds for this transfer.'
-          };
-        }
-        
         const newSourceBalance = sourceCard.balance - amount;
         const newRecipientBalance = recipientCard.balance + amount;
         
@@ -410,6 +434,10 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
           recipient: `${sourceCard.cardHolderName} (${sourceCard.cardNumber})`,
           status: 'completed'
         });
+        
+        // Send notification for recipient (internal transfer)
+        const { pushTransferNotification } = require('../lib/notificationService');
+        pushTransferNotification('received', amount, sourceCard.cardHolderName, newRecipientBalance);
         
         console.log('[MakeTransfer] Internal transfer completed successfully');
         
@@ -449,7 +477,7 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
     // Try server-based transfer first, fall back to local simulation
     try {
       const { getApiBase } = require('../lib/api');
-      const { getValidJWT, refreshAppwriteJWT } = require('../lib/jwt');
+      const { getValidJWTWithAutoRefresh, refreshAppwriteJWTWithRetry } = require('../lib/jwt');
       
       const apiBase = getApiBase();
       if (!apiBase || apiBase.includes('undefined') || apiBase === 'undefined') {
@@ -461,13 +489,13 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
       
       console.log('[MakeTransfer] API Base:', apiBase);
       
-      // Ensure we have a valid JWT before making the API call
-      let jwt = await getValidJWT();
+      // Use improved JWT handling with auto-refresh
+      let jwt = await getValidJWTWithAutoRefresh();
       if (!jwt) {
-        console.log('[MakeTransfer] No JWT available, attempting to create one');
-        jwt = await refreshAppwriteJWT();
+        console.log('[MakeTransfer] No JWT available, attempting refresh with retry');
+        jwt = await refreshAppwriteJWTWithRetry();
         if (!jwt) {
-          console.warn('[MakeTransfer] Could not obtain JWT, using local simulation');
+          console.warn('[MakeTransfer] Could not obtain JWT after retries, using local simulation');
           throw new Error('Authentication failed');
         }
       }
@@ -478,6 +506,7 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
         amount,
         currency: 'GHS',
         recipient: recipientCardNumber,
+        recipientName: undefined, // TODO: Extract recipient name from transfer form
         description: description || `Transfer To: ${recipientCardNumber}`
       };
       
@@ -698,13 +727,17 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
   useEffect(() => {
     // Don't load cards if authentication is still loading
     if (authLoading) {
-      console.log('[LoadCards] Waiting for authentication to complete...');
+      if (__DEV__) {
+        console.log('[LoadCards] Waiting for authentication to complete...');
+      }
       return;
     }
     
     // Don't load cards if user is not authenticated
     if (!isAuthenticated || !user) {
-      console.log('[LoadCards] Skipping card load - user not authenticated');
+      if (__DEV__) {
+        console.log('[LoadCards] Skipping card load - user not authenticated');
+      }
       setIsLoadingCards(false);
       return;
     }
@@ -717,22 +750,27 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
       try {
         // Try to load from Appwrite first since user is authenticated
         try {
-          console.log('[LoadCards] Attempting to load cards from Appwrite for user:', user.$id || user.id);
+          if (__DEV__) {
+            console.log('[LoadCards] Attempting to load cards from Appwrite for user:', user.$id || user.id);
+          }
           const appwriteCards = await getAppwriteActiveCards();
           if (appwriteCards.length > 0) {
-            console.log('[LoadCards] Loaded', appwriteCards.length, 'cards from Appwrite');
-            const cards = appwriteCards.map(doc => ({
-              id: doc.$id,
-              userId: doc.userId,
-              cardNumber: doc.cardNumber,
-              cardHolderName: doc.cardHolderName,
-              expiryDate: doc.expiryDate,
-              balance: doc.balance,
-              cardType: doc.cardType,
-              isActive: doc.isActive,
-              cardColor: doc.cardColor,
-              token: doc.token,
-              currency: doc.currency || 'GHS',
+            if (__DEV__) {
+              console.log('[LoadCards] Loaded', appwriteCards.length, 'cards from Appwrite');
+            }
+            // Cards already have correct structure from getAppwriteActiveCards
+            const cards = appwriteCards.map(card => ({
+              id: card.id, // Already mapped correctly in getAppwriteActiveCards
+              userId: card.userId,
+              cardNumber: card.cardNumber,
+              cardHolderName: card.cardHolderName,
+              expiryDate: card.expiryDate,
+              balance: card.balance,
+              cardType: card.cardType,
+              isActive: card.isActive,
+              cardColor: card.cardColor,
+              token: card.token,
+              currency: card.currency || 'GHS',
             }));
             setCards(cards);
             setActiveCard(cards[0] || null);
@@ -807,7 +845,22 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
         const dbId = appwriteConfig.databaseId;
         const notifCol = (appwriteConfig as any).notificationsCollectionId as string | undefined;
         if (!dbId || !notifCol) return;
-        const resp: any = await databases.listDocuments(dbId, notifCol);
+        
+        // Get current user ID
+        const { user } = useAuthStore.getState();
+        const userId = user?.id || user?.$id;
+        if (!userId) {
+          console.log('[loadNotifications] No user ID available, skipping notifications load');
+          return;
+        }
+        
+        // User-scoped query for notifications
+        const resp: any = await databases.listDocuments(dbId, notifCol, [
+          Query.equal('userId', userId),
+          Query.orderDesc('$createdAt'),
+          Query.limit(50)
+        ]);
+        
         const docs = Array.isArray(resp?.documents) ? resp.documents : [];
         const fetched: Notification[] = docs.map((d: any) => ({
           id: d.$id,
@@ -917,20 +970,20 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
     const notifCol = (appwriteConfig as any).notificationsCollectionId as string | undefined;
     
     // Optimistic update (always perform for local state)
-    let prev: Notification[] | null = null;
-    setNotifications(cur => {
-      prev = cur;
-      return cur.map(n => (n.id === id ? { ...n, unread: false } : n));
-    });
+    setNotifications(cur => cur.map(n => (n.id === id ? { ...n, unread: false } : n)));
     
     // Only try database update if configured
-    if (!dbId || !notifCol) return;
+    if (!dbId || !notifCol) {
+      console.log('[markNotificationRead] Database not configured, using local-only mode');
+      return;
+    }
     
     try {
       await databases.updateDocument(dbId, notifCol, id, { unread: false });
+      console.log(`[markNotificationRead] Successfully marked notification ${id} as read`);
     } catch (e) {
-      // Revert on failure
-      if (prev) setNotifications(prev);
+      console.warn(`[markNotificationRead] Failed to update notification ${id} in database:`, e);
+      // Don't roll back - this notification might be local-only
     }
   };
 
@@ -959,24 +1012,126 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
   const markAllNotificationsRead: AppContextType['markAllNotificationsRead'] = async () => {
     const dbId = appwriteConfig.databaseId;
     const notifCol = (appwriteConfig as any).notificationsCollectionId as string | undefined;
-    const unread = notifications.filter(n => n.unread).map(n => n.id);
-    if (unread.length === 0) return;
+    const unread = notifications.filter(n => n.unread);
+    if (unread.length === 0) {
+      console.log('[markAllNotificationsRead] No unread notifications to mark');
+      return;
+    }
     
-    // Optimistic update (always perform for local state)
-    const prev = notifications;
-    setNotifications(cur => cur.map(n => ({ ...n, unread: false })));
+    console.log(`[markAllNotificationsRead] Marking ${unread.length} notifications as read`);
+    console.log('[markAllNotificationsRead] Current notifications:', notifications.map(n => ({ id: n.id, title: n.title.substring(0, 20), unread: n.unread })));
+    
+    // Store the original state for potential partial rollback
+    const originalNotifications = notifications;
+    
+    // Create completely new notification objects to ensure React detects the change
+    const updatedNotifications = notifications.map(n => ({
+      ...n,
+      unread: false // Mark ALL as read, not just the unread ones
+    }));
+    
+    console.log('[markAllNotificationsRead] Updated notifications:', updatedNotifications.map(n => ({ id: n.id, title: n.title.substring(0, 20), unread: n.unread })));
+    
+    // Force immediate state update with completely new array
+    setNotifications(updatedNotifications);
+    
+    console.log('[markAllNotificationsRead] State updated, unread indicators should be hidden immediately');
     
     // Only try database update if configured
-    if (!dbId || !notifCol) return;
+    if (!dbId || !notifCol) {
+      console.log('[markAllNotificationsRead] Database not configured, using local-only mode');
+      return;
+    }
     
-    try {
-      // Fire updates sequentially to keep it simple; could be parallel
-      for (const id of unread) {
-        // eslint-disable-next-line no-await-in-loop
-        await databases.updateDocument(dbId, notifCol, id, { unread: false });
+    // Enhanced batch processing with retry logic and partial failure handling
+    const batchSize = 10; // Process notifications in batches to avoid overwhelming the server
+    const maxRetries = 2;
+    let successfulUpdates = 0;
+    let failedUpdates = 0;
+    const failedIds: string[] = [];
+    
+    // Helper function to retry failed operations
+    const retryFailedUpdate = async (notificationId: string, retryCount: number): Promise<boolean> => {
+      if (retryCount >= maxRetries) return false;
+      
+      try {
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000)); // Exponential backoff
+        await databases.updateDocument(dbId, notifCol, notificationId, { unread: false });
+        return true;
+      } catch (e) {
+        console.warn(`[markAllNotificationsRead] Retry ${retryCount + 1}/${maxRetries} failed for notification ${notificationId}:`, e);
+        return retryFailedUpdate(notificationId, retryCount + 1);
       }
-    } catch (e) {
-      setNotifications(prev);
+    };
+    
+    // Process notifications in batches
+    for (let i = 0; i < unread.length; i += batchSize) {
+      const batch = unread.slice(i, i + batchSize);
+      
+      // Process batch concurrently but with a limit
+      const batchPromises = batch.map(async (notification) => {
+        try {
+          await databases.updateDocument(dbId, notifCol, notification.id, { unread: false });
+          return { id: notification.id, success: true };
+        } catch (e) {
+          console.warn(`[markAllNotificationsRead] Initial attempt failed for notification ${notification.id}:`, e);
+          return { id: notification.id, success: false, error: e };
+        }
+      });
+      
+      const batchResults = await Promise.all(batchPromises);
+      
+      // Handle batch results
+      for (const result of batchResults) {
+        if (result.success) {
+          successfulUpdates++;
+        } else {
+          // Attempt retry for failed notifications
+          const retrySuccess = await retryFailedUpdate(result.id, 0);
+          if (retrySuccess) {
+            successfulUpdates++;
+          } else {
+            failedUpdates++;
+            failedIds.push(result.id);
+          }
+        }
+      }
+      
+      // Add a small delay between batches to avoid rate limiting
+      if (i + batchSize < unread.length) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+    
+    console.log(`[markAllNotificationsRead] Database update completed: ${successfulUpdates} successful, ${failedUpdates} failed`);
+    
+    // Enhanced error handling with partial rollback for persistent failures
+    if (failedUpdates > 0) {
+      console.warn(`[markAllNotificationsRead] ${failedUpdates} notifications failed to update after retries:`, failedIds);
+      
+      // Determine the severity of the failure
+      const failureRate = failedUpdates / unread.length;
+      
+      if (failureRate >= 0.8) {
+        // If 80% or more failed, likely a connection/server issue - keep optimistic update
+        console.error('[markAllNotificationsRead] High failure rate detected - likely connection issue. Keeping optimistic update.');
+      } else if (failureRate >= 0.3) {
+        // If 30-79% failed, partial server issue - revert failed notifications only
+        console.warn('[markAllNotificationsRead] Moderate failure rate - reverting failed notifications to unread state.');
+        setNotifications(current => 
+          current.map(n => 
+            failedIds.includes(n.id) ? { ...n, unread: true } : n
+          )
+        );
+      } else {
+        // Less than 30% failed - likely individual notification issues, keep optimistic update
+        console.info('[markAllNotificationsRead] Low failure rate - keeping optimistic update for UX.');
+      }
+    }
+    
+    // Log final status
+    if (successfulUpdates > 0) {
+      console.log(`[markAllNotificationsRead] Successfully synchronized ${successfulUpdates}/${unread.length} notifications to database`);
     }
   };
 
@@ -1002,11 +1157,10 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
   const toggleNotificationRead: AppContextType['toggleNotificationRead'] = async (id) => {
     const dbId = appwriteConfig.databaseId;
     const notifCol = (appwriteConfig as any).notificationsCollectionId as string | undefined;
-    if (!dbId || !notifCol) return;
-    let prev: Notification[] | null = null;
+    
+    // Optimistic update (always perform for local state)
     let nextUnread = true;
     setNotifications(cur => {
-      prev = cur;
       const updated = cur.map(n => {
         if (n.id === id) {
           nextUnread = !n.unread;
@@ -1016,28 +1170,74 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
       });
       return updated;
     });
+    
+    // Only try database update if configured
+    if (!dbId || !notifCol) {
+      console.log('[toggleNotificationRead] Database not configured, using local-only mode');
+      return;
+    }
+    
     try {
       await databases.updateDocument(dbId, notifCol, id, { unread: nextUnread });
+      console.log(`[toggleNotificationRead] Successfully toggled notification ${id} to ${nextUnread ? 'unread' : 'read'}`);
     } catch (e) {
-      if (prev) setNotifications(prev);
+      console.warn(`[toggleNotificationRead] Failed to update notification ${id} in database:`, e);
+      // Don't roll back - this notification might be local-only
     }
   };
 
   const markAllNotificationsUnread: AppContextType['markAllNotificationsUnread'] = async () => {
     const dbId = appwriteConfig.databaseId;
     const notifCol = (appwriteConfig as any).notificationsCollectionId as string | undefined;
-    if (!dbId || !notifCol) return;
-    const readIds = notifications.filter(n => !n.unread).map(n => n.id);
-    if (readIds.length === 0) return;
-    const prev = notifications;
-    setNotifications(cur => cur.map(n => ({ ...n, unread: true })));
-    try {
-      for (const id of readIds) {
+    const readNotifications = notifications.filter(n => !n.unread);
+    if (readNotifications.length === 0) {
+      console.log('[markAllNotificationsUnread] No read notifications to mark as unread');
+      return;
+    }
+    
+    console.log(`[markAllNotificationsUnread] Marking ${readNotifications.length} notifications as unread`);
+    console.log('[markAllNotificationsUnread] Current notifications:', notifications.map(n => ({ id: n.id, title: n.title.substring(0, 20), unread: n.unread })));
+    
+    // Create completely new notification objects to ensure React detects the change
+    const updatedNotifications = notifications.map(n => ({
+      ...n,
+      unread: true // Mark ALL as unread
+    }));
+    
+    console.log('[markAllNotificationsUnread] Updated notifications:', updatedNotifications.map(n => ({ id: n.id, title: n.title.substring(0, 20), unread: n.unread })));
+    
+    // Force immediate state update with completely new array
+    setNotifications(updatedNotifications);
+    
+    console.log('[markAllNotificationsUnread] State updated, all notifications should show as unread immediately');
+    
+    // Only try database update if configured
+    if (!dbId || !notifCol) {
+      console.log('[markAllNotificationsUnread] Database not configured, using local-only mode');
+      return;
+    }
+    
+    // Try to update database, but don't roll back if it fails (notifications might be local-only)
+    let successfulUpdates = 0;
+    let failedUpdates = 0;
+    
+    for (const notification of readNotifications) {
+      try {
         // eslint-disable-next-line no-await-in-loop
-        await databases.updateDocument(dbId, notifCol, id, { unread: true });
+        await databases.updateDocument(dbId, notifCol, notification.id, { unread: true });
+        successfulUpdates++;
+      } catch (e) {
+        failedUpdates++;
+        console.warn(`[markAllNotificationsUnread] Failed to update notification ${notification.id} in database:`, e);
+        // Don't roll back - this notification might be local-only
       }
-    } catch (e) {
-      setNotifications(prev);
+    }
+    
+    console.log(`[markAllNotificationsUnread] Database update completed: ${successfulUpdates} successful, ${failedUpdates} failed`);
+    
+    // Only show error if ALL updates failed (suggesting a connection issue)
+    if (successfulUpdates === 0 && failedUpdates > 0) {
+      console.warn('[markAllNotificationsUnread] All database updates failed - this might indicate a connection issue');
     }
   };
 
@@ -1181,6 +1381,54 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
     }
   };
 
+  const clearAllTransactions: AppContextType['clearAllTransactions'] = async () => {
+    // Clear local state
+    setTransactions([]);
+    setTransactionsCursor(null);
+    
+    // Clear transaction-related activity events
+    setActivity(prev => prev.filter(a => a.category !== 'transaction'));
+    
+    try {
+      // Clear cached transactions
+      await StorageManager.clearTransactionCache();
+      
+      // Clear cached activity events (transaction-related)
+      const currentActivity = await StorageManager.getCachedActivityEvents();
+      if (currentActivity) {
+        const nonTransactionEvents = currentActivity.events.filter(evt => evt.category !== 'transaction');
+        await StorageManager.cacheActivityEvents({ 
+          ...currentActivity,
+          events: nonTransactionEvents 
+        });
+      }
+      
+      console.log('[clearAllTransactions] Transaction data cleared successfully');
+    } catch (error) {
+      console.warn('[clearAllTransactions] Failed to clear cached data:', error);
+    }
+    
+    // Note: We don't delete transactions from Appwrite server as this would be destructive
+    // The user can refresh to reload transactions from server if needed
+  };
+
+  const clearAllActivity: AppContextType['clearAllActivity'] = async () => {
+    // Clear local activity state
+    setActivity([]);
+    
+    try {
+      // Clear cached activity events
+      await StorageManager.clearActivityCache();
+      
+      console.log('[clearAllActivity] Activity data cleared successfully');
+    } catch (error) {
+      console.warn('[clearAllActivity] Failed to clear cached activity:', error);
+    }
+    
+    // Note: We don't delete activity from Appwrite server as this would be destructive
+    // The user can refresh to reload activity from server if needed
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -1197,9 +1445,11 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
         isLoadingTransactions,
         refreshTransactions: refreshTransactionsImpl,
         loadMoreTransactions: loadMoreTransactionsImpl,
+        clearAllTransactions,
         activity,
         pushActivity,
         setActivity,
+        clearAllActivity,
         notifications,
         setNotifications,
         markNotificationRead,

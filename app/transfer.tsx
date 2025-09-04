@@ -13,11 +13,11 @@ import {
   Pressable,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { BankCard } from "../components/BankCard";
-import { useApp } from "../context/AppContext";
-import { useAlert } from "../context/AlertContext";
-import { showAlertWithNotification } from "../lib/notificationService";
-import { Recipient } from "../types/index";
+import { BankCard } from "@/components/BankCard";
+import { useApp } from "@/context/AppContext";
+import { useAlert } from "@/context/AlertContext";
+import { showAlertWithNotification } from "@/lib/notificationService";
+import { Recipient } from "@/types/index";
 import { useTheme } from "@/context/ThemeContext";
 import { getChipStyles } from "@/theme/variants";
 import CustomButton from "@/components/CustomButton";
@@ -66,10 +66,13 @@ export default function TransferScreen() {
   };
 
   const findCardByNumber = (cardNumber: string) => {
-    const digits = cardNumber.replace(/\s/g, '');
+    // Extract last 4 digits from input
+    const inputLast4 = cardNumber.replace(/\s/g, '').slice(-4);
+    
+    // Find card by matching last 4 digits
     return cards.find(card => {
-      const cardDigits = card.cardNumber.replace(/[^\d]/g, '');
-      return cardDigits === digits;
+      const cardLast4 = card.cardNumber.replace(/[^\d]/g, '').slice(-4);
+      return cardLast4 === inputLast4;
     });
   };
 

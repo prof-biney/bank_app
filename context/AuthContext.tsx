@@ -6,7 +6,7 @@ import React, {
   useEffect,
   useState,
 } from "react";
-import { User } from "../constants/index";
+import { User } from "@/constants/index";
 
 interface AuthContextType {
   user: User | null;

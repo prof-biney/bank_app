@@ -32,14 +32,22 @@ export const useFormStyles = () => {
     input: {
       flex: 1,
       borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 8,
+      borderColor: colors.inputBorder,
+      borderRadius: 12,
       paddingHorizontal: 16,
-      paddingVertical: 12,
-      fontSize: 15, // Reduced from 16pt to 15pt for placeholder text
-      backgroundColor: colors.card,
+      paddingVertical: 14,
+      fontSize: 15,
+      backgroundColor: colors.inputBackground,
       color: colors.textPrimary,
-      paddingRight: 40, // Space for the icons
+      paddingRight: 40,
+      shadowColor: colors.shadowColor,
+      shadowOffset: {
+        width: 0,
+        height: 1,
+      },
+      shadowOpacity: 0.05,
+      shadowRadius: 2,
+      elevation: 1,
     },
 
     // Valid input style
@@ -131,13 +139,21 @@ export const useFormStyles = () => {
       alignItems: "center",
       justifyContent: "center",
       borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 8,
+      borderColor: colors.inputBorder,
+      borderRadius: 12,
       paddingHorizontal: 12,
-      paddingVertical: 12,
-      backgroundColor: colors.card,
+      paddingVertical: 14,
+      backgroundColor: colors.inputBackground,
       marginRight: 8,
       minWidth: 80,
+      shadowColor: colors.shadowColor,
+      shadowOffset: {
+        width: 0,
+        height: 1,
+      },
+      shadowOpacity: 0.05,
+      shadowRadius: 2,
+      elevation: 1,
     },
 
     countryFlag: {
@@ -161,14 +177,22 @@ export const useFormStyles = () => {
     phoneInput: {
       flex: 1,
       borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 8,
+      borderColor: colors.inputBorder,
+      borderRadius: 12,
       paddingHorizontal: 16,
-      paddingVertical: 12,
-      fontSize: 15, // Reduced from 16pt to 15pt for placeholder text
-      backgroundColor: colors.card,
+      paddingVertical: 14,
+      fontSize: 15,
+      backgroundColor: colors.inputBackground,
       color: colors.textPrimary,
-      paddingRight: 40, // Space for the icons
+      paddingRight: 40,
+      shadowColor: colors.shadowColor,
+      shadowOffset: {
+        width: 0,
+        height: 1,
+      },
+      shadowOpacity: 0.05,
+      shadowRadius: 2,
+      elevation: 1,
     },
 
     // Special positioning for phone number field icons (moved 25px to the right)
@@ -255,7 +279,7 @@ export const useFormStyles = () => {
     // Country selection modal styles
     modalOverlay: {
       flex: 1,
-      backgroundColor: "rgba(0, 0, 0, 0.5)",
+      backgroundColor: colors.overlay,
       justifyContent: "center",
       alignItems: "center",
     },
@@ -263,17 +287,17 @@ export const useFormStyles = () => {
     modalContainer: {
       width: Dimensions.get("window").width * 0.9,
       maxHeight: Dimensions.get("window").height * 0.7,
-      backgroundColor: colors.card,
-      borderRadius: 16,
+      backgroundColor: colors.modalBackground,
+      borderRadius: 20,
       overflow: "hidden",
-      shadowColor: "#000",
+      shadowColor: colors.shadowColor,
       shadowOffset: {
         width: 0,
-        height: 2,
+        height: 10,
       },
-      shadowOpacity: 0.25,
-      shadowRadius: 3.84,
-      elevation: 5,
+      shadowOpacity: 0.3,
+      shadowRadius: 20,
+      elevation: 8,
     },
 
     modalHeader: {

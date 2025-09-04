@@ -30,7 +30,7 @@ interface TransactionFilters {
 export async function fetchUserTransactions(filters: TransactionFilters = {}): Promise<{ success: boolean; data?: { transactions: Transaction[]; nextCursor?: string | null }; error?: string }> {
   try {
     const { getApiBase } = require('./api');
-    const { getValidJWT, refreshAppwriteJWT } = require('./jwt');
+    const { getValidJWTWithAutoRefresh, refreshAppwriteJWTWithRetry } = require('./jwt');
     
     // Build query parameters
     const params = new URLSearchParams();
@@ -51,7 +51,8 @@ export async function fetchUserTransactions(filters: TransactionFilters = {}): P
     const url = `${getApiBase()}/v1/transactions?${params.toString()}`;
     console.log('[fetchUserTransactions] Request URL:', url);
     
-    let jwt = await getValidJWT();
+    // Use improved JWT handling with auto-refresh
+    let jwt = await getValidJWTWithAutoRefresh();
     console.log('[fetchUserTransactions] JWT obtained:', !!jwt);
 
     const makeRequest = async (token: string | undefined) => {
@@ -64,13 +65,19 @@ export async function fetchUserTransactions(filters: TransactionFilters = {}): P
     let response = await makeRequest(jwt);
     console.log('[fetchUserTransactions] Response status:', response.status, response.statusText);
 
-    // Handle token refresh if needed
-    if (response.status === 401 && jwt) {
-      console.log('[fetchUserTransactions] Got 401, refreshing JWT and retrying...');
-      jwt = await refreshAppwriteJWT();
+    // Handle token refresh if needed with improved retry logic
+    if (response.status === 401) {
+      console.log('[fetchUserTransactions] Got 401, attempting JWT refresh with retry...');
+      jwt = await refreshAppwriteJWTWithRetry();
       if (jwt) {
         response = await makeRequest(jwt);
         console.log('[fetchUserTransactions] Retry response status:', response.status, response.statusText);
+      } else {
+        // JWT refresh failed, likely needs re-authentication
+        return {
+          success: false,
+          error: 'Authentication failed. Please sign in again.'
+        };
       }
     }
 

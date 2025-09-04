@@ -13,6 +13,7 @@ import {
   Dimensions,
 } from "react-native";
 import { LinearGradient } from 'expo-linear-gradient';
+import { MaterialIcons } from '@expo/vector-icons';
 // import { useAuth } from "../../context/AuthContext";
 import { useAlert } from "@/context/AlertContext";
 import useAuthStore from "@/store/auth.store";
@@ -192,11 +193,12 @@ export default function SignInScreen() {
   //   }
   // };
 
-  const { colors } = useTheme();
+  const { colors, transitionStyle } = useTheme();
   const { width } = Dimensions.get('window');
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <Animated.View style={[{ flex: 1 }, transitionStyle]}>
       <LinearGradient
         colors={[
           colors.tintPrimary,
@@ -319,6 +321,7 @@ export default function SignInScreen() {
           </ScrollView>
         </KeyboardAvoidingView>
       </LinearGradient>
+      </Animated.View>
     </SafeAreaView>
   );
 }

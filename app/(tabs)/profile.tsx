@@ -1,5 +1,6 @@
 import useAuthStore from "@/store/auth.store";
 import { router } from "expo-router";
+import { navigateAfterLogout } from "@/lib/safeNavigation";
 import {
   CircleHelp as HelpCircle,
   LogOut,
@@ -20,24 +21,37 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "@/context/ThemeContext";
 import { ProfilePicture } from "@/components/ProfilePicture";
 import { ImagePickerModal } from "@/components/ImagePickerModal";
+import { LogoutModal } from "@/components/LogoutModal";
 
 export default function ProfileScreen() {
   const { user, logout, updateProfilePicture, isLoading } = useAuthStore();
   const [showImagePicker, setShowImagePicker] = useState(false);
   const [isUpdatingPicture, setIsUpdatingPicture] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const handleSignOut = () => {
-    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Sign Out",
-        style: "destructive",
-        onPress: async () => {
-          logout();
-          router.replace("/sign-in");
-        },
-      },
-    ]);
+    setShowLogoutModal(true);
+  };
+
+  const handleConfirmLogout = async () => {
+    try {
+      setIsLoggingOut(true);
+      await logout();
+      setShowLogoutModal(false);
+      
+      // Use safe navigation utility to handle post-logout navigation
+      await navigateAfterLogout('/sign-in');
+    } catch (error) {
+      console.error('Logout error:', error);
+      setShowLogoutModal(false);
+      Alert.alert(
+        'Error',
+        'Failed to sign out. Please try again.'
+      );
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
   const handleSettings = () => {
@@ -124,6 +138,13 @@ export default function ProfileScreen() {
         visible={showImagePicker}
         onClose={() => setShowImagePicker(false)}
         onImageSelected={handleImageSelected}
+      />
+      
+      <LogoutModal
+        visible={showLogoutModal}
+        onClose={() => setShowLogoutModal(false)}
+        onConfirm={handleConfirmLogout}
+        isLoading={isLoggingOut}
       />
     </SafeAreaView>
   );

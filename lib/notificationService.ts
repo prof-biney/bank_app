@@ -187,6 +187,37 @@ export function pushPaymentNotification(
 }
 
 /**
+ * Pushes a transfer-related notification
+ */
+export function pushTransferNotification(
+  type: 'sent' | 'received',
+  amount: number,
+  counterpartyName: string,
+  newBalance?: number
+) {
+  const title = type === 'sent' ? 'Money Sent' : 'Money Received';
+  let message = `${type === 'sent' ? 'You sent' : 'You received'} GHS ${amount.toFixed(2)}`;
+  message += ` ${type === 'sent' ? 'to' : 'from'} ${counterpartyName}.`;
+  if (typeof newBalance === 'number') {
+    message += ` Your new balance is GHS ${newBalance.toFixed(2)}.`;
+  }
+  
+  const payload: NotificationPayload = {
+    type: 'transaction',
+    title,
+    message,
+  };
+  
+  // Try server-based notifications first, then local fallback
+  pushToNotificationSystem(payload).catch((error) => {
+    console.log('[pushTransferNotification] Server notification failed, using local only:', error?.message || error);
+  });
+  
+  // Always push to local notifications
+  pushToLocalNotificationSystem(payload);
+}
+
+/**
  * Pushes a system notification
  */
 export function pushSystemNotification(

@@ -234,6 +234,32 @@ export class StorageManager {
   }
 
   /**
+   * Clear cached transactions only
+   */
+  static async clearTransactionCache(): Promise<void> {
+    try {
+      await AsyncStorage.removeItem(STORAGE_KEYS.TRANSACTIONS);
+      console.log('[StorageManager] Transaction cache cleared');
+    } catch (error) {
+      console.warn('[StorageManager] Failed to clear transaction cache:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Clear cached activity events only
+   */
+  static async clearActivityCache(): Promise<void> {
+    try {
+      await AsyncStorage.removeItem(STORAGE_KEYS.ACTIVITY_EVENTS);
+      console.log('[StorageManager] Activity cache cleared');
+    } catch (error) {
+      console.warn('[StorageManager] Failed to clear activity cache:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Clear all cached data (for troubleshooting or logout)
    */
   static async clearAllCache(): Promise<void> {

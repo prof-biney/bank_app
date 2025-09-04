@@ -35,12 +35,15 @@ export interface UpdateCardData {
  */
 function getCurrentUserId(): string {
   const { user } = useAuthStore.getState();
-  // Handle both id and $id fields for compatibility
-  const userId = (user as any)?.id || (user as any)?.$id;
+  // User objects from getCurrentUser() have $id field (Appwrite documents)
+  // Check for $id first since that's the standard Appwrite document field
+  const userId = (user as any)?.$id || (user as any)?.id;
   if (!userId) {
     console.error('[getCurrentUserId] User object:', user);
+    console.error('[getCurrentUserId] Available user fields:', user ? Object.keys(user) : 'null');
     throw new Error('User not authenticated - no user ID found');
   }
+  console.log('[getCurrentUserId] Using userId:', userId);
   return userId;
 }
 
@@ -63,17 +66,22 @@ export async function createAppwriteCard(cardData: CreateCardData): Promise<Card
     
     const userId = getCurrentUserId();
     
+    // Parse expiry date (MM/YY format)
+    const [expMonth, expYear] = cardData.expiryDate.split('/');
+    const fullYear = expYear.length === 2 ? 2000 + parseInt(expYear) : parseInt(expYear);
+    
     const documentData = {
       userId,
-      cardNumber: cardData.cardNumber,
-      cardHolderName: cardData.cardHolderName,
-      expiryDate: cardData.expiryDate,
-      cardType: cardData.cardType,
-      cardColor: cardData.cardColor,
-      balance: cardData.balance || 0,
+      cardNumber: cardData.cardNumber, // Store full card number
+      last4: cardData.cardNumber.replace(/[^\d]/g, '').slice(-4), // Extract last 4 digits
+      holder: cardData.cardHolderName,
+      brand: cardData.cardType,
+      exp_month: parseInt(expMonth),
+      exp_year: fullYear,
+      color: cardData.cardColor,
+      balance: Math.round((cardData.balance || 0) * 100), // Convert to cents
       currency: cardData.currency || 'GHS',
-      token: cardData.token || '',
-      isActive: cardData.isActive !== false, // Default to true
+      token: cardData.token || null,
     };
 
     console.log('[createAppwriteCard] Creating card:', {
@@ -90,19 +98,19 @@ export async function createAppwriteCard(cardData: CreateCardData): Promise<Card
       documentData
     );
 
-    // Convert Appwrite document to Card type
+    // Convert Appwrite document to Card type (mapping schema fields)
     const card: Card = {
       id: document.$id,
       userId: document.userId,
-      cardNumber: document.cardNumber,
-      cardHolderName: document.cardHolderName,
-      expiryDate: document.expiryDate,
-      cardType: document.cardType,
-      cardColor: document.cardColor,
-      balance: document.balance,
+      cardNumber: `****-****-****-${document.last4}`,
+      cardHolderName: document.holder,
+      expiryDate: `${document.exp_month.toString().padStart(2, '0')}/${document.exp_year.toString().slice(-2)}`,
+      cardType: document.brand || 'card',
+      cardColor: document.color || '#1e40af',
+      balance: document.balance / 100, // Convert from cents to dollars
       currency: document.currency,
       token: document.token,
-      isActive: document.isActive !== undefined ? document.isActive : true, // Default to true if field doesn't exist
+      isActive: document.status !== 'inactive',
     };
 
     // Log card event for activity tracking (fire-and-forget)
@@ -173,26 +181,47 @@ export async function updateAppwriteCard(
       throw new Error('Unauthorized: Card does not belong to current user');
     }
 
+    // Transform updateData to match Appwrite schema
+    const transformedUpdateData: any = {};
+    
+    if (updateData.balance !== undefined) {
+      transformedUpdateData.balance = Math.round(updateData.balance * 100); // Convert to cents
+    }
+    if (updateData.cardHolderName !== undefined) {
+      transformedUpdateData.holder = updateData.cardHolderName;
+    }
+    if (updateData.cardColor !== undefined) {
+      transformedUpdateData.color = updateData.cardColor;
+    }
+    if (updateData.isActive !== undefined) {
+      transformedUpdateData.status = updateData.isActive ? 'active' : 'inactive';
+    }
+    if (updateData.expiryDate !== undefined) {
+      const [expMonth, expYear] = updateData.expiryDate.split('/');
+      transformedUpdateData.exp_month = parseInt(expMonth);
+      transformedUpdateData.exp_year = expYear.length === 2 ? 2000 + parseInt(expYear) : parseInt(expYear);
+    }
+
     const document = await databases.updateDocument(
       databaseId,
       cardsCollectionId,
       cardId,
-      updateData
+      transformedUpdateData
     );
 
-    // Convert Appwrite document to Card type
+    // Convert Appwrite document to Card type (mapping schema fields)
     const card: Card = {
       id: document.$id,
       userId: document.userId,
-      cardNumber: document.cardNumber,
-      cardHolderName: document.cardHolderName,
-      expiryDate: document.expiryDate,
-      cardType: document.cardType,
-      cardColor: document.cardColor,
-      balance: document.balance,
+      cardNumber: `****-****-****-${document.last4}`, // Reconstruct from last4
+      cardHolderName: document.holder,
+      expiryDate: `${document.exp_month.toString().padStart(2, '0')}/${document.exp_year.toString().slice(-2)}`,
+      cardType: document.brand || 'card',
+      cardColor: document.color || '#1e40af',
+      balance: document.balance / 100, // Convert from cents to dollars
       currency: document.currency,
       token: document.token,
-      isActive: document.isActive !== undefined ? document.isActive : true, // Default to true if field doesn't exist
+      isActive: document.status !== 'inactive', // Map status to isActive
     };
 
     console.log('[updateAppwriteCard] Card updated successfully:', card.id);
@@ -239,27 +268,27 @@ export async function deleteAppwriteCard(cardId: string): Promise<void> {
       throw new Error('Unauthorized: Card does not belong to current user');
     }
 
-    // Instead of deleting, set isActive to false for data integrity
+    // Instead of deleting, set status to inactive for data integrity
     await databases.updateDocument(
       databaseId,
       cardsCollectionId,
       cardId,
-      { isActive: false }
+      { status: 'inactive' }
     );
 
     // Log card event for activity tracking (fire-and-forget)
     try {
-      const last4 = existingDoc.cardNumber.slice(-4);
+      const last4 = existingDoc.last4 || (existingDoc.cardNumber ? existingDoc.cardNumber.slice(-4) : '****');
       logCardEvent({
         status: 'removed',
         cardId: existingDoc.$id,
         userId: existingDoc.userId,
         last4,
-        brand: existingDoc.cardType,
-        cardHolderName: existingDoc.cardHolderName,
-        expiryDate: existingDoc.expiryDate,
+        brand: existingDoc.brand || existingDoc.cardType || 'card',
+        cardHolderName: existingDoc.holder || existingDoc.cardHolderName,
+        expiryDate: existingDoc.exp_month ? `${existingDoc.exp_month.toString().padStart(2, '0')}/${existingDoc.exp_year.toString().slice(-2)}` : existingDoc.expiryDate,
         title: 'Card removed',
-        description: `${existingDoc.cardHolderName} • ${existingDoc.cardNumber}`,
+        description: `${existingDoc.holder || existingDoc.cardHolderName} • ****-****-****-${last4}`,
       }).catch(error => {
         console.warn('[deleteAppwriteCard] Failed to log card event:', error);
       });
@@ -441,19 +470,19 @@ export async function queryAppwriteCards(options: {
       queries
     );
 
-    // Convert documents to Card types
+    // Convert Appwrite document to Card type (mapping schema fields)
     const cards: Card[] = response.documents.map(doc => ({
       id: doc.$id,
       userId: doc.userId,
-      cardNumber: doc.cardNumber,
-      cardHolderName: doc.cardHolderName,
-      expiryDate: doc.expiryDate,
-      cardType: doc.cardType,
-      cardColor: doc.cardColor,
-      balance: doc.balance,
+      cardNumber: `****-****-****-${doc.last4}`, // Reconstruct card number from last4
+      cardHolderName: doc.holder,
+      expiryDate: `${doc.exp_month.toString().padStart(2, '0')}/${doc.exp_year.toString().slice(-2)}`,
+      cardType: doc.brand || doc.type || 'card',
+      cardColor: doc.color || '#1e40af', // Default color
+      balance: doc.balance / 100, // Convert from cents to dollars
       currency: doc.currency,
       token: doc.token,
-      isActive: doc.isActive !== undefined ? doc.isActive : true, // Default to true if field doesn't exist
+      isActive: doc.status !== 'inactive', // Map status to isActive
     }));
 
     console.log('[queryAppwriteCards] Found', cards.length, 'cards');
@@ -546,18 +575,19 @@ export async function findAppwriteCardByNumber(cardNumber: string): Promise<Card
     }
 
     const document = response.documents[0];
+    // Convert Appwrite document to Card type (mapping schema fields)
     const card: Card = {
       id: document.$id,
       userId: document.userId,
-      cardNumber: document.cardNumber,
-      cardHolderName: document.cardHolderName,
-      expiryDate: document.expiryDate,
-      cardType: document.cardType,
-      cardColor: document.cardColor,
-      balance: document.balance,
+      cardNumber: document.cardNumber || `****-****-****-${document.last4}`,
+      cardHolderName: document.holder || document.cardHolderName,
+      expiryDate: document.exp_month ? `${document.exp_month.toString().padStart(2, '0')}/${document.exp_year.toString().slice(-2)}` : document.expiryDate,
+      cardType: document.brand || document.cardType || 'card',
+      cardColor: document.color || document.cardColor || '#1e40af',
+      balance: document.balance ? (document.balance / 100) : 0, // Convert from cents to dollars
       currency: document.currency,
       token: document.token,
-      isActive: document.isActive !== undefined ? document.isActive : true, // Default to true if field doesn't exist
+      isActive: document.status ? (document.status !== 'inactive') : (document.isActive !== false),
     };
 
     console.log('[findAppwriteCardByNumber] Found card:', card.id);

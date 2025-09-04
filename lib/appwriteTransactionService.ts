@@ -70,7 +70,7 @@ export async function createAppwriteTransaction(transactionData: CreateTransacti
       category: transactionData.category,
       status: transactionData.status,
       currency: transactionData.currency || 'GHS',
-      date: new Date().toISOString(),
+      // Note: 'date' field removed as server uses $createdAt timestamp
     };
 
     console.log('[createAppwriteTransaction] Creating transaction:', {
@@ -98,7 +98,7 @@ export async function createAppwriteTransaction(transactionData: CreateTransacti
       recipient: document.recipient,
       category: document.category,
       status: document.status,
-      date: document.date,
+      date: document.$createdAt || document.date || new Date().toISOString(),
     };
 
     console.log('[createAppwriteTransaction] Transaction created successfully:', transaction.id);

@@ -11,8 +11,8 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { BankCard } from "../../components/BankCard";
-import { useApp } from "../../context/AppContext";
+import { BankCard } from "@/components/BankCard";
+import { useApp } from "@/context/AppContext";
 import useAuthStore from "@/store/auth.store";
 import { useTheme } from "@/context/ThemeContext";
 
@@ -26,7 +26,7 @@ function AddCardButton() {
   const { user } = useAuthStore();
   const { colors } = useTheme();
 
-  const { getApiBase } = require('../../lib/api');
+  const { getApiBase } = require('@/lib/api');
   
   let cardsUrl;
   try {
@@ -44,7 +44,7 @@ function AddCardButton() {
 
   const handleSubmit = async (payload: { number: string; name: string; exp_month: string; exp_year: string; cvc: string }) => {
     try {
-      const { getValidJWT, refreshAppwriteJWT } = require('../../lib/jwt');
+      const { getValidJWT, refreshAppwriteJWT } = require('@/lib/jwt');
       
       // Get a valid JWT token
       let jwt = await getValidJWT();

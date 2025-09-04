@@ -1,7 +1,7 @@
 import { CreditCard, Wifi, Trash2, Check } from "lucide-react-native";
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { Card } from "../types/index";
+import { Card } from "@/types/index";
 import { useTheme } from "@/context/ThemeContext";
 import { chooseReadableText, withAlpha } from "@/theme/color-utils";
 

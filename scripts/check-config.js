@@ -46,7 +46,7 @@ function checkEnvironmentVariables() {
   // Try to resolve the API base
   console.log('\n🔧 API Base Resolution:');
   try {
-    const { getApiBase } = require('../lib/api');
+    const { getApiBase } = require('@/lib/api');
     const apiBase = getApiBase();
     console.log(`  ✅ Resolved API Base: ${apiBase}`);
     console.log(`  📍 Cards endpoint would be: ${apiBase}/v1/cards`);
@@ -85,7 +85,7 @@ async function testAPIConnectivity() {
   console.log('\n🌐 Testing API Connectivity...\n');
   
   try {
-    const { getApiBase } = require('../lib/api');
+    const { getApiBase } = require('@/lib/api');
     const apiBase = getApiBase();
     const healthUrl = `${apiBase}/healthz`;
     

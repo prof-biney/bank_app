@@ -14,7 +14,7 @@ export default function PaymentsScreen() {
   const { activeCard } = useApp();
 
   useEffect(() => {
-    const { getApiBase } = require('../../lib/api');
+    const { getApiBase } = require('@/lib/api');
     const apiBase = getApiBase();
     const url = `${apiBase}/v1/payments`;
     (async () => {
@@ -43,7 +43,7 @@ export default function PaymentsScreen() {
     }
     setSubmitting(true);
     try {
-      const { getApiBase } = require('../../lib/api');
+      const { getApiBase } = require('@/lib/api');
       const apiBase = getApiBase();
       const url = `${apiBase}/v1/payments`;
       const jwt = (global as any).__APPWRITE_JWT__ || undefined;
@@ -65,7 +65,7 @@ export default function PaymentsScreen() {
 
   const action = async (id: string, kind: 'capture' | 'refund') => {
     try {
-      const { getApiBase } = require('../../lib/api');
+      const { getApiBase } = require('@/lib/api');
       const apiBase = getApiBase();
       const url = `${apiBase}/v1/payments/${id}/${kind}`;
       const jwt = (global as any).__APPWRITE_JWT__ || undefined;

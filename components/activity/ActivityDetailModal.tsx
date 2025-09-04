@@ -53,7 +53,7 @@ export default function ActivityDetailModal({
       if (event.category !== 'transaction' || !event.transactionId) return;
       try {
         setLoading(true);
-        const { getApiBase } = require('../../lib/api');
+        const { getApiBase } = require('@/lib/api');
         const url = `${getApiBase()}/v1/payments`;
         const jwt = (global as any).__APPWRITE_JWT__ || undefined;
         const res = await fetch(url, { headers: { ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) } });
