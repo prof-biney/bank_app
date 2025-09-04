@@ -127,7 +127,10 @@ if (appwriteConfig.apiKey && __DEV__) {
   console.log('🔑 Appwrite API key found (will be used for server operations only)');
 }
 
-export const account = new Account(client);
+// Import the dedicated authentication account instance
+// This uses a clean, unmodified client to avoid method binding issues
+import { authAccount } from './appwrite-auth';
+export const account = authAccount;
 
 // Use single database client - SDK v0.12.0 handles authentication automatically
 export const databases = new Databases(client);
@@ -335,11 +338,12 @@ export const signIn = async (email: string, password: string) => {
     let session;
     try {
       if (__DEV__) {
-        console.log('[signIn] Calling createEmailPasswordSession with bound context');
+        console.log('[signIn] Calling createEmailPasswordSession (correct method name)');
       }
-      // Try with explicit binding
-      const createSessionMethod = account.createEmailPasswordSession.bind(account);
-      session = await createSessionMethod(email, password);
+      // Use the correct method name from react-native-appwrite
+      // Fix potential method binding issue by ensuring proper context
+      const createSession = account.createEmailPasswordSession.bind(account);
+      session = await createSession(email, password);
     } catch (methodError: any) {
       console.error('[signIn] Method execution failed:', methodError);
       console.error('[signIn] Method error details:', {
