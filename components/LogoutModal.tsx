@@ -1,3 +1,4 @@
+
 import React from 'react';
 import {
   View,
@@ -12,6 +13,7 @@ import {
 import { LogOut, AlertTriangle, X } from 'lucide-react-native';
 import { useTheme } from '@/context/ThemeContext';
 
+
 interface LogoutModalProps {
   visible: boolean;
   onClose: () => void;
@@ -19,9 +21,11 @@ interface LogoutModalProps {
   isLoading?: boolean;
 }
 
+
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 export function LogoutModal({ visible, onClose, onConfirm, isLoading = false }: LogoutModalProps) {
+
   const { colors } = useTheme();
   const [scaleValue] = React.useState(new Animated.Value(0));
   const [opacityValue] = React.useState(new Animated.Value(0));
@@ -81,13 +85,15 @@ export function LogoutModal({ visible, onClose, onConfirm, isLoading = false }: 
         ]}
       >
         {/* Fallback blur effect using semi-transparent overlay */}
+
         <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0, 0, 0, 0.1)' }]} />
+
         <TouchableOpacity
           style={StyleSheet.absoluteFill}
           activeOpacity={1}
           onPress={handleBackdropPress}
         />
-        
+
         <Animated.View
           style={[
             styles.modalContainer,
@@ -100,11 +106,13 @@ export function LogoutModal({ visible, onClose, onConfirm, isLoading = false }: 
         >
           {/* Header */}
           <View style={styles.header}>
+
             <View style={[styles.iconContainer, { backgroundColor: colors.negative + '15' }]}>
               <AlertTriangle color={colors.negative} size={24} />
             </View>
             <TouchableOpacity
               style={[styles.closeButton, { backgroundColor: colors.background }]}
+
               onPress={onClose}
               disabled={isLoading}
             >
@@ -118,7 +126,7 @@ export function LogoutModal({ visible, onClose, onConfirm, isLoading = false }: 
               Sign Out?
             </Text>
             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-              Are you sure you want to sign out of your account? You'll need to sign in again to access your cards and transactions.
+              Are you sure you want to sign out of your account? You'll need to sign in again to access your cards and transactions
             </Text>
           </View>
 

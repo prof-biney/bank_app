@@ -101,9 +101,11 @@ export default function HomeScreen() {
     router.push("/transfer");
   };
 
+
   const handleDeposit = () => {
     router.push("/deposit");
   };
+
 
   const handleClearTransactions = async () => {
     setIsClearingTransactions(true);
