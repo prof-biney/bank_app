@@ -44,6 +44,7 @@ interface AppContextType {
   addTransaction: (transaction: Omit<Transaction, "id" | "date">) => void;
   updateCardBalance: (cardId: string, newBalance: number) => void;
   makeTransfer: (cardId: string, amount: number, recipientCardNumber: string, description?: string) => Promise<{ success: boolean; error?: string; newBalance?: number; recipientNewBalance?: number }>;
+  makeDeposit: (params: { cardId?: string; amount?: number; currency?: string; escrowMethod?: string; description?: string; depositId?: string; action?: string; mobileNetwork?: string; mobileNumber?: string; reference?: string }) => Promise<{ success: boolean; error?: string; data?: any }>;
   isLoadingCards: boolean;
   isLoadingTransactions: boolean;
   refreshTransactions: () => Promise<void>;
@@ -158,10 +159,10 @@ const pushActivity: AppContextType["pushActivity"] = (evt) => {
           console.log('[addTransaction] Transaction persisted successfully:', appwriteTransaction.id);
           
           // Update local state with Appwrite document ID if different
-          if (appwriteTransaction.$id !== newTransaction.id) {
+          if (appwriteTransaction.id !== newTransaction.id) {
             setTransactions(prev => prev.map(tx => 
               tx.id === newTransaction.id 
-                ? { ...tx, id: appwriteTransaction.$id }
+                ? { ...tx, id: appwriteTransaction.id }
                 : tx
             ));
           }
@@ -169,8 +170,8 @@ const pushActivity: AppContextType["pushActivity"] = (evt) => {
           // Create activity event in Appwrite
           await createAppwriteActivityEvent({
             ...activityEvent,
-            id: `tx.${appwriteTransaction.$id}`,
-            transactionId: appwriteTransaction.$id,
+            id: `tx.${appwriteTransaction.id}`,
+            transactionId: appwriteTransaction.id,
           });
           
         } catch (appwriteError) {
@@ -228,18 +229,18 @@ const addCard: AppContextType["addCard"] = async (cardData) => {
       try {
         console.log('[addCard] Persisting card to Appwrite:', newCard.id);
         const appwriteCard = await createAppwriteCard(newCard);
-        console.log('[addCard] Card persisted successfully:', appwriteCard.$id);
+        console.log('[addCard] Card persisted successfully:', appwriteCard.id);
         
         // Update local state with Appwrite document ID if different
-        if (appwriteCard.$id !== newCard.id) {
+        if (appwriteCard.id !== newCard.id) {
           setCards(prev => prev.map(card => 
             card.id === newCard.id 
-              ? { ...card, id: appwriteCard.$id }
+              ? { ...card, id: appwriteCard.id }
               : card
           ));
           setActiveCard(prev => 
             prev?.id === newCard.id 
-              ? { ...prev, id: appwriteCard.$id }
+              ? { ...prev, id: appwriteCard.id }
               : prev
           );
         }
@@ -247,8 +248,8 @@ const addCard: AppContextType["addCard"] = async (cardData) => {
         // Create activity event in Appwrite
         await createAppwriteActivityEvent({
           ...activityEvent,
-          id: `card.added.${appwriteCard.$id}`,
-          cardId: appwriteCard.$id,
+          id: `card.added.${appwriteCard.id}`,
+          cardId: appwriteCard.id,
         });
         
       } catch (error) {
@@ -619,6 +620,275 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'External transfer failed'
+      };
+    }
+  };
+
+  const makeDeposit: AppContextType["makeDeposit"] = async (params) => {
+    console.log('[MakeDeposit] Function called with:', params);
+    
+    // Validate user session is active
+    const { isAuthenticated, user } = useAuthStore.getState();
+    if (!isAuthenticated || !user) {
+      console.error('[MakeDeposit] User not authenticated');
+      return {
+        success: false,
+        error: 'User not authenticated. Please sign in again.'
+      };
+    }
+    
+    // Handle deposit confirmation
+    if (params.depositId && params.action === 'confirm') {
+      try {
+        const { getApiBase } = require('../lib/api');
+        const { getValidJWTWithAutoRefresh, refreshAppwriteJWTWithRetry } = require('../lib/jwt');
+        
+        const apiBase = getApiBase();
+        if (!apiBase || apiBase.includes('undefined') || apiBase === 'undefined') {
+          console.log('[MakeDeposit] API base URL not configured');
+          return {
+            success: false,
+            error: 'Server not configured. Please try again later.'
+          };
+        }
+        
+        const url = `${apiBase}/v1/deposits/${params.depositId}/confirm`;
+        
+        // Use improved JWT handling with auto-refresh
+        let jwt = await getValidJWTWithAutoRefresh();
+        if (!jwt) {
+          console.log('[MakeDeposit] No JWT available, attempting refresh with retry');
+          jwt = await refreshAppwriteJWTWithRetry();
+          if (!jwt) {
+            console.warn('[MakeDeposit] Could not obtain JWT after retries');
+            return {
+              success: false,
+              error: 'Authentication failed. Please sign in again.'
+            };
+          }
+        }
+        
+        console.log('[MakeDeposit] Confirming deposit:', params.depositId);
+        
+        const makeRequest = async (token: string | undefined) => {
+          const headers: any = { 'Content-Type': 'application/json' };
+          if (token) headers['Authorization'] = `Bearer ${token}`;
+          return await fetch(url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({})
+          });
+        };
+        
+        let res = await makeRequest(jwt);
+        
+        // Handle 401 by refreshing token once
+        if (res.status === 401 && jwt) {
+          console.log('[MakeDeposit] Got 401, refreshing JWT and retrying...');
+          const { refreshAppwriteJWT } = require('../lib/jwt');
+          jwt = await refreshAppwriteJWT();
+          if (jwt) {
+            res = await makeRequest(jwt);
+            console.log('[MakeDeposit] Retry response status:', res.status);
+          } else {
+            console.error('[MakeDeposit] Failed to refresh JWT after 401');
+            return {
+              success: false,
+              error: 'Authentication failed. Please sign in again.'
+            };
+          }
+        }
+        
+        if (res.ok) {
+          const data = await res.json();
+          console.log('[MakeDeposit] Deposit confirmed successfully:', data);
+          
+          // Update local card balance
+          if (data.cardId && data.newBalance !== undefined) {
+            updateCardBalance(data.cardId, data.newBalance);
+          }
+          
+          // Add the deposit transaction locally
+          if (data.cardId && data.amount) {
+            addTransaction({
+              cardId: data.cardId,
+              amount: data.amount, // Positive for deposit
+              type: 'deposit',
+              category: 'deposit',
+              description: `Deposit confirmed - ${data.confirmationId || 'Success'}`,
+              status: 'completed'
+            });
+          }
+          
+          return {
+            success: true,
+            data
+          };
+        } else {
+          const errorData = await res.json().catch(() => ({ error: 'Unknown server error' }));
+          console.error('[MakeDeposit] Server confirmation failed:', errorData);
+          return {
+            success: false,
+            error: errorData.message || errorData.error || 'Deposit confirmation failed'
+          };
+        }
+      } catch (error) {
+        console.error('[MakeDeposit] Confirmation error:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Deposit confirmation failed'
+        };
+      }
+    }
+    
+    // Handle new deposit creation
+    if (!params.cardId || !params.amount) {
+      return {
+        success: false,
+        error: 'Card ID and amount are required for deposit creation.'
+      };
+    }
+    
+    // Get target card details
+    const targetCard = cards.find(card => card.id === params.cardId);
+    if (!targetCard) {
+      console.error('[MakeDeposit] Target card not found');
+      return {
+        success: false,
+        error: 'Target card not found. Please try again.'
+      };
+    }
+    
+    // Validate amount
+    if (params.amount <= 0) {
+      return {
+        success: false,
+        error: 'Amount must be greater than zero.'
+      };
+    }
+    
+    if (params.amount > 10000) {
+      return {
+        success: false,
+        error: 'Maximum deposit amount is GHS 10,000.'
+      };
+    }
+    
+    try {
+      const { getApiBase } = require('../lib/api');
+      const { getValidJWTWithAutoRefresh, refreshAppwriteJWTWithRetry } = require('../lib/jwt');
+      
+      const apiBase = getApiBase();
+      if (!apiBase || apiBase.includes('undefined') || apiBase === 'undefined') {
+        console.log('[MakeDeposit] API base URL not configured');
+        return {
+          success: false,
+          error: 'Server not configured. Please try again later.'
+        };
+      }
+      
+      const url = `${apiBase}/v1/deposits`;
+      
+      console.log('[MakeDeposit] API Base:', apiBase);
+      
+      // Use improved JWT handling with auto-refresh
+      let jwt = await getValidJWTWithAutoRefresh();
+      if (!jwt) {
+        console.log('[MakeDeposit] No JWT available, attempting refresh with retry');
+        jwt = await refreshAppwriteJWTWithRetry();
+        if (!jwt) {
+          console.warn('[MakeDeposit] Could not obtain JWT after retries');
+          return {
+            success: false,
+            error: 'Authentication failed. Please sign in again.'
+          };
+        }
+      }
+      console.log('[MakeDeposit] JWT obtained:', !!jwt);
+      
+      const requestBody = {
+        cardId: params.cardId,
+        amount: params.amount,
+        currency: params.currency || 'GHS',
+        escrowMethod: params.escrowMethod || 'mobile_money',
+        description: params.description || `${(params.escrowMethod || 'mobile_money').replace('_', ' ')} deposit`,
+        ...(params.mobileNetwork && { mobileNetwork: params.mobileNetwork }),
+        ...(params.mobileNumber && { mobileNumber: params.mobileNumber }),
+        ...(params.reference && { reference: params.reference })
+      };
+      
+      console.log('[MakeDeposit] Request details:', {
+        url,
+        cardId: params.cardId,
+        amount: params.amount,
+        escrowMethod: params.escrowMethod,
+        hasJWT: !!jwt
+      });
+      
+      const makeRequest = async (token: string | undefined) => {
+        const headers: any = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        return await fetch(url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(requestBody)
+        });
+      };
+      
+      let res = await makeRequest(jwt);
+      
+      console.log('[MakeDeposit] Response status:', res.status);
+      
+      // If we get a 401, try refreshing the token once
+      if (res.status === 401 && jwt) {
+        console.log('[MakeDeposit] Got 401, refreshing JWT and retrying...');
+        const { refreshAppwriteJWT } = require('../lib/jwt');
+        jwt = await refreshAppwriteJWT();
+        if (jwt) {
+          res = await makeRequest(jwt);
+          console.log('[MakeDeposit] Retry response status:', res.status);
+        } else {
+          console.error('[MakeDeposit] Failed to refresh JWT after 401');
+          return {
+            success: false,
+            error: 'Authentication failed. Please sign in again.'
+          };
+        }
+      }
+      
+      if (res.ok) {
+        // Server deposit creation successful
+        const data = await res.json();
+        console.log('[MakeDeposit] Server deposit creation successful:', data);
+        
+        // Add pending transaction locally to show in history
+        addTransaction({
+          cardId: params.cardId,
+          amount: params.amount, // Positive for deposit
+          type: 'deposit',
+          category: 'deposit',
+          description: params.description || `${(params.escrowMethod || 'mobile_money').replace('_', ' ')} deposit`,
+          status: 'pending'
+        });
+        
+        return {
+          success: true,
+          data
+        };
+      } else {
+        // Server deposit creation failed
+        const errorData = await res.json().catch(() => ({ error: 'Unknown server error' }));
+        console.error('[MakeDeposit] Server deposit creation failed:', errorData);
+        return {
+          success: false,
+          error: errorData.message || errorData.error || 'Deposit creation failed'
+        };
+      }
+    } catch (error) {
+      console.error('[MakeDeposit] Deposit creation error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Deposit creation failed'
       };
     }
   };
@@ -1441,6 +1711,7 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
         addTransaction,
         updateCardBalance,
         makeTransfer,
+        makeDeposit,
         isLoadingCards,
         isLoadingTransactions,
         refreshTransactions: refreshTransactionsImpl,

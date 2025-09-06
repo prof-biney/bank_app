@@ -101,6 +101,10 @@ export default function HomeScreen() {
     router.push("/transfer");
   };
 
+  const handleDeposit = () => {
+    router.push("/deposit");
+  };
+
   const handleClearTransactions = async () => {
     setIsClearingTransactions(true);
     try {
@@ -170,7 +174,7 @@ export default function HomeScreen() {
             <QuickAction
               icon={<ArrowDownLeft color={colors.tintPrimary} size={24} />}
               label="Deposit"
-              onPress={() => {}}
+              onPress={handleDeposit}
             />
             <QuickAction
               icon={<ArrowUpRight color={colors.tintPrimary} size={24} />}
