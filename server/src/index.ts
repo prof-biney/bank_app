@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { Client, Databases, ID, Query } from 'node-appwrite';
 import { appwriteAuth } from './middleware/auth';
 import { luhnValid, detectBrand } from './utils/luhn';
+import { validatePhoneForNetwork, isValidGhanaianMobileNumber } from './utils/phoneValidation';
 
 const app = new Hono();
 
@@ -73,6 +74,34 @@ const TransferCreate = z.object({
   description: z.string().max(256).optional()
 });
 
+const DepositCreate = z.object({
+  amount: z.number().positive().max(1_000_000_000),
+  currency: z.literal('GHS'),
+  cardId: z.string().min(1), // card ID to deposit into
+  description: z.string().max(256).optional(),
+  escrowMethod: z.enum(['bank_transfer', 'mobile_money', 'cash']).optional().default('mobile_money'),
+  // Mobile money specific fields
+  mobileNetwork: z.enum(['mtn', 'telecel', 'airteltigo']).optional(),
+  mobileNumber: z.string().optional(),
+  reference: z.string().max(50).optional()
+}).refine((data) => {
+  // If mobile money is selected, validate network and phone number
+  if (data.escrowMethod === 'mobile_money') {
+    if (!data.mobileNetwork) {
+      return false;
+    }
+    if (!data.mobileNumber) {
+      return false;
+    }
+    // Validate phone number for the selected network
+    const validation = validatePhoneForNetwork(data.mobileNumber, data.mobileNetwork);
+    return validation.isValid;
+  }
+  return true;
+}, {
+  message: "Invalid mobile money details: network and valid phone number are required"
+});
+
 // Authenticated routes
 const v1 = new Hono();
 
@@ -107,10 +136,8 @@ v1.post('/cards', appwriteAuth, async (c) => {
     const validBrands = ['visa', 'mastercard', 'amex', 'verve', 'discover', 'unionpay', 'jcb'];
     const brand = validBrands.includes(detectedBrand) ? detectedBrand : 'visa'; // Default to visa
     const last4 = normalized.slice(-4);
-    const token = `tok_${crypto.randomUUID()}`; // always random token
-    const fingerprint = IS_DUMMY
-      ? `fp_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`
-      : `fp_${Buffer.from(normalized).toString('base64url').slice(-16)}`;
+    const token = `tok_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`; // simple random token
+    const fingerprint = `fp_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
     const { databases } = createDb();
     const databaseId = process.env.APPWRITE_DATABASE_ID!;
@@ -653,6 +680,393 @@ v1.post('/transfers', appwriteAuth, async (c) => {
     return c.json({ error: 'server_error', message: 'Transfer failed. Any debited amounts have been refunded.', ...errInfo }, 500);
   }
 });
+
+// Deposits: create escrow deposit request
+v1.post('/deposits', appwriteAuth, async (c) => {
+  const idemKey = c.req.header('Idempotency-Key');
+  const user = c.get('user') as { $id: string };
+  if (idemKey) {
+    const cached = idem.get(`${user.$id}:${idemKey}`);
+    if (cached) return c.json(cached.body, cached.status);
+  }
+  
+  const parse = DepositCreate.safeParse(await c.req.json().catch(() => ({})));
+  if (!parse.success) return c.json({ error: 'validation_error', details: parse.error.flatten() }, 400);
+  const { amount, currency, cardId, description, escrowMethod, mobileNetwork, mobileNumber, reference } = parse.data;
+  
+  if ((currency || '').toUpperCase() !== 'GHS') return c.json({ error: 'unsupported_currency', expected: 'GHS' }, 400);
+  
+  const { databases } = createDb();
+  const databaseId = process.env.APPWRITE_DATABASE_ID!;
+  const cardsCol = process.env.APPWRITE_CARDS_COLLECTION_ID!;
+  const txCol = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID!;
+  const notifCol = process.env.APPWRITE_NOTIFICATIONS_COLLECTION_ID;
+  if (!txCol || !cardsCol) return c.json({ error: 'server_missing_collections' }, 500);
+  
+  try {
+    // Step 1: Validate card belongs to user
+    const card: any = await databases.getDocument(databaseId, cardsCol, cardId).catch(() => null);
+    if (!card) return c.json({ error: 'card_not_found' }, 404);
+    if (card.userId !== user.$id) return c.json({ error: 'forbidden' }, 403);
+    
+    // Step 2: Create pending deposit transaction (escrow phase)
+    const depositDoc = await databases.createDocument(databaseId, txCol, ID.unique(), {
+      userId: user.$id,
+      cardId: cardId,
+      amount: amount, // Positive for incoming deposit
+      currency: currency.toUpperCase(),
+      description: description || `${escrowMethod.replace('_', ' ')} deposit`,
+      status: escrowMethod === 'cash' ? 'completed' : 'pending', // Cash is immediate, others are pending
+      type: 'deposit',
+      escrowMethod,
+      mobileNetwork: mobileNetwork || null,
+      mobileNumber: mobileNumber || null,
+      reference: reference || null,
+      pendingUntil: escrowMethod === 'cash' ? null : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // 24h expiry for non-cash
+    });
+    
+    // Step 3: Handle immediate cash deposits
+    if (escrowMethod === 'cash') {
+      // For cash deposits, immediately update the card balance
+      const currentBalance = typeof card.balance === 'number' ? card.balance : 
+                           (typeof card.startingBalance === 'number' ? card.startingBalance : DEFAULT_CARD_BALANCE);
+      const newBalance = currentBalance + amount;
+      
+      // Update card balance immediately
+      await databases.updateDocument(databaseId, cardsCol, cardId, { balance: newBalance });
+      
+      // Create success notification
+      if (notifCol) {
+        try {
+          await databases.createDocument(databaseId, notifCol, ID.unique(), {
+            userId: user.$id,
+            type: 'transaction',
+            title: 'Cash Deposit Completed',
+            message: `Your cash deposit of GHS ${amount.toFixed(2)} has been successfully added to your card. New balance: GHS ${newBalance.toFixed(2)}.`,
+            unread: true
+          });
+        } catch (notifError) {
+          console.warn('[deposit.create] failed to send cash deposit notification:', notifError);
+        }
+      }
+      
+      const body = {
+        id: depositDoc.$id,
+        status: 'completed',
+        amount: amount,
+        currency: currency.toUpperCase(),
+        cardId,
+        escrowMethod,
+        newBalance,
+        confirmationId: `CASH-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
+        created: depositDoc.$createdAt
+      };
+      
+      if (idemKey) idem.set(`${user.$id}:${idemKey}`, { status: 200, body, expiresAt: Date.now() + IDEM_TTL_MS });
+      
+      console.log('[deposit.create] cash deposit completed immediately', {
+        userId: user.$id,
+        depositId: depositDoc.$id,
+        cardId,
+        amount,
+        newBalance
+      });
+      
+      return c.json(body);
+    }
+    
+    // Step 4: Generate escrow payment instructions for non-cash deposits
+    const escrowInstructions = generateEscrowInstructions(escrowMethod, amount, depositDoc.$id, mobileNetwork, mobileNumber, reference);
+    
+    const body = {
+      id: depositDoc.$id,
+      status: 'pending',
+      amount: amount,
+      currency: currency.toUpperCase(),
+      cardId,
+      escrowMethod,
+      mobileNetwork,
+      instructions: escrowInstructions,
+      expiresAt: depositDoc.pendingUntil,
+      created: depositDoc.$createdAt
+    };
+    
+    if (idemKey) idem.set(`${user.$id}:${idemKey}`, { status: 200, body, expiresAt: Date.now() + IDEM_TTL_MS });
+    
+    console.log('[deposit.create] pending deposit created', {
+      userId: user.$id,
+      depositId: depositDoc.$id,
+      cardId,
+      amount,
+      escrowMethod
+    });
+    
+    return c.json(body);
+    
+  } catch (e: any) {
+    const errInfo = {
+      message: e?.message,
+      code: e?.code,
+      type: e?.type,
+      response: e?.response || undefined,
+    };
+    console.error('[deposit.create] error', { userId: user.$id, cardId, amount, ...errInfo });
+    return c.json({ error: 'server_error', message: 'Failed to create deposit request', ...errInfo }, 500);
+  }
+});
+
+// Deposits: confirm escrow deposit (simulate payment confirmation)
+v1.post('/deposits/:id/confirm', appwriteAuth, async (c) => {
+  const user = c.get('user') as { $id: string };
+  const id = c.req.param('id');
+  const { databases } = createDb();
+  const databaseId = process.env.APPWRITE_DATABASE_ID!;
+  const txCol = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID!;
+  const cardsCol = process.env.APPWRITE_CARDS_COLLECTION_ID!;
+  const notifCol = process.env.APPWRITE_NOTIFICATIONS_COLLECTION_ID;
+  
+  try {
+    // Step 1: Get and validate deposit transaction
+    const depositDoc: any = await databases.getDocument(databaseId, txCol, id).catch(() => null);
+    if (!depositDoc) return c.json({ error: 'not_found' }, 404);
+    if (depositDoc.userId !== user.$id) return c.json({ error: 'forbidden' }, 403);
+    if (depositDoc.type !== 'deposit') return c.json({ error: 'invalid_transaction_type' }, 400);
+    if (depositDoc.status === 'completed') return c.json({ id: depositDoc.$id, status: 'completed', message: 'Already completed' });
+    if (depositDoc.status === 'failed') return c.json({ error: 'transaction_failed', message: 'Deposit has failed' }, 400);
+    if (depositDoc.status !== 'pending') return c.json({ error: `invalid_status:${depositDoc.status}` }, 409);
+    
+    // Step 2: Check if deposit has expired
+    if (depositDoc.pendingUntil && new Date(depositDoc.pendingUntil) < new Date()) {
+      await databases.updateDocument(databaseId, txCol, id, { status: 'failed', failureReason: 'expired' });
+      return c.json({ error: 'deposit_expired', message: 'Deposit request has expired' }, 400);
+    }
+    
+    // Step 3: Simulate escrow confirmation (in production, verify actual payment)
+    const confirmationResult = await simulateEscrowConfirmation(depositDoc.escrowMethod, depositDoc.amount);
+    if (!confirmationResult.success) {
+      await databases.updateDocument(databaseId, txCol, id, { 
+        status: 'failed', 
+        failureReason: confirmationResult.reason || 'payment_failed'
+      });
+      return c.json({ 
+        error: 'payment_failed', 
+        message: confirmationResult.message || 'Escrow payment could not be confirmed' 
+      }, 400);
+    }
+    
+    // Step 4: Get card and update balance
+    const card: any = await databases.getDocument(databaseId, cardsCol, depositDoc.cardId);
+    if (!card) {
+      await databases.updateDocument(databaseId, txCol, id, { status: 'failed', failureReason: 'card_not_found' });
+      return c.json({ error: 'card_not_found' }, 404);
+    }
+    
+    const currentBalance = typeof card.balance === 'number' ? card.balance : 
+                         (typeof card.startingBalance === 'number' ? card.startingBalance : DEFAULT_CARD_BALANCE);
+    const newBalance = currentBalance + depositDoc.amount;
+    
+    // Step 5: Update card balance
+    await databases.updateDocument(databaseId, cardsCol, depositDoc.cardId, { balance: newBalance });
+    
+    // Step 6: Mark deposit as completed
+    const updatedDeposit = await databases.updateDocument(databaseId, txCol, id, { 
+      status: 'completed',
+      completedAt: new Date().toISOString(),
+      escrowConfirmation: confirmationResult.confirmationId
+    });
+    
+    // Step 7: Create success notification
+    if (notifCol) {
+      try {
+        await databases.createDocument(databaseId, notifCol, ID.unique(), {
+          userId: user.$id,
+          type: 'transaction',
+          title: 'Deposit Completed',
+          message: `Your deposit of GHS ${depositDoc.amount.toFixed(2)} has been successfully added to your card. New balance: GHS ${newBalance.toFixed(2)}.`,
+          unread: true
+        });
+      } catch (notifError) {
+        console.warn('[deposit.confirm] failed to send notification:', notifError);
+      }
+    }
+    
+    console.log('[deposit.confirm] deposit completed', {
+      userId: user.$id,
+      depositId: id,
+      cardId: depositDoc.cardId,
+      amount: depositDoc.amount,
+      newBalance
+    });
+    
+    return c.json({
+      id: updatedDeposit.$id,
+      status: 'completed',
+      amount: depositDoc.amount,
+      cardId: depositDoc.cardId,
+      newBalance,
+      confirmationId: confirmationResult.confirmationId,
+      completedAt: updatedDeposit.completedAt
+    });
+    
+  } catch (e: any) {
+    const errInfo = {
+      message: e?.message,
+      code: e?.code,
+      type: e?.type,
+    };
+    console.error('[deposit.confirm] error', { userId: user.$id, depositId: id, ...errInfo });
+    return c.json({ error: 'server_error', message: 'Failed to confirm deposit', ...errInfo }, 500);
+  }
+});
+
+// Helper function to get Ghanaian mobile network details
+function getNetworkDetails(network: string) {
+  switch (network) {
+    case 'mtn':
+      return {
+        name: 'MTN',
+        color: '#FFCC00',
+        ussd: '*170#',
+        shortCode: '170'
+      };
+    case 'telecel':
+      return {
+        name: 'Telecel',
+        color: '#0066CC',
+        ussd: '*110#',
+        shortCode: '110'
+      };
+    case 'airteltigo':
+      return {
+        name: 'AirtelTigo',
+        color: '#FF0000',
+        ussd: '*110#',
+        shortCode: '110'
+      };
+    default:
+      return {
+        name: 'MTN',
+        color: '#FFCC00',
+        ussd: '*170#',
+        shortCode: '170'
+      };
+  }
+}
+
+// Helper function to generate escrow payment instructions
+function generateEscrowInstructions(method: string, amount: number, depositId: string, mobileNetwork?: string, mobileNumber?: string, reference?: string) {
+  switch (method) {
+    case 'mobile_money':
+      const networkDetails = getNetworkDetails(mobileNetwork || 'mtn');
+      return {
+        method: `${networkDetails.name} Mobile Money`,
+        network: mobileNetwork || 'mtn',
+        networkName: networkDetails.name,
+        networkColor: networkDetails.color,
+        steps: [
+          `Open your ${networkDetails.name} mobile money app or dial ${networkDetails.ussd}`,
+          'Select "Send Money" or "Transfer"',
+          `Send GHS ${amount.toFixed(2)} to: ${mobileNumber || '0244-123-456'}`,
+          `Reference: ${reference || `DEP-${depositId.slice(-8).toUpperCase()}`}`,
+          'Save the transaction receipt',
+          'Tap "I\'ve Made Payment" below to confirm your deposit'
+        ],
+        recipientNumber: mobileNumber || '0244-123-456',
+        reference: reference || `DEP-${depositId.slice(-8).toUpperCase()}`,
+        estimatedTime: '2-5 minutes',
+        networkUssd: networkDetails.ussd
+      };
+    case 'bank_transfer':
+      return {
+        method: 'Bank Transfer',
+        steps: [
+          'Log into your mobile banking app',
+          'Select "Transfer to Other Banks"',
+          'Bank: Ghana Commercial Bank',
+          'Account: 1234567890123456',
+          'Name: BankApp Escrow Account',
+          `Amount: GHS ${amount.toFixed(2)}`,
+          `Reference: DEP-${depositId.slice(-8).toUpperCase()}`,
+          'Complete the transfer',
+          'Your deposit will be confirmed within 1 business day'
+        ],
+        bankName: 'Ghana Commercial Bank',
+        accountNumber: '1234567890123456',
+        accountName: 'BankApp Escrow Account',
+        reference: `DEP-${depositId.slice(-8).toUpperCase()}`,
+        estimatedTime: '1-2 business days'
+      };
+    case 'cash':
+      return {
+        method: 'Cash Deposit',
+        steps: [
+          'Visit any of our partner locations',
+          'Present a valid ID',
+          `Deposit GHS ${amount.toFixed(2)}`,
+          `Quote reference: DEP-${depositId.slice(-8).toUpperCase()}`,
+          'Receive your receipt',
+          'Your deposit will be confirmed immediately'
+        ],
+        reference: `DEP-${depositId.slice(-8).toUpperCase()}`,
+        partnerLocations: ['Accra Mall', 'East Legon', 'Kumasi Central'],
+        estimatedTime: 'Immediate'
+      };
+    default:
+      return {
+        method: 'Unknown',
+        steps: ['Contact support for deposit instructions'],
+        estimatedTime: 'Unknown'
+      };
+  }
+}
+
+// Helper function to simulate escrow confirmation
+async function simulateEscrowConfirmation(method: string, amount: number): Promise<{
+  success: boolean;
+  confirmationId?: string;
+  reason?: string;
+  message?: string;
+}> {
+  // Simulate processing delay
+  await new Promise(resolve => setTimeout(resolve, 100));
+  
+  // Simulate different success rates based on method
+  const random = Math.random();
+  let successRate = 0.95; // Default 95% success
+  
+  switch (method) {
+    case 'mobile_money':
+      successRate = 0.98; // Mobile money is very reliable
+      break;
+    case 'bank_transfer':
+      successRate = 0.92; // Bank transfers can have issues
+      break;
+    case 'cash':
+      successRate = 0.99; // Cash is most reliable
+      break;
+  }
+  
+  if (random <= successRate) {
+    return {
+      success: true,
+      confirmationId: `CONF-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`
+    };
+  } else {
+    // Simulate different failure reasons
+    const failureReasons = [
+      { reason: 'insufficient_funds', message: 'Insufficient funds in source account' },
+      { reason: 'invalid_reference', message: 'Invalid or missing payment reference' },
+      { reason: 'network_error', message: 'Network error during payment processing' },
+      { reason: 'timeout', message: 'Payment processing timeout' }
+    ];
+    
+    const failure = failureReasons[Math.floor(Math.random() * failureReasons.length)];
+    return {
+      success: false,
+      ...failure
+    };
+  }
+}
 
 // Simulate transfer processing - in a real system, this would call an external payment API
 async function simulateTransferProcessing(amount: number, recipient: string): Promise<boolean> {
