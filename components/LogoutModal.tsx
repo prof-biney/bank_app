@@ -1,16 +1,18 @@
-import React from "react";
+
+import React from 'react';
 import {
-  Animated,
-  Dimensions,
-  Modal,
-  StyleSheet,
+  View,
   Text,
   TouchableOpacity,
-  View,
-} from "react-native";
+  Modal,
+  StyleSheet,
+  Dimensions,
+  Animated,
+} from 'react-native';
 // import { BlurView } from 'expo-blur'; // Optional - fallback available
-import { useTheme } from "@/context/ThemeContext";
-import { AlertTriangle, LogOut, X } from "lucide-react-native";
+import { LogOut, AlertTriangle, X } from 'lucide-react-native';
+import { useTheme } from '@/context/ThemeContext';
+
 
 interface LogoutModalProps {
   visible: boolean;
@@ -19,14 +21,11 @@ interface LogoutModalProps {
   isLoading?: boolean;
 }
 
-const { width: screenWidth } = Dimensions.get("window");
 
-export function LogoutModal({
-  visible,
-  onClose,
-  onConfirm,
-  isLoading = false,
-}: LogoutModalProps) {
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+
+export function LogoutModal({ visible, onClose, onConfirm, isLoading = false }: LogoutModalProps) {
+
   const { colors } = useTheme();
   const [scaleValue] = React.useState(new Animated.Value(0));
   const [opacityValue] = React.useState(new Animated.Value(0));
@@ -86,12 +85,9 @@ export function LogoutModal({
         ]}
       >
         {/* Fallback blur effect using semi-transparent overlay */}
-        <View
-          style={[
-            StyleSheet.absoluteFill,
-            { backgroundColor: "rgba(0, 0, 0, 0.1)" },
-          ]}
-        />
+
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0, 0, 0, 0.1)' }]} />
+
         <TouchableOpacity
           style={StyleSheet.absoluteFill}
           activeOpacity={1}
@@ -110,19 +106,13 @@ export function LogoutModal({
         >
           {/* Header */}
           <View style={styles.header}>
-            <View
-              style={[
-                styles.iconContainer,
-                { backgroundColor: colors.negative + "15" },
-              ]}
-            >
+
+            <View style={[styles.iconContainer, { backgroundColor: colors.negative + '15' }]}>
               <AlertTriangle color={colors.negative} size={24} />
             </View>
             <TouchableOpacity
-              style={[
-                styles.closeButton,
-                { backgroundColor: colors.background },
-              ]}
+              style={[styles.closeButton, { backgroundColor: colors.background }]}
+
               onPress={onClose}
               disabled={isLoading}
             >
@@ -136,8 +126,7 @@ export function LogoutModal({
               Sign Out?
             </Text>
             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-              Are you sure you want to sign out of your account? You&aps;ll need
-              to sign in again to access your cards and transactions.
+              Are you sure you want to sign out of your account? You'll need to sign in again to access your cards and transactions
             </Text>
           </View>
 
@@ -147,10 +136,7 @@ export function LogoutModal({
               style={[
                 styles.button,
                 styles.cancelButton,
-                {
-                  backgroundColor: colors.background,
-                  borderColor: colors.border,
-                },
+                { backgroundColor: colors.background, borderColor: colors.border }
               ]}
               onPress={onClose}
               disabled={isLoading}
@@ -165,7 +151,7 @@ export function LogoutModal({
                 styles.button,
                 styles.confirmButton,
                 { backgroundColor: colors.negative },
-                isLoading && { opacity: 0.7 },
+                isLoading && { opacity: 0.7 }
               ]}
               onPress={onConfirm}
               disabled={isLoading}
@@ -173,7 +159,7 @@ export function LogoutModal({
               <View style={styles.buttonContent}>
                 <LogOut color="#FFFFFF" size={16} />
                 <Text style={[styles.buttonText, styles.confirmButtonText]}>
-                  {isLoading ? "Signing Out..." : "Sign Out"}
+                  {isLoading ? 'Signing Out...' : 'Sign Out'}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -182,8 +168,7 @@ export function LogoutModal({
           {/* Security Notice */}
           <View style={[styles.notice, { backgroundColor: colors.background }]}>
             <Text style={[styles.noticeText, { color: colors.textSecondary }]}>
-              💡 Your data will remain secure and accessible when you sign back
-              in
+              💡 Your data will remain secure and accessible when you sign back in
             </Text>
           </View>
         </Animated.View>
@@ -195,17 +180,17 @@ export function LogoutModal({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   modalContainer: {
     width: screenWidth * 0.85,
     maxWidth: 400,
     borderRadius: 24,
     borderWidth: 1,
-    overflow: "hidden",
-    shadowColor: "#000",
+    overflow: 'hidden',
+    shadowColor: '#000',
     shadowOffset: {
       width: 0,
       height: 10,
@@ -215,9 +200,9 @@ const styles = StyleSheet.create({
     elevation: 20,
   },
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     padding: 24,
     paddingBottom: 16,
   },
@@ -225,15 +210,15 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   closeButton: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   content: {
     paddingHorizontal: 24,
@@ -241,17 +226,17 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24,
-    fontWeight: "bold",
+    fontWeight: 'bold',
     marginBottom: 12,
-    textAlign: "center",
+    textAlign: 'center',
   },
   subtitle: {
     fontSize: 16,
     lineHeight: 24,
-    textAlign: "center",
+    textAlign: 'center',
   },
   actions: {
-    flexDirection: "row",
+    flexDirection: 'row',
     gap: 12,
     paddingHorizontal: 24,
     paddingBottom: 20,
@@ -260,27 +245,27 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 52,
     borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
   },
   cancelButton: {
-    borderColor: "transparent",
+    borderColor: 'transparent',
   },
   confirmButton: {
-    borderColor: "transparent",
+    borderColor: 'transparent',
   },
   buttonContent: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
   buttonText: {
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: '600',
   },
   confirmButtonText: {
-    color: "#FFFFFF",
+    color: '#FFFFFF',
   },
   notice: {
     paddingHorizontal: 20,
@@ -288,7 +273,7 @@ const styles = StyleSheet.create({
   },
   noticeText: {
     fontSize: 13,
-    textAlign: "center",
+    textAlign: 'center',
     lineHeight: 18,
   },
 });

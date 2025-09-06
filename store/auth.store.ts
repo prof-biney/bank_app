@@ -185,6 +185,11 @@ const useAuthStore = create<AuthState>((set) => ({
     try {
       if (__DEV__) {
         console.log('[Auth Store] Starting login process for:', email);
+        console.log('[Auth Store] SignIn function debug:', {
+          signInType: typeof signIn,
+          signInExists: signIn !== undefined,
+          signInFunction: signIn.toString().substring(0, 100)
+        });
       }
       
       const session = await signIn(email, password);

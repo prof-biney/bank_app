@@ -127,14 +127,30 @@ if (appwriteConfig.apiKey && __DEV__) {
   console.log('🔑 Appwrite API key found (will be used for server operations only)');
 }
 
-export const account = new Account(client);
+// Import the dedicated authentication account instance
+// This uses a clean, unmodified client to avoid method binding issues
+import { authAccount } from './appwrite-auth';
+export const account = authAccount;
 
-// Use authenticated client for database operations
-export const databases = new Databases(authenticatedClient);
+// Use single database client - SDK v0.12.0 handles authentication automatically
+export const databases = new Databases(client);
+
+// Debug logging
+if (__DEV__) {
+  console.log('[Appwrite Setup] Database initialized:', {
+    databasesType: typeof databases,
+    listDocumentsMethod: typeof databases.listDocuments,
+    createDocumentMethod: typeof databases.createDocument
+  });
+  
+  // Test basic SDK functionality
+  console.log('[SDK Test] Available methods on databases object:', Object.getOwnPropertyNames(databases));
+  console.log('[SDK Test] Available methods on databases prototype:', Object.getOwnPropertyNames(Object.getPrototypeOf(databases)));
+}
 
 export const storage = new Storage(client);
 
-const avatars = new Avatars(client);
+export const avatars = new Avatars(client);
 
 /**
  * Set JWT token on the authenticated client for database operations
@@ -245,18 +261,46 @@ export const createUser = async ({
 
     const avatarUrl = avatars.getInitialsURL(name);
 
-    return await databases.createDocument(
-      appwriteConfig.databaseId,
-      appwriteConfig.userCollectionId,
-      ID.unique(),
-      {
+    if (__DEV__) {
+      console.log('[createUser] About to create user document:', {
+        databaseId: appwriteConfig.databaseId,
+        userCollectionId: appwriteConfig.userCollectionId,
         accountId: newAccount.$id,
-        name,
-        email,
-        phoneNumber, // Include phone number in the document
-        avatar: avatarUrl,
+        databasesType: typeof databases,
+        createDocumentMethod: typeof databases.createDocument
+      });
+    }
+
+    try {
+      // Ensure proper method binding
+      const createDocument = databases.createDocument.bind(databases);
+      const result = await createDocument(
+        appwriteConfig.databaseId!,
+        appwriteConfig.userCollectionId!,
+        ID.unique(),
+        {
+          accountId: newAccount.$id,
+          name,
+          email,
+          phoneNumber, // Include phone number in the document
+          avatar: avatarUrl,
+        }
+      );
+      
+      if (__DEV__) {
+        console.log('[createUser] User document created successfully:', result.$id);
       }
-    );
+      
+      return result;
+    } catch (createError: any) {
+      console.error('[createUser] Database createDocument failed:', createError);
+      console.error('[createUser] Database createDocument error details:', {
+        message: createError.message,
+        name: createError.name,
+        stack: createError.stack
+      });
+      throw createError;
+    }
   } catch (error) {
     console.error("Create user error:", error);
     throw error;
@@ -267,6 +311,14 @@ export const signIn = async (email: string, password: string) => {
   try {
     if (__DEV__) {
       console.log('[signIn] Attempting to create email password session');
+      console.log('[signIn] Debug info:', {
+        accountObject: typeof account,
+        accountMethods: Object.getOwnPropertyNames(Object.getPrototypeOf(account)),
+        createEmailPasswordSessionMethod: typeof account.createEmailPasswordSession,
+        accountClientType: typeof account.client,
+        emailType: typeof email,
+        passwordType: typeof password
+      });
     }
     
     // Clear any existing sessions first
@@ -276,7 +328,31 @@ export const signIn = async (email: string, password: string) => {
       // Ignore errors when clearing sessions
     }
     
-    const session = await account.createEmailPasswordSession(email, password);
+    // Add specific debugging for the method call
+    if (__DEV__) {
+      console.log('[signIn] About to call createEmailPasswordSession');
+      console.log('[signIn] Method exists:', 'createEmailPasswordSession' in account);
+      console.log('[signIn] Method type:', typeof account.createEmailPasswordSession);
+    }
+    
+    let session;
+    try {
+      if (__DEV__) {
+        console.log('[signIn] Calling createEmailPasswordSession (correct method name)');
+      }
+      // Use the correct method name from react-native-appwrite
+      // Fix potential method binding issue by ensuring proper context
+      const createSession = account.createEmailPasswordSession.bind(account);
+      session = await createSession(email, password);
+    } catch (methodError: any) {
+      console.error('[signIn] Method execution failed:', methodError);
+      console.error('[signIn] Method error details:', {
+        name: methodError.name,
+        message: methodError.message,
+        stack: methodError.stack
+      });
+      throw methodError;
+    }
     
     if (__DEV__) {
       console.log('[signIn] Session created successfully:', { 
@@ -422,40 +498,59 @@ export const getCurrentUser = async () => {
 
     if (__DEV__) {
       console.log('[getCurrentUser] Querying user document from database');
+      console.log('[getCurrentUser] Database params:', {
+        databaseId: appwriteConfig.databaseId,
+        userCollectionId: appwriteConfig.userCollectionId,
+        accountId: currentAccount.$id,
+        databasesObject: typeof databases,
+        listDocumentsMethod: typeof databases.listDocuments
+      });
     }
     
     // get the user from the database
-    const currentUser = await databases.listDocuments(
-      appwriteConfig.databaseId!,
-      appwriteConfig.userCollectionId!,
-      [Query.equal("accountId", currentAccount.$id)]
-    );
-    
-    if (__DEV__) {
-      console.log('[getCurrentUser] Database query completed:', { 
-        documentsFound: currentUser.documents.length,
-        totalDocuments: currentUser.total 
-      });
-    }
+    try {
+      // Ensure proper method binding
+      const listDocuments = databases.listDocuments.bind(databases);
+      const currentUser = await listDocuments(
+        appwriteConfig.databaseId!,
+        appwriteConfig.userCollectionId!,
+        [Query.equal("accountId", currentAccount.$id)]
+      );
+      
+      if (__DEV__) {
+        console.log('[getCurrentUser] Database query completed:', { 
+          documentsFound: currentUser.documents.length,
+          totalDocuments: currentUser.total 
+        });
+      }
+      
+      if (!currentUser || currentUser.documents.length === 0) {
+        console.error('[getCurrentUser] No user document found for authenticated account');
+        console.error('[getCurrentUser] This suggests the user account exists in Appwrite Auth but not in the users collection');
+        throw new Error(`No user profile found for account ID: ${currentAccount.$id}. Please contact support.`);
+      }
 
-    if (!currentUser || currentUser.documents.length === 0) {
-      console.error('[getCurrentUser] No user document found for authenticated account');
-      console.error('[getCurrentUser] This suggests the user account exists in Appwrite Auth but not in the users collection');
-      throw new Error(`No user profile found for account ID: ${currentAccount.$id}. Please contact support.`);
-    }
-
-    const userDocument = currentUser.documents[0];
-    
-    if (__DEV__) {
-      console.log('[getCurrentUser] User document retrieved successfully:', {
-        documentId: userDocument.$id,
-        name: userDocument.name,
-        email: userDocument.email
+      const userDocument = currentUser.documents[0];
+      
+      if (__DEV__) {
+        console.log('[getCurrentUser] User document retrieved successfully:', {
+          documentId: userDocument.$id,
+          name: userDocument.name,
+          email: userDocument.email
+        });
+      }
+      
+      // return the user
+      return userDocument;
+    } catch (dbError: any) {
+      console.error('[getCurrentUser] Database query failed:', dbError);
+      console.error('[getCurrentUser] Database query error details:', {
+        message: dbError.message,
+        name: dbError.name,
+        stack: dbError.stack
       });
+      throw dbError;
     }
-    
-    // return the user
-    return userDocument;
   } catch (error) {
     console.error('[getCurrentUser] Get current user error:', error);
     
@@ -529,7 +624,7 @@ export const logCardEvent = async (input: CardEventInput) => {
       timestamp: new Date().toISOString(),
     };
 
-    return await databases.createDocument(databaseId, cardsCollectionId, ID.unique(), payload);
+    return await databases.createDocument(databaseId!, cardsCollectionId!, ID.unique(), payload);
   } catch (error) {
     console.error("logCardEvent error:", error);
     // Do not throw to avoid breaking UI flows; just report
@@ -565,13 +660,13 @@ export const uploadProfilePicture = async (imageUri: string, userId: string) => 
 
     // Upload file to storage
     const uploadedFile = await storage.createFile(
-      storageBucketId,
+      storageBucketId!,
       ID.unique(),
       file
     );
 
     // Generate public URL for the file
-    const fileUrl = storage.getFileView(storageBucketId, uploadedFile.$id);
+    const fileUrl = storage.getFileView(storageBucketId!, uploadedFile.$id);
 
     return {
       fileId: uploadedFile.$id,
@@ -596,7 +691,7 @@ export const deleteProfilePicture = async (fileId: string) => {
   }
 
   try {
-    await storage.deleteFile(storageBucketId, fileId);
+    await storage.deleteFile(storageBucketId!, fileId);
   } catch (error) {
     console.error("Delete profile picture error:", error);
     // Don't throw error here as the file might already be deleted
@@ -615,7 +710,7 @@ export const getProfilePictureUrl = (fileId: string): string => {
     throw new Error("Storage bucket ID not configured");
   }
 
-  return storage.getFileView(storageBucketId, fileId).toString();
+  return storage.getFileView(storageBucketId!, fileId).toString();
 };
 
 /**
@@ -640,8 +735,8 @@ export const updateUserProfile = async (
     }
 
     const updatedUser = await databases.updateDocument(
-      appwriteConfig.databaseId,
-      appwriteConfig.userCollectionId,
+      appwriteConfig.databaseId!,
+      appwriteConfig.userCollectionId!,
       userId,
       updateData
     );
