@@ -16,7 +16,7 @@ interface ClearDataModalProps {
   onClose: () => void;
   onConfirm: () => void;
   isLoading?: boolean;
-  dataType: 'transactions' | 'activity';
+  dataType: 'transactions' | 'activity' | 'notifications' | 'all';
   count?: number;
 }
 
@@ -73,20 +73,42 @@ export function ClearDataModal({
   };
 
   const getContent = () => {
-    if (dataType === 'transactions') {
-      return {
-        title: 'Clear All Transactions?',
-        description: `This will permanently delete all ${count} transaction${count !== 1 ? 's' : ''} from your account. This action cannot be undone.`,
-        actionText: isLoading ? 'Clearing...' : 'Clear Transactions',
-        icon: <Trash2 color={colors.negative} size={24} />
-      };
-    } else {
-      return {
-        title: 'Clear All Activity?',
-        description: `This will permanently delete all ${count} activity event${count !== 1 ? 's' : ''} from your history. This action cannot be undone.`,
-        actionText: isLoading ? 'Clearing...' : 'Clear Activity',
-        icon: <Trash2 color={colors.negative} size={24} />
-      };
+    switch (dataType) {
+      case 'transactions':
+        return {
+          title: 'Clear All Transactions?',
+          description: `This will permanently delete all ${count} transaction${count !== 1 ? 's' : ''} from your account. This action cannot be undone.`,
+          actionText: isLoading ? 'Clearing...' : 'Clear Transactions',
+          icon: <Trash2 color={colors.negative} size={24} />
+        };
+      case 'activity':
+        return {
+          title: 'Clear All Activity?',
+          description: `This will permanently delete all ${count} activity event${count !== 1 ? 's' : ''} from your history. This action cannot be undone.`,
+          actionText: isLoading ? 'Clearing...' : 'Clear Activity',
+          icon: <Trash2 color={colors.negative} size={24} />
+        };
+      case 'notifications':
+        return {
+          title: 'Clear All Notifications?',
+          description: `This will permanently delete all ${count} notification${count !== 1 ? 's' : ''} from your account. This action cannot be undone.`,
+          actionText: isLoading ? 'Clearing...' : 'Clear Notifications',
+          icon: <Trash2 color={colors.negative} size={24} />
+        };
+      case 'all':
+        return {
+          title: 'Clear All Data?',
+          description: `This will permanently delete ALL your transactions, activity events, and notifications. This action cannot be undone and will reset your account.`,
+          actionText: isLoading ? 'Clearing...' : 'Clear Everything',
+          icon: <Trash2 color={colors.negative} size={24} />
+        };
+      default:
+        return {
+          title: 'Clear Data?',
+          description: `This will permanently delete the selected data. This action cannot be undone.`,
+          actionText: isLoading ? 'Clearing...' : 'Clear Data',
+          icon: <Trash2 color={colors.negative} size={24} />
+        };
     }
   };
 
@@ -152,7 +174,9 @@ export function ClearDataModal({
             {count > 0 && (
               <View style={[styles.countContainer, { backgroundColor: colors.background }]}>
                 <Text style={[styles.countText, { color: colors.textPrimary }]}>
-                  {count} {dataType === 'transactions' ? 'transaction' : 'activity event'}{count !== 1 ? 's' : ''} will be deleted
+                  {count} {dataType === 'transactions' ? 'transaction' : 
+                         dataType === 'activity' ? 'activity event' :
+                         dataType === 'notifications' ? 'notification' : 'item'}{count !== 1 ? 's' : ''} will be deleted
                 </Text>
               </View>
             )}
