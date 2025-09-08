@@ -227,3 +227,11 @@ export const getPasswordStrength = (score: number): PasswordStrength => {
   
   return { score, level, color };
 };
+
+/**
+ * Update password strength function that combines calculation and strength mapping
+ */
+export const updatePasswordStrength = (password: string): PasswordStrength => {
+  const score = calculatePasswordStrength(password);
+  return getPasswordStrength(score);
+};
