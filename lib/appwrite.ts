@@ -404,138 +404,97 @@ export const createUser = async ({
       });
     }
     
-    const newAccount = await account.create(uniqueId, email, password, name);
-
-    if (!newAccount) {
-      throw new Error("Failed to create account");
-    }
-
+    // Try the simplest possible implementation following official docs pattern
+    let newAccount;
+    
     if (__DEV__) {
-      logger.auth.debug('[createUser] Account created successfully:', {
-        accountId: newAccount.$id,
-        avatarsType: typeof avatars,
-        avatarsObject: avatars,
-        getInitialsURLMethod: typeof avatars.getInitialsURL,
-        hasGetInitialsURL: 'getInitialsURL' in avatars
-      });
+      logger.auth.debug('[createUser] Attempting server-side account creation');
     }
-
-    // Generate avatar URL with robust fallback mechanism
-    const generateAvatarUrl = (userName: string): string => {
+    
+    // Use server-side account creation as workaround for SDK issue
+    try {
+      if (__DEV__) {
+        logger.auth.debug('[createUser] Using server-side account creation API');
+      }
+      
+      // Generate avatar URL first
+      const generateAvatarUrl = (userName: string): string => {
+        try {
+          const initials = userName
+            .split(' ')
+            .filter(part => part.length > 0)
+            .map(part => part[0])
+            .join('')
+            .toUpperCase()
+            .slice(0, 2);
+          
+          return `https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&background=6366F1&color=ffffff&size=200&font-size=0.6&format=png`;
+        } catch (error) {
+          return 'https://ui-avatars.com/api/?name=U&background=6366F1&color=ffffff&size=200';
+        }
+      };
+      
+      let avatarUrl: string;
+      
+      // Try Appwrite avatars service first
       try {
-        // Extract initials from the user's name
-        const initials = userName
-          .split(' ')
-          .filter(part => part.length > 0)
-          .map(part => part[0])
-          .join('')
-          .toUpperCase()
-          .slice(0, 2); // Limit to 2 characters
-        
-        // Use a reliable external service for avatar generation
-        const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&background=6366F1&color=ffffff&size=200&font-size=0.6&format=png`;
+        const avatarURLObject = avatars.getInitialsURL(name);
+        avatarUrl = avatarURLObject.toString();
         
         if (__DEV__) {
-          logger.auth.debug('[createUser] Generated avatar URL from initials:', {
-            userName,
-            initials,
-            avatarUrl
-          });
+          logger.auth.debug('[createUser] Appwrite avatar URL generated:', { avatarUrl });
         }
-        
-        return avatarUrl;
-      } catch (error) {
-        logger.auth.error('[createUser] Failed to generate avatar URL from initials:', error);
-        // Ultimate fallback - use a generic avatar
-        return 'https://ui-avatars.com/api/?name=U&background=6366F1&color=ffffff&size=200';
-      }
-    };
-    
-    let avatarUrl: string;
-    
-    // Try to use Appwrite's built-in avatar service first
-    try {
-      if (__DEV__) {
-        logger.auth.debug('[createUser] Attempting to use Appwrite avatar service');
+      } catch (avatarError) {
+        logger.auth.warn('[createUser] Appwrite avatar service failed, using fallback:', avatarError);
+        avatarUrl = generateAvatarUrl(name);
       }
       
-      const avatarURLObject = avatars.getInitialsURL(name);
-      avatarUrl = avatarURLObject.toString();
+      const { getApiBase } = require('@/lib/api');
+      const apiUrl = `${getApiBase()}/v1/auth/create-account`;
       
-      if (__DEV__) {
-        logger.auth.debug('[createUser] Appwrite avatar URL generated successfully:', { avatarUrl });
-      }
-    } catch (avatarError) {
-      logger.auth.warn('[createUser] Appwrite avatar service failed, using fallback:', avatarError);
-      
-      // Use our reliable fallback avatar generation
-      avatarUrl = generateAvatarUrl(name);
-      
-      if (__DEV__) {
-        logger.auth.info('[createUser] Using fallback avatar URL:', { avatarUrl });
-      }
-    }
-    
-    // Ensure we always have a valid avatar URL
-    if (!avatarUrl || avatarUrl.trim() === '') {
-      avatarUrl = generateAvatarUrl(name);
-      logger.auth.warn('[createUser] Empty avatar URL detected, using generated fallback:', { avatarUrl });
-    }
-
-    if (__DEV__) {
-      logger.database.debug('[createUser] About to create user document:', {
-        databaseId: appwriteConfig.databaseId,
-        userCollectionId: appwriteConfig.userCollectionId,
-        accountId: newAccount.$id,
-        databasesType: typeof databases,
-        createDocumentMethod: typeof databases.createDocument
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: uniqueId,
+          email,
+          password,
+          name,
+          phoneNumber,
+          avatar: avatarUrl
+        })
       });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to create account via server API');
+      }
+      
+      newAccount = await response.json();
+      
+      if (__DEV__) {
+        logger.auth.debug('[createUser] Account created successfully via server API');
+      }
+    } catch (serverError: any) {
+      logger.auth.error('[createUser] Server-side account creation failed:', serverError);
+      
+      // If server API fails, we still need to handle this gracefully
+      throw new Error('Account creation is currently unavailable. Please try again later.');
     }
-
-    // Prepare user document data with validation
-    const userDocumentData = {
-      accountId: newAccount.$id,
-      name: name.trim(),
-      email: email.toLowerCase().trim(),
-      phoneNumber: phoneNumber || null, // Ensure phone number is properly handled
-      avatar: avatarUrl, // This should always be a valid URL now
-    };
+    
+    if (!newAccount) {
+      throw new Error("Failed to create account via server API");
+    }
     
     if (__DEV__) {
-      logger.database.debug('[createUser] User document data prepared:', {
-        ...userDocumentData,
-        avatar: `${avatarUrl.substring(0, 50)}...` // Log truncated URL for readability
+      logger.auth.debug('[createUser] Account and user document created successfully via server API:', {
+        accountId: newAccount.$id
       });
     }
     
-    // Validate required fields before attempting to create the document
-    if (!userDocumentData.accountId || !userDocumentData.name || !userDocumentData.email || !userDocumentData.avatar) {
-      throw new Error('Missing required fields for user document creation');
-    }
-    
-    try {
-      // No need for manual binding - method is already bound
-      const result = await databases.createDocument(
-        getRequiredConfig('databaseId'),
-        getRequiredConfig('userCollectionId'),
-        ID.unique(),
-        userDocumentData
-      );
-      
-      if (__DEV__) {
-        logger.database.info('[createUser] User document created successfully:', result.$id);
-      }
-      
-      return result;
-    } catch (createError: any) {
-      logger.database.error('[createUser] Database createDocument failed:', createError);
-      logger.database.error('[createUser] Database createDocument error details:', {
-        message: createError.message,
-        name: createError.name,
-        stack: createError.stack
-      });
-      throw createError;
-    }
+    return newAccount;
   } catch (error) {
     logger.auth.error("Create user error:", error);
     throw error;
