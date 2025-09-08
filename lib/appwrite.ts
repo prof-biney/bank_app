@@ -8,6 +8,7 @@ import {
   Storage,
 } from "react-native-appwrite";
 import { enhanceClientWithConnectionMonitoring } from './connectionService';
+import { logger } from './logger';
 
 // Helper to resolve env vars with fallback names (supports bank/.env APPWRITE_* keys)
 const env = (keys: string[], def?: string) => {
@@ -32,12 +33,8 @@ const missingEnvVars = requiredPairs
   .map(([a, b]) => `${a} (or ${b})`);
 
 if (missingEnvVars.length > 0) {
-  console.warn(
-    `Missing required environment variables: ${missingEnvVars.join(", ")}`
-  );
-  console.warn(
-    "Please check your .env (Expo) or bank/.env (server-style) and make sure all required variables are defined."
-  );
+  logger.warn('CONFIG', `Missing required environment variables: ${missingEnvVars.join(", ")}`);
+  logger.warn('CONFIG', "Please check your .env (Expo) or bank/.env (server-style) and make sure all required variables are defined.");
 }
 
 // Appwrite configuration - all values from environment variables, no hardcoded defaults
@@ -58,7 +55,20 @@ export const appwriteConfig = {
   apiKey: env(["EXPO_PUBLIC_APPWRITE_API_KEY", "APPWRITE_API_KEY"]),
 };
 
-// Validate required configuration values
+// Safe config accessor functions
+export const getRequiredConfig = (key: keyof typeof appwriteConfig): string => {
+  const value = appwriteConfig[key];
+  if (!value) {
+    throw new Error(`Required configuration missing: ${key}. Please check your environment variables.`);
+  }
+  return value;
+};
+
+export const getOptionalConfig = (key: keyof typeof appwriteConfig): string | undefined => {
+  return appwriteConfig[key] || undefined;
+};
+
+// Validate required configuration values with proper error handling
 const requiredConfigValues = [
   { key: 'endpoint', value: appwriteConfig.endpoint },
   { key: 'projectId', value: appwriteConfig.projectId },
@@ -70,8 +80,14 @@ const requiredConfigValues = [
 const missingRequired = requiredConfigValues.filter(config => !config.value);
 if (missingRequired.length > 0) {
   const missing = missingRequired.map(c => c.key).join(', ');
-  console.error(`❌ Missing required Appwrite configuration: ${missing}`);
-  console.error('Please check your .env file and ensure all required EXPO_PUBLIC_APPWRITE_* variables are set.');
+  const errorMessage = `❌ Missing required Appwrite configuration: ${missing}`;
+  const helpMessage = 'Please check your .env file and ensure all required EXPO_PUBLIC_APPWRITE_* variables are set.';
+  
+  logger.error('CONFIG', errorMessage);
+  logger.error('CONFIG', helpMessage);
+  
+  // Fail fast with clear error instead of allowing runtime crashes
+  throw new Error(`${errorMessage}\n${helpMessage}`);
 }
 
 // Optional configuration warnings
@@ -84,31 +100,34 @@ const optionalConfigValues = [
 
 const missingOptional = optionalConfigValues.filter(config => !config.value);
 if (missingOptional.length > 0) {
-  console.warn('⚠️  Optional Appwrite configuration missing:');
+  logger.warn('CONFIG', '⚠️  Optional Appwrite configuration missing:');
   missingOptional.forEach(config => {
-    console.warn(`  - ${config.key}: ${config.feature} will not be available`);
+    logger.warn('CONFIG', `  - ${config.key}: ${config.feature} will not be available`);
   });
 }
 
 if (appwriteConfig.endpoint && appwriteConfig.projectId && appwriteConfig.platform) {
-  console.log('✅ Appwrite configuration loaded successfully');
-  console.log(`📍 Endpoint: ${appwriteConfig.endpoint}`);
-  console.log(`🆔 Project: ${appwriteConfig.projectId}`);
-  console.log(`📱 Platform: ${appwriteConfig.platform}`);
+  logger.info('CONFIG', '✅ Appwrite configuration loaded successfully');
+  logger.info('CONFIG', `📍 Endpoint: ${appwriteConfig.endpoint}`);
+  logger.info('CONFIG', `🆔 Project: ${appwriteConfig.projectId}`);
+  logger.info('CONFIG', `📱 Platform: ${appwriteConfig.platform}`);
 }
 
 // Initialize clients only if required configuration is available
+// Note: This check is redundant now since we validate above and throw early
+// But keeping it for extra safety
 if (!appwriteConfig.endpoint || !appwriteConfig.projectId || !appwriteConfig.platform) {
-  console.error('❌ Cannot initialize Appwrite clients: missing required configuration');
+  const errorMessage = '❌ Cannot initialize Appwrite clients: missing required configuration';
+  logger.error('CONFIG', errorMessage);
   throw new Error('Appwrite configuration incomplete. Please check your .env file.');
 }
 
 const baseClient = new Client();
 
 baseClient
-  .setEndpoint(appwriteConfig.endpoint!)
-  .setProject(appwriteConfig.projectId!)
-  .setPlatform(appwriteConfig.platform!);
+  .setEndpoint(getRequiredConfig('endpoint'))
+  .setProject(getRequiredConfig('projectId'))
+  .setPlatform(getRequiredConfig('platform'));
 
 // Enhanced client with connection monitoring
 export const client = enhanceClientWithConnectionMonitoring(baseClient);
@@ -116,15 +135,16 @@ export const client = enhanceClientWithConnectionMonitoring(baseClient);
 // Create a separate client for authenticated operations that can have JWT set dynamically
 export const authenticatedClient = new Client();
 authenticatedClient
-  .setEndpoint(appwriteConfig.endpoint!)
-  .setProject(appwriteConfig.projectId!)
-  .setPlatform(appwriteConfig.platform!);
+  .setEndpoint(getRequiredConfig('endpoint'))
+  .setProject(getRequiredConfig('projectId'))
+  .setPlatform(getRequiredConfig('platform'));
 
 // Note: setKey is not available in React Native Appwrite SDK
 // API keys are only used in server-side Node.js environments
 // In React Native, we use JWT tokens for authentication instead
-if (appwriteConfig.apiKey && __DEV__) {
-  console.log('🔑 Appwrite API key found (will be used for server operations only)');
+const apiKey = getOptionalConfig('apiKey');
+if (apiKey && __DEV__) {
+  logger.info('CONFIG', '🔑 Appwrite API key found (will be used for server operations only)');
 }
 
 // Import the dedicated authentication account instance
@@ -132,25 +152,87 @@ if (appwriteConfig.apiKey && __DEV__) {
 import { authAccount } from './appwrite-auth';
 export const account = authAccount;
 
-// Use single database client - SDK v0.12.0 handles authentication automatically
-export const databases = new Databases(client);
+// Create a wrapper for Databases to pre-bind all methods and avoid context issues
+class BoundDatabases {
+  private _databases: Databases;
+  
+  // Pre-bound methods to avoid context issues
+  public createDocument: typeof Databases.prototype.createDocument;
+  public listDocuments: typeof Databases.prototype.listDocuments;
+  public updateDocument: typeof Databases.prototype.updateDocument;
+  public deleteDocument: typeof Databases.prototype.deleteDocument;
+  public getDocument: typeof Databases.prototype.getDocument;
+  
+  constructor(client: Client) {
+    this._databases = new Databases(client);
+    
+    // Bind all methods to maintain proper context
+    this.createDocument = this._databases.createDocument.bind(this._databases);
+    this.listDocuments = this._databases.listDocuments.bind(this._databases);
+    this.updateDocument = this._databases.updateDocument.bind(this._databases);
+    this.deleteDocument = this._databases.deleteDocument.bind(this._databases);
+    this.getDocument = this._databases.getDocument.bind(this._databases);
+  }
+  
+  // Provide access to underlying instance for any unbinded methods if needed
+  get raw() {
+    return this._databases;
+  }
+}
+
+// Use bound database client - no more manual binding needed!
+export const databases = new BoundDatabases(client);
 
 // Debug logging
 if (__DEV__) {
-  console.log('[Appwrite Setup] Database initialized:', {
+  logger.appwrite.debug('[Appwrite Setup] Bound Database initialized:', {
     databasesType: typeof databases,
     listDocumentsMethod: typeof databases.listDocuments,
-    createDocumentMethod: typeof databases.createDocument
+    createDocumentMethod: typeof databases.createDocument,
+    isProperlyBound: databases.createDocument === databases.createDocument // Should be true
   });
-  
-  // Test basic SDK functionality
-  console.log('[SDK Test] Available methods on databases object:', Object.getOwnPropertyNames(databases));
-  console.log('[SDK Test] Available methods on databases prototype:', Object.getOwnPropertyNames(Object.getPrototypeOf(databases)));
 }
 
-export const storage = new Storage(client);
+// Create a wrapper for Storage to pre-bind methods
+class BoundStorage {
+  private _storage: Storage;
+  
+  public createFile: typeof Storage.prototype.createFile;
+  public deleteFile: typeof Storage.prototype.deleteFile;
+  public getFileView: typeof Storage.prototype.getFileView;
+  
+  constructor(client: Client) {
+    this._storage = new Storage(client);
+    
+    this.createFile = this._storage.createFile.bind(this._storage);
+    this.deleteFile = this._storage.deleteFile.bind(this._storage);
+    this.getFileView = this._storage.getFileView.bind(this._storage);
+  }
+  
+  get raw() {
+    return this._storage;
+  }
+}
 
-export const avatars = new Avatars(client);
+// Create a wrapper for Avatars to pre-bind methods
+class BoundAvatars {
+  private _avatars: Avatars;
+  
+  public getInitialsURL: typeof Avatars.prototype.getInitialsURL;
+  
+  constructor(client: Client) {
+    this._avatars = new Avatars(client);
+    
+    this.getInitialsURL = this._avatars.getInitialsURL.bind(this._avatars);
+  }
+  
+  get raw() {
+    return this._avatars;
+  }
+}
+
+export const storage = new BoundStorage(client);
+export const avatars = new BoundAvatars(client);
 
 /**
  * Set JWT token on the authenticated client for database operations
@@ -159,9 +241,9 @@ export const avatars = new Avatars(client);
 export const setAuthenticatedClientJWT = (jwt: string | null) => {
   if (jwt) {
     authenticatedClient.setJWT(jwt);
-    console.log('[setAuthenticatedClientJWT] JWT token set on authenticated client');
+    logger.auth.info('[setAuthenticatedClientJWT] JWT token set on authenticated client');
   } else {
-    console.warn('[setAuthenticatedClientJWT] No JWT token provided');
+    logger.auth.warn('[setAuthenticatedClientJWT] No JWT token provided');
   }
 };
 
@@ -183,13 +265,13 @@ export const ensureAuthenticatedClient = async (): Promise<boolean> => {
       const session = await account.getSession('current');
       if (!session) {
         if (__DEV__) {
-          console.warn('[ensureAuthenticatedClient] No active session found');
+          logger.auth.warn('[ensureAuthenticatedClient] No active session found');
         }
         return false;
       }
       
       if (__DEV__) {
-        console.log('[ensureAuthenticatedClient] Active session found, creating JWT');
+        logger.auth.info('[ensureAuthenticatedClient] Active session found, creating JWT');
       }
       
       // If we have a session, try to create JWT
@@ -198,18 +280,18 @@ export const ensureAuthenticatedClient = async (): Promise<boolean> => {
         (global as any).__APPWRITE_JWT__ = jwtResponse.jwt;
         setAuthenticatedClientJWT(jwtResponse.jwt);
         if (__DEV__) {
-          console.log('[ensureAuthenticatedClient] New JWT created and set successfully');
+          logger.auth.info('[ensureAuthenticatedClient] New JWT created and set successfully');
         }
         return true;
       } else {
         if (__DEV__) {
-          console.warn('[ensureAuthenticatedClient] JWT creation returned no token');
+          logger.auth.warn('[ensureAuthenticatedClient] JWT creation returned no token');
         }
         return false;
       }
     } catch (jwtError: any) {
       if (__DEV__) {
-        console.error('[ensureAuthenticatedClient] JWT creation failed:', jwtError);
+        logger.auth.error('[ensureAuthenticatedClient] JWT creation failed:', jwtError);
       }
       
       // Clear the invalid JWT
@@ -217,17 +299,17 @@ export const ensureAuthenticatedClient = async (): Promise<boolean> => {
       
       // Handle specific JWT creation errors
       if (jwtError.message?.includes('missing scope (account)')) {
-        console.error('[ensureAuthenticatedClient] Critical: Missing account scope - user needs to re-authenticate');
+        logger.auth.error('[ensureAuthenticatedClient] Critical: Missing account scope - user needs to re-authenticate');
         return false;
       } else if (jwtError.message?.includes('role: guests')) {
-        console.error('[ensureAuthenticatedClient] Critical: User has guest role - authentication failed');
+        logger.auth.error('[ensureAuthenticatedClient] Critical: User has guest role - authentication failed');
         return false;
       } else if (jwtError.message?.includes('missing scope')) {
-        console.error('[ensureAuthenticatedClient] Missing required scopes:', jwtError.message);
+        logger.auth.error('[ensureAuthenticatedClient] Missing required scopes:', jwtError.message);
         return false;
       } else {
         // Other JWT errors (network, server issues, etc.)
-        console.warn('[ensureAuthenticatedClient] JWT creation failed with unknown error:', jwtError.message);
+        logger.auth.warn('[ensureAuthenticatedClient] JWT creation failed with unknown error:', jwtError.message);
         return false;
       }
     }
@@ -235,7 +317,7 @@ export const ensureAuthenticatedClient = async (): Promise<boolean> => {
     return false;
   } catch (error) {
     if (__DEV__) {
-      console.error('[ensureAuthenticatedClient] Error ensuring authenticated client:', error);
+      logger.auth.error('[ensureAuthenticatedClient] Error ensuring authenticated client:', error);
     }
     return false;
   }
@@ -262,7 +344,7 @@ export const createUser = async ({
     const avatarUrl = avatars.getInitialsURL(name);
 
     if (__DEV__) {
-      console.log('[createUser] About to create user document:', {
+      logger.database.debug('[createUser] About to create user document:', {
         databaseId: appwriteConfig.databaseId,
         userCollectionId: appwriteConfig.userCollectionId,
         accountId: newAccount.$id,
@@ -272,11 +354,10 @@ export const createUser = async ({
     }
 
     try {
-      // Ensure proper method binding
-      const createDocument = databases.createDocument.bind(databases);
-      const result = await createDocument(
-        appwriteConfig.databaseId!,
-        appwriteConfig.userCollectionId!,
+      // No need for manual binding - method is already bound
+      const result = await databases.createDocument(
+        getRequiredConfig('databaseId'),
+        getRequiredConfig('userCollectionId'),
         ID.unique(),
         {
           accountId: newAccount.$id,
@@ -288,13 +369,13 @@ export const createUser = async ({
       );
       
       if (__DEV__) {
-        console.log('[createUser] User document created successfully:', result.$id);
+        logger.database.info('[createUser] User document created successfully:', result.$id);
       }
       
       return result;
     } catch (createError: any) {
-      console.error('[createUser] Database createDocument failed:', createError);
-      console.error('[createUser] Database createDocument error details:', {
+      logger.database.error('[createUser] Database createDocument failed:', createError);
+      logger.database.error('[createUser] Database createDocument error details:', {
         message: createError.message,
         name: createError.name,
         stack: createError.stack
@@ -302,7 +383,7 @@ export const createUser = async ({
       throw createError;
     }
   } catch (error) {
-    console.error("Create user error:", error);
+    logger.auth.error("Create user error:", error);
     throw error;
   }
 };
@@ -310,8 +391,8 @@ export const createUser = async ({
 export const signIn = async (email: string, password: string) => {
   try {
     if (__DEV__) {
-      console.log('[signIn] Attempting to create email password session');
-      console.log('[signIn] Debug info:', {
+      logger.auth.info('[signIn] Attempting to create email password session');
+      logger.auth.debug('[signIn] Debug info:', {
         accountObject: typeof account,
         accountMethods: Object.getOwnPropertyNames(Object.getPrototypeOf(account)),
         createEmailPasswordSessionMethod: typeof account.createEmailPasswordSession,
@@ -330,23 +411,22 @@ export const signIn = async (email: string, password: string) => {
     
     // Add specific debugging for the method call
     if (__DEV__) {
-      console.log('[signIn] About to call createEmailPasswordSession');
-      console.log('[signIn] Method exists:', 'createEmailPasswordSession' in account);
-      console.log('[signIn] Method type:', typeof account.createEmailPasswordSession);
+      logger.auth.debug('[signIn] About to call createEmailPasswordSession');
+      logger.auth.debug('[signIn] Method exists:', 'createEmailPasswordSession' in account);
+      logger.auth.debug('[signIn] Method type:', typeof account.createEmailPasswordSession);
     }
     
     let session;
     try {
       if (__DEV__) {
-        console.log('[signIn] Calling createEmailPasswordSession (correct method name)');
+        logger.auth.debug('[signIn] Calling createEmailPasswordSession (correct method name)');
       }
       // Use the correct method name from react-native-appwrite
-      // Fix potential method binding issue by ensuring proper context
-      const createSession = account.createEmailPasswordSession.bind(account);
-      session = await createSession(email, password);
+      // account methods are properly bound in appwrite-auth.ts
+      session = await account.createEmailPasswordSession(email, password);
     } catch (methodError: any) {
-      console.error('[signIn] Method execution failed:', methodError);
-      console.error('[signIn] Method error details:', {
+      logger.auth.error('[signIn] Method execution failed:', methodError);
+      logger.auth.error('[signIn] Method error details:', {
         name: methodError.name,
         message: methodError.message,
         stack: methodError.stack
@@ -355,7 +435,7 @@ export const signIn = async (email: string, password: string) => {
     }
     
     if (__DEV__) {
-      console.log('[signIn] Session created successfully:', { 
+      logger.auth.info('[signIn] Session created successfully:', { 
         sessionId: session.$id,
         userId: session.userId 
       });
@@ -365,19 +445,19 @@ export const signIn = async (email: string, password: string) => {
     try {
       const currentAccount = await account.get();
       if (__DEV__) {
-        console.log('[signIn] Session verified, account accessible:', {
+        logger.auth.info('[signIn] Session verified, account accessible:', {
           accountId: currentAccount.$id,
           email: currentAccount.email
         });
       }
     } catch (verifyError) {
-      console.error('[signIn] Session verification failed:', verifyError);
+      logger.auth.error('[signIn] Session verification failed:', verifyError);
       throw new Error('Authentication failed - session could not be verified');
     }
     
     return session;
   } catch (error) {
-    console.error("[signIn] Sign in error:", error);
+    logger.auth.error("[signIn] Sign in error:", error);
     
     // Provide more specific error messaging
     if (error instanceof Error) {
@@ -399,7 +479,7 @@ export const signIn = async (email: string, password: string) => {
 export const signOut = async () => {
   try {
     if (__DEV__) {
-      console.log('[signOut] Starting logout process with token expiration');
+      logger.auth.info('[signOut] Starting logout process with token expiration');
     }
     
     // Import token manager functions
@@ -409,10 +489,10 @@ export const signOut = async () => {
     await performCompleteCleanup();
     
     if (__DEV__) {
-      console.log('[signOut] Logout completed with token expiration');
+      logger.auth.info('[signOut] Logout completed with token expiration');
     }
   } catch (error) {
-    console.error('[signOut] Sign out error:', error);
+    logger.auth.error('[signOut] Sign out error:', error);
     
     // Even if logout fails, ensure local cleanup
     try {
@@ -420,10 +500,10 @@ export const signOut = async () => {
       expireToken();
       clearTokenData();
       if (__DEV__) {
-        console.log('[signOut] Performed emergency token cleanup');
+        logger.auth.info('[signOut] Performed emergency token cleanup');
       }
     } catch (cleanupError) {
-      console.error('[signOut] Emergency cleanup failed:', cleanupError);
+      logger.auth.error('[signOut] Emergency cleanup failed:', cleanupError);
     }
     
     throw error;
@@ -433,7 +513,7 @@ export const signOut = async () => {
 export const getCurrentUser = async () => {
   try {
     if (__DEV__) {
-      console.log('[getCurrentUser] Starting user retrieval process');
+      logger.auth.info('[getCurrentUser] Starting user retrieval process');
     }
     
     // First verify we have an active session
@@ -444,21 +524,21 @@ export const getCurrentUser = async () => {
       }
       
       if (__DEV__) {
-        console.log('[getCurrentUser] Active session verified:', { sessionId: session.$id });
+        logger.auth.info('[getCurrentUser] Active session verified:', { sessionId: session.$id });
       }
     } catch (sessionError: any) {
-      console.error('[getCurrentUser] Session verification failed:', sessionError.message);
+      logger.auth.error('[getCurrentUser] Session verification failed:', sessionError.message);
       
       // Perform automatic token cleanup on session errors
       try {
         const { clearTokenData, expireToken } = await import('./tokenManager');
         if (__DEV__) {
-          console.log('[getCurrentUser] Performing automatic token cleanup due to session error');
+          logger.auth.info('[getCurrentUser] Performing automatic token cleanup due to session error');
         }
         expireToken();
         clearTokenData();
       } catch (cleanupError) {
-        console.error('[getCurrentUser] Token cleanup failed:', cleanupError);
+        logger.auth.error('[getCurrentUser] Token cleanup failed:', cleanupError);
       }
       
       if (sessionError.message?.includes('missing scope')) {
@@ -469,13 +549,13 @@ export const getCurrentUser = async () => {
     
     // get the current account
     if (__DEV__) {
-      console.log('[getCurrentUser] Fetching current account details');
+      logger.auth.info('[getCurrentUser] Fetching current account details');
     }
     
     const currentAccount = await account.get();
     
     if (__DEV__) {
-      console.log('[getCurrentUser] Current account retrieved:', { 
+      logger.auth.info('[getCurrentUser] Current account retrieved:', { 
         accountId: currentAccount.$id,
         email: currentAccount.email,
         emailVerification: currentAccount.emailVerification 
@@ -488,17 +568,17 @@ export const getCurrentUser = async () => {
 
     // Ensure we have a JWT for database operations
     if (__DEV__) {
-      console.log('[getCurrentUser] Ensuring authenticated client for database access');
+      logger.auth.info('[getCurrentUser] Ensuring authenticated client for database access');
     }
     
     const hasJWT = await ensureAuthenticatedClient();
     if (!hasJWT) {
-      console.warn('[getCurrentUser] Warning: No JWT available for database operations, attempting without JWT');
+      logger.auth.warn('[getCurrentUser] Warning: No JWT available for database operations, attempting without JWT');
     }
 
     if (__DEV__) {
-      console.log('[getCurrentUser] Querying user document from database');
-      console.log('[getCurrentUser] Database params:', {
+      logger.database.info('[getCurrentUser] Querying user document from database');
+      logger.database.debug('[getCurrentUser] Database params:', {
         databaseId: appwriteConfig.databaseId,
         userCollectionId: appwriteConfig.userCollectionId,
         accountId: currentAccount.$id,
@@ -509,31 +589,30 @@ export const getCurrentUser = async () => {
     
     // get the user from the database
     try {
-      // Ensure proper method binding
-      const listDocuments = databases.listDocuments.bind(databases);
-      const currentUser = await listDocuments(
-        appwriteConfig.databaseId!,
-        appwriteConfig.userCollectionId!,
+      // No need for manual binding - method is already bound
+      const currentUser = await databases.listDocuments(
+        getRequiredConfig('databaseId'),
+        getRequiredConfig('userCollectionId'),
         [Query.equal("accountId", currentAccount.$id)]
       );
       
       if (__DEV__) {
-        console.log('[getCurrentUser] Database query completed:', { 
+        logger.database.info('[getCurrentUser] Database query completed:', { 
           documentsFound: currentUser.documents.length,
           totalDocuments: currentUser.total 
         });
       }
       
       if (!currentUser || currentUser.documents.length === 0) {
-        console.error('[getCurrentUser] No user document found for authenticated account');
-        console.error('[getCurrentUser] This suggests the user account exists in Appwrite Auth but not in the users collection');
+        logger.auth.error('[getCurrentUser] No user document found for authenticated account');
+        logger.auth.error('[getCurrentUser] This suggests the user account exists in Appwrite Auth but not in the users collection');
         throw new Error(`No user profile found for account ID: ${currentAccount.$id}. Please contact support.`);
       }
 
       const userDocument = currentUser.documents[0];
       
       if (__DEV__) {
-        console.log('[getCurrentUser] User document retrieved successfully:', {
+        logger.database.info('[getCurrentUser] User document retrieved successfully:', {
           documentId: userDocument.$id,
           name: userDocument.name,
           email: userDocument.email
@@ -543,8 +622,8 @@ export const getCurrentUser = async () => {
       // return the user
       return userDocument;
     } catch (dbError: any) {
-      console.error('[getCurrentUser] Database query failed:', dbError);
-      console.error('[getCurrentUser] Database query error details:', {
+      logger.database.error('[getCurrentUser] Database query failed:', dbError);
+      logger.database.error('[getCurrentUser] Database query error details:', {
         message: dbError.message,
         name: dbError.name,
         stack: dbError.stack
@@ -552,7 +631,7 @@ export const getCurrentUser = async () => {
       throw dbError;
     }
   } catch (error) {
-    console.error('[getCurrentUser] Get current user error:', error);
+    logger.auth.error('[getCurrentUser] Get current user error:', error);
     
     // Provide more specific error information
     if (error instanceof Error) {
@@ -601,7 +680,8 @@ export type CardEventInput = {
  * If the cards collection id is not configured, this will no-op.
  */
 export const logCardEvent = async (input: CardEventInput) => {
-  const { cardsCollectionId, databaseId } = appwriteConfig;
+  const databaseId = getOptionalConfig('databaseId');
+  const cardsCollectionId = getOptionalConfig('cardsCollectionId');
   if (!databaseId || !cardsCollectionId) {
     // Silently skip if not configured
     return null;
@@ -624,9 +704,9 @@ export const logCardEvent = async (input: CardEventInput) => {
       timestamp: new Date().toISOString(),
     };
 
-    return await databases.createDocument(databaseId!, cardsCollectionId!, ID.unique(), payload);
+    return await databases.createDocument(databaseId, cardsCollectionId, ID.unique(), payload);
   } catch (error) {
-    console.error("logCardEvent error:", error);
+    logger.database.error("logCardEvent error:", error);
     // Do not throw to avoid breaking UI flows; just report
     return null;
   }
@@ -641,7 +721,7 @@ export const logCardEvent = async (input: CardEventInput) => {
  * @returns Upload result with file ID and URL
  */
 export const uploadProfilePicture = async (imageUri: string, userId: string) => {
-  const { storageBucketId } = appwriteConfig;
+  const storageBucketId = getOptionalConfig('storageBucketId');
   
   if (!storageBucketId) {
     throw new Error("Storage bucket ID not configured");
@@ -660,13 +740,13 @@ export const uploadProfilePicture = async (imageUri: string, userId: string) => 
 
     // Upload file to storage
     const uploadedFile = await storage.createFile(
-      storageBucketId!,
+      storageBucketId,
       ID.unique(),
       file
     );
 
     // Generate public URL for the file
-    const fileUrl = storage.getFileView(storageBucketId!, uploadedFile.$id);
+    const fileUrl = storage.getFileView(storageBucketId, uploadedFile.$id);
 
     return {
       fileId: uploadedFile.$id,
@@ -674,7 +754,7 @@ export const uploadProfilePicture = async (imageUri: string, userId: string) => 
       fileName: uploadedFile.name,
     };
   } catch (error) {
-    console.error("Upload profile picture error:", error);
+    logger.error('STORAGE', "Upload profile picture error:", error);
     throw error;
   }
 };
@@ -684,16 +764,16 @@ export const uploadProfilePicture = async (imageUri: string, userId: string) => 
  * @param fileId - File ID to delete
  */
 export const deleteProfilePicture = async (fileId: string) => {
-  const { storageBucketId } = appwriteConfig;
+  const storageBucketId = getOptionalConfig('storageBucketId');
   
   if (!storageBucketId) {
     throw new Error("Storage bucket ID not configured");
   }
 
   try {
-    await storage.deleteFile(storageBucketId!, fileId);
+    await storage.deleteFile(storageBucketId, fileId);
   } catch (error) {
-    console.error("Delete profile picture error:", error);
+    logger.error('STORAGE', "Delete profile picture error:", error);
     // Don't throw error here as the file might already be deleted
   }
 };
@@ -704,13 +784,13 @@ export const deleteProfilePicture = async (fileId: string) => {
  * @returns Public URL of the file
  */
 export const getProfilePictureUrl = (fileId: string): string => {
-  const { storageBucketId } = appwriteConfig;
+  const storageBucketId = getOptionalConfig('storageBucketId');
   
   if (!storageBucketId) {
     throw new Error("Storage bucket ID not configured");
   }
 
-  return storage.getFileView(storageBucketId!, fileId).toString();
+  return storage.getFileView(storageBucketId, fileId).toString();
 };
 
 /**
@@ -735,15 +815,15 @@ export const updateUserProfile = async (
     }
 
     const updatedUser = await databases.updateDocument(
-      appwriteConfig.databaseId!,
-      appwriteConfig.userCollectionId!,
+      getRequiredConfig('databaseId'),
+      getRequiredConfig('userCollectionId'),
       userId,
       updateData
     );
 
     return updatedUser;
   } catch (error) {
-    console.error("Update user profile error:", error);
+    logger.database.error("Update user profile error:", error);
     throw error;
   }
 };
