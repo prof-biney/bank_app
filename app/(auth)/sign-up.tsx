@@ -875,7 +875,7 @@ export default function SignUpScreen() {
             <View style={styles.heroSection}>
               <View style={styles.logoContainer}>
                 <View style={[styles.logoCircle, { backgroundColor: withAlpha('#FFFFFF', 0.2) }]}>
-                  <MaterialIcons name="person-add" size={32} color="#FFFFFF" />
+                  <MaterialIcons name="account-balance" size={32} color="#FFFFFF" />
                 </View>
               </View>
               <Text style={styles.heroTitle}>Join Us Today</Text>
@@ -949,7 +949,7 @@ export default function SignUpScreen() {
                 <View style={styles.sectionDivider}>
                   <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
                   <View style={[styles.dividerIconContainer, { backgroundColor: colors.card }]}>
-                    <MaterialIcons name="security" size={16} color={colors.tintPrimary} />
+                    <MaterialIcons name="verified-user" size={16} color={colors.tintPrimary} />
                   </View>
                   <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
                 </View>
