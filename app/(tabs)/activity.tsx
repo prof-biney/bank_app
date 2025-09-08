@@ -231,6 +231,10 @@ export default function ActivityScreen() {
 		}
 	};
 
+	const handleCancelClearActivity = () => {
+		setShowClearActivity(false);
+	};
+
 	const getFilteredTransactions = () => {
 		if (!Array.isArray(transactions)) return [];
 
@@ -662,7 +666,7 @@ export default function ActivityScreen() {
 
 				<ClearDataModal
 					visible={showClearActivity}
-					onClose={() => setShowClearActivity(false)}
+					onClose={handleCancelClearActivity}
 					onConfirm={handleClearActivity}
 					dataType="activity"
 					count={activity.length}
