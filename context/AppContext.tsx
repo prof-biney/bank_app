@@ -14,12 +14,14 @@ import {
 } from "@/lib/transactionService";
 import { StorageManager } from "@/lib/storageService";
 import { initNotificationService } from "@/lib/notificationService";
+import { logger } from "@/lib/logger";
 
 // Appwrite database services
 import {
   createAppwriteTransaction,
   updateAppwriteTransaction,
-  deleteAppwriteTransaction
+  deleteAppwriteTransaction,
+  UpdateTransactionData
 } from "@/lib/appwriteTransactionService";
 import {
   createAppwriteCard,
@@ -50,6 +52,8 @@ interface AppContextType {
   refreshTransactions: () => Promise<void>;
   loadMoreTransactions: () => Promise<void>;
   clearAllTransactions: () => Promise<void>;
+  updateTransaction: (id: string, updateData: UpdateTransactionData) => Promise<{ success: boolean; error?: string }>;
+  deleteTransaction: (id: string) => Promise<{ success: boolean; error?: string }>;
   // Activity events
   activity: ActivityEvent[];
   pushActivity: (evt: ActivityEvent) => void;
@@ -150,13 +154,13 @@ const pushActivity: AppContextType["pushActivity"] = (evt) => {
           // Check authentication state before attempting Appwrite operations
           const { isAuthenticated, user } = useAuthStore.getState();
           if (!isAuthenticated || !user) {
-            console.warn('[addTransaction] User not authenticated, skipping Appwrite persistence');
+            logger.auth.warn('[addTransaction] User not authenticated, skipping Appwrite persistence');
             return;
           }
           
-          console.log('[addTransaction] Persisting transaction to Appwrite:', newTransaction.id);
+          logger.database.info('[addTransaction] Persisting transaction to Appwrite:', newTransaction.id);
           const appwriteTransaction = await createAppwriteTransaction(newTransaction);
-          console.log('[addTransaction] Transaction persisted successfully:', appwriteTransaction.id);
+          logger.database.info('[addTransaction] Transaction persisted successfully:', appwriteTransaction.id);
           
           // Update local state with Appwrite document ID if different
           if (appwriteTransaction.id !== newTransaction.id) {
@@ -175,12 +179,12 @@ const pushActivity: AppContextType["pushActivity"] = (evt) => {
           });
           
         } catch (appwriteError) {
-          console.warn('[addTransaction] Failed to persist to Appwrite:', appwriteError);
+          logger.database.warn('[addTransaction] Failed to persist to Appwrite:', appwriteError);
           // Could implement retry logic or queue for later sync
         }
         
       } catch (error) {
-        console.warn('[addTransaction] Failed to cache data:', error);
+        logger.error('STORAGE', '[addTransaction] Failed to cache data:', error);
       }
     };
     
@@ -1699,6 +1703,117 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
     // The user can refresh to reload activity from server if needed
   };
 
+  const updateTransaction: AppContextType['updateTransaction'] = async (id, updateData) => {
+    console.log('[updateTransaction] Updating transaction:', { id, updateData });
+    
+    try {
+      // Validate user session is active
+      const { isAuthenticated, user } = useAuthStore.getState();
+      if (!isAuthenticated || !user) {
+        console.error('[updateTransaction] User not authenticated');
+        return {
+          success: false,
+          error: 'User not authenticated. Please sign in again.'
+        };
+      }
+
+      // Update in Appwrite database
+      await updateAppwriteTransaction(id, updateData);
+      
+      // Update local state optimistically
+      setTransactions(prev => 
+        prev.map(tx => 
+          tx.id === id 
+            ? { ...tx, ...updateData }
+            : tx
+        )
+      );
+      
+      // Update activity if transaction was updated
+      setActivity(prev => 
+        prev.map(act => 
+          act.transactionId === id 
+            ? { 
+                ...act, 
+                title: updateData.description ? 
+                  (act.category === 'transaction' ? updateData.description : act.title) : 
+                  act.title,
+                status: updateData.status as any || act.status
+              }
+            : act
+        )
+      );
+      
+      console.log('[updateTransaction] Transaction updated successfully');
+      return { success: true };
+      
+    } catch (error) {
+      console.error('[updateTransaction] Failed to update transaction:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to update transaction'
+      };
+    }
+  };
+
+  const deleteTransaction: AppContextType['deleteTransaction'] = async (id) => {
+    console.log('[deleteTransaction] Deleting transaction:', { id });
+    
+    try {
+      // Validate user session is active
+      const { isAuthenticated, user } = useAuthStore.getState();
+      if (!isAuthenticated || !user) {
+        console.error('[deleteTransaction] User not authenticated');
+        return {
+          success: false,
+          error: 'User not authenticated. Please sign in again.'
+        };
+      }
+
+      // Find transaction to get details for activity tracking
+      const transactionToDelete = transactions.find(tx => tx.id === id);
+      
+      // Delete from Appwrite database
+      await deleteAppwriteTransaction(id);
+      
+      // Remove from local state
+      setTransactions(prev => prev.filter(tx => tx.id !== id));
+      
+      // Remove related activity events
+      setActivity(prev => prev.filter(act => act.transactionId !== id));
+      
+      // Create activity event for deletion
+      if (transactionToDelete) {
+        const deletionEvent = {
+          id: `tx.deleted.${id}`,
+          category: 'transaction' as const,
+          type: 'transaction.deleted',
+          title: `Transaction deleted: ${transactionToDelete.description}`,
+          subtitle: `${transactionToDelete.type} of ${Math.abs(transactionToDelete.amount).toLocaleString('en-GH', { style: 'currency', currency: 'GHS' })}`,
+          amount: transactionToDelete.amount,
+          currency: 'GHS',
+          status: 'info' as const,
+          timestamp: new Date().toISOString(),
+          transactionId: id,
+          cardId: transactionToDelete.cardId,
+          tags: ['deleted', transactionToDelete.category],
+        };
+        
+        pushActivity(deletionEvent);
+      }
+      
+      console.log('[deleteTransaction] Transaction deleted successfully');
+      return { success: true };
+      
+    } catch (error) {
+      console.error('[deleteTransaction] Failed to delete transaction:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to delete transaction'
+      };
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -1717,6 +1832,8 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
         refreshTransactions: refreshTransactionsImpl,
         loadMoreTransactions: loadMoreTransactionsImpl,
         clearAllTransactions,
+        updateTransaction,
+        deleteTransaction,
         activity,
         pushActivity,
         setActivity,
