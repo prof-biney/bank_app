@@ -218,12 +218,38 @@ class BoundStorage {
 class BoundAvatars {
   private _avatars: Avatars;
   
-  public getInitialsURL: typeof Avatars.prototype.getInitialsURL;
+  // Define the method signature explicitly rather than using typeof
+  public getInitialsURL: (name: string, width?: number, height?: number, background?: string) => URL;
   
   constructor(client: Client) {
     this._avatars = new Avatars(client);
     
-    this.getInitialsURL = this._avatars.getInitialsURL.bind(this._avatars);
+    // Debug: Log all available methods on the Avatars instance
+    if (__DEV__) {
+      logger.appwrite.debug('[BoundAvatars] Available methods:', {
+        avatarsType: typeof this._avatars,
+        availableMethods: Object.getOwnPropertyNames(Object.getPrototypeOf(this._avatars)),
+        hasGetInitials: 'getInitials' in this._avatars,
+        hasGetInitialsURL: 'getInitialsURL' in this._avatars,
+        getInitialsType: typeof (this._avatars as any).getInitials,
+        getInitialsURLType: typeof (this._avatars as any).getInitialsURL
+      });
+    }
+    
+    // Bind the getInitialsURL method (this is the correct method name)
+    if ('getInitialsURL' in this._avatars && typeof (this._avatars as any).getInitialsURL === 'function') {
+      this.getInitialsURL = (this._avatars as any).getInitialsURL.bind(this._avatars);
+      if (__DEV__) {
+        logger.appwrite.debug('[BoundAvatars] Successfully bound getInitialsURL method');
+      }
+    } else {
+      logger.appwrite.error('[BoundAvatars] getInitialsURL method not found on Avatars instance');
+      // Provide a fallback function that generates a simple initials URL
+      this.getInitialsURL = (name: string) => {
+        const initials = name.split(' ').map(n => n[0]).join('').toUpperCase();
+        return new URL(`https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&background=6366F1&color=ffffff`);
+      };
+    }
   }
   
   get raw() {
@@ -335,13 +361,126 @@ export const createUser = async ({
   phoneNumber?: string; // Make it optional for backward compatibility
 }) => {
   try {
-    const newAccount = await account.create(ID.unique(), email, password, name);
+    if (__DEV__) {
+      logger.auth.debug('[createUser] Starting user creation process:', {
+        name,
+        email,
+        phoneNumber,
+        accountType: typeof account,
+        accountCreateMethod: typeof account.create
+      });
+    }
+    
+    if (__DEV__) {
+      logger.auth.debug('[createUser] About to call account.create:', {
+        IDExists: typeof ID !== 'undefined',
+        IDUniqueExists: typeof ID.unique !== 'undefined',
+        accountExists: typeof account !== 'undefined',
+        accountCreateExists: typeof account.create !== 'undefined',
+        emailType: typeof email,
+        passwordType: typeof password,
+        nameType: typeof name
+      });
+    }
+    
+    let uniqueId;
+    try {
+      uniqueId = ID.unique();
+      if (__DEV__) {
+        logger.auth.debug('[createUser] ID.unique() called successfully:', { uniqueId, uniqueIdType: typeof uniqueId });
+      }
+    } catch (idError) {
+      logger.auth.error('[createUser] ID.unique() failed:', idError);
+      throw new Error(`Failed to generate unique ID: ${idError}`);
+    }
+    
+    if (__DEV__) {
+      logger.auth.debug('[createUser] About to call account.create with resolved parameters:', {
+        uniqueId,
+        email,
+        passwordLength: password.length,
+        name,
+        accountCreateType: typeof account.create
+      });
+    }
+    
+    const newAccount = await account.create(uniqueId, email, password, name);
 
     if (!newAccount) {
       throw new Error("Failed to create account");
     }
 
-    const avatarUrl = avatars.getInitialsURL(name);
+    if (__DEV__) {
+      logger.auth.debug('[createUser] Account created successfully:', {
+        accountId: newAccount.$id,
+        avatarsType: typeof avatars,
+        avatarsObject: avatars,
+        getInitialsURLMethod: typeof avatars.getInitialsURL,
+        hasGetInitialsURL: 'getInitialsURL' in avatars
+      });
+    }
+
+    // Generate avatar URL with robust fallback mechanism
+    const generateAvatarUrl = (userName: string): string => {
+      try {
+        // Extract initials from the user's name
+        const initials = userName
+          .split(' ')
+          .filter(part => part.length > 0)
+          .map(part => part[0])
+          .join('')
+          .toUpperCase()
+          .slice(0, 2); // Limit to 2 characters
+        
+        // Use a reliable external service for avatar generation
+        const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&background=6366F1&color=ffffff&size=200&font-size=0.6&format=png`;
+        
+        if (__DEV__) {
+          logger.auth.debug('[createUser] Generated avatar URL from initials:', {
+            userName,
+            initials,
+            avatarUrl
+          });
+        }
+        
+        return avatarUrl;
+      } catch (error) {
+        logger.auth.error('[createUser] Failed to generate avatar URL from initials:', error);
+        // Ultimate fallback - use a generic avatar
+        return 'https://ui-avatars.com/api/?name=U&background=6366F1&color=ffffff&size=200';
+      }
+    };
+    
+    let avatarUrl: string;
+    
+    // Try to use Appwrite's built-in avatar service first
+    try {
+      if (__DEV__) {
+        logger.auth.debug('[createUser] Attempting to use Appwrite avatar service');
+      }
+      
+      const avatarURLObject = avatars.getInitialsURL(name);
+      avatarUrl = avatarURLObject.toString();
+      
+      if (__DEV__) {
+        logger.auth.debug('[createUser] Appwrite avatar URL generated successfully:', { avatarUrl });
+      }
+    } catch (avatarError) {
+      logger.auth.warn('[createUser] Appwrite avatar service failed, using fallback:', avatarError);
+      
+      // Use our reliable fallback avatar generation
+      avatarUrl = generateAvatarUrl(name);
+      
+      if (__DEV__) {
+        logger.auth.info('[createUser] Using fallback avatar URL:', { avatarUrl });
+      }
+    }
+    
+    // Ensure we always have a valid avatar URL
+    if (!avatarUrl || avatarUrl.trim() === '') {
+      avatarUrl = generateAvatarUrl(name);
+      logger.auth.warn('[createUser] Empty avatar URL detected, using generated fallback:', { avatarUrl });
+    }
 
     if (__DEV__) {
       logger.database.debug('[createUser] About to create user document:', {
@@ -353,19 +492,34 @@ export const createUser = async ({
       });
     }
 
+    // Prepare user document data with validation
+    const userDocumentData = {
+      accountId: newAccount.$id,
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
+      phoneNumber: phoneNumber || null, // Ensure phone number is properly handled
+      avatar: avatarUrl, // This should always be a valid URL now
+    };
+    
+    if (__DEV__) {
+      logger.database.debug('[createUser] User document data prepared:', {
+        ...userDocumentData,
+        avatar: `${avatarUrl.substring(0, 50)}...` // Log truncated URL for readability
+      });
+    }
+    
+    // Validate required fields before attempting to create the document
+    if (!userDocumentData.accountId || !userDocumentData.name || !userDocumentData.email || !userDocumentData.avatar) {
+      throw new Error('Missing required fields for user document creation');
+    }
+    
     try {
       // No need for manual binding - method is already bound
       const result = await databases.createDocument(
         getRequiredConfig('databaseId'),
         getRequiredConfig('userCollectionId'),
         ID.unique(),
-        {
-          accountId: newAccount.$id,
-          name,
-          email,
-          phoneNumber, // Include phone number in the document
-          avatar: avatarUrl,
-        }
+        userDocumentData
       );
       
       if (__DEV__) {
