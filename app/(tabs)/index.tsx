@@ -119,6 +119,10 @@ export default function HomeScreen() {
     }
   };
 
+  const handleCancelClearTransactions = () => {
+    setShowClearTransactions(false);
+  };
+
   const { colors, transitionStyle } = useTheme();
 
   return (
@@ -262,7 +266,7 @@ export default function HomeScreen() {
 
         <ClearDataModal
           visible={showClearTransactions}
-          onClose={() => setShowClearTransactions(false)}
+          onClose={handleCancelClearTransactions}
           onConfirm={handleClearTransactions}
           dataType="transactions"
           count={transactions.length}

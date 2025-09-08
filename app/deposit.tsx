@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { ArrowLeft, Clock, CheckCircle, AlertCircle } from "lucide-react-native";
+import { ArrowLeft, Clock, CheckCircle, AlertCircle, CreditCard, Plus } from "lucide-react-native";
 import React, { useState } from "react";
 import { 
   KeyboardAvoidingView,
@@ -247,27 +247,49 @@ export default function DepositScreen() {
         {step === "select-card" && (
           <View style={styles.content}>
             <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Choose card to deposit into</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.cardsScroll}
-            >
-              {cards.map((card) => (
-                <BankCard
-                  key={card.id}
-                  card={card}
-                  selected={activeCard?.id === card.id}
-                  onPress={() => handleCardSelect(card)}
+            
+            {cards.length === 0 ? (
+              <View style={styles.emptyStateContainer}>
+                <View style={[styles.emptyStateIcon, { backgroundColor: colors.card }]}>
+                  <CreditCard color={colors.textSecondary} size={48} style={{ opacity: 0.6 }} />
+                </View>
+                <Text style={[styles.emptyStateTitle, { color: colors.textPrimary }]}>No cards available</Text>
+                <Text style={[styles.emptyStateDescription, { color: colors.textSecondary }]}>
+                  You need at least one card to make a deposit. Add a card to get started.
+                </Text>
+                <CustomButton
+                  title="Add a Card"
+                  variant="primary"
+                  leftIcon={<Plus color="#fff" size={20} />}
+                  onPress={() => router.push('/(tabs)/cards')}
+                  style={styles.emptyStateCTA}
                 />
-              ))}
-            </ScrollView>
+              </View>
+            ) : (
+              <>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.cardsScroll}
+                >
+                  {cards.map((card) => (
+                    <BankCard
+                      key={card.id}
+                      card={card}
+                      selected={activeCard?.id === card.id}
+                      onPress={() => handleCardSelect(card)}
+                    />
+                  ))}
+                </ScrollView>
 
-            <CustomButton
-              title="Continue"
-              variant="primary"
-              disabled={!activeCard}
-              onPress={() => setStep("enter-details")}
-            />
+                <CustomButton
+                  title="Continue"
+                  variant="primary"
+                  disabled={!activeCard}
+                  onPress={() => setStep("enter-details")}
+                />
+              </>
+            )}
           </View>
         )}
 
@@ -949,5 +971,35 @@ const styles = StyleSheet.create({
   validationText: {
     fontSize: 12,
     fontWeight: '600',
+  },
+  emptyStateContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    paddingHorizontal: 32,
+  },
+  emptyStateIcon: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  emptyStateTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  emptyStateDescription: {
+    fontSize: 16,
+    lineHeight: 24,
+    textAlign: 'center',
+    marginBottom: 32,
+  },
+  emptyStateCTA: {
+    minWidth: 140,
   },
 });

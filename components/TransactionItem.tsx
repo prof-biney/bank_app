@@ -4,10 +4,11 @@ import {
   Banknote,
   CreditCard,
 } from "lucide-react-native";
-import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import React, { useState } from "react";
+import { StyleSheet, Text, View, TouchableOpacity } from "react-native";
 import { Transaction } from "@/types/index";
 import { useTheme } from "@/context/ThemeContext";
+import { TransactionDetailModal } from "@/components/TransactionDetailModal";
 
 interface TransactionItemProps {
   transaction: Transaction;
@@ -15,6 +16,7 @@ interface TransactionItemProps {
 
 export function TransactionItem({ transaction }: TransactionItemProps) {
   const { colors } = useTheme();
+  const [showDetailModal, setShowDetailModal] = useState(false);
   const getTransactionIcon = () => {
     switch (transaction.type) {
       case "deposit":
@@ -43,41 +45,61 @@ export function TransactionItem({ transaction }: TransactionItemProps) {
   };
 
   return (
-    <View style={[styles.container, { 
-      backgroundColor: colors.card,
-      shadowColor: colors.textPrimary,
-    }]}>
-      <View style={[styles.iconContainer, { backgroundColor: colors.background }]}>{getTransactionIcon()}</View>
+    <>
+      <TouchableOpacity 
+        style={[styles.container, { 
+          backgroundColor: colors.card,
+          shadowColor: colors.textPrimary,
+        }]}
+        onPress={() => setShowDetailModal(true)}
+        activeOpacity={0.7}
+      >
+        <View style={[styles.iconContainer, { backgroundColor: colors.background }]}>{getTransactionIcon()}</View>
 
-      <View style={styles.details}>
-        <Text 
-          style={[styles.description, { color: colors.textPrimary }]}
-          numberOfLines={1}
-          ellipsizeMode="tail"
-          adjustsFontSizeToFit
-          minimumFontScale={0.7}
-        >
-          {transaction.description}
-        </Text>
-        <Text 
-          style={[styles.category, { color: colors.textSecondary }]}
-          numberOfLines={1}
-          ellipsizeMode="tail"
-          adjustsFontSizeToFit
-          minimumFontScale={0.8}
-        >
-          {transaction.category}
-        </Text>
-      </View>
+        <View style={styles.details}>
+          <Text 
+            style={[styles.description, { color: colors.textPrimary }]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            adjustsFontSizeToFit
+            minimumFontScale={0.7}
+          >
+            {transaction.description}
+          </Text>
+          <Text 
+            style={[styles.category, { color: colors.textSecondary }]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
+          >
+            {transaction.category}
+          </Text>
+        </View>
 
-      <View style={styles.amountContainer}>
-        <Text style={[styles.amount, { color: getAmountColor() }]}>
-          {transaction.amount > 0 ? "+" : ""}GHS 
-          {Math.abs(transaction.amount).toFixed(2)}
-        </Text>
-        <Text style={[styles.date, { color: colors.textSecondary }]}>{formatDate(transaction.date)}</Text>
-      </View>
-    </View>
+        <View style={styles.amountContainer}>
+          <Text style={[styles.amount, { color: getAmountColor() }]}>
+            {transaction.amount > 0 ? "+" : ""}GHS 
+            {Math.abs(transaction.amount).toFixed(2)}
+          </Text>
+          <Text style={[styles.date, { color: colors.textSecondary }]}>{formatDate(transaction.date)}</Text>
+        </View>
+      </TouchableOpacity>
+
+      <TransactionDetailModal
+        visible={showDetailModal}
+        transaction={transaction}
+        onClose={() => setShowDetailModal(false)}
+        onTransactionUpdated={() => {
+          // Transaction updated - the AppContext will handle state updates
+          console.log('Transaction updated:', transaction.id);
+        }}
+        onTransactionDeleted={() => {
+          // Transaction deleted - the AppContext will handle state updates
+          console.log('Transaction deleted:', transaction.id);
+        }}
+      />
+    </>
   );
 }
 
