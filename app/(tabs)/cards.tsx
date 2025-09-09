@@ -19,6 +19,7 @@ import { useTheme } from "@/context/ThemeContext";
 import AddCardModal from "@/components/modals/AddCardModal";
 import ConfirmDialog from "@/components/modals/ConfirmDialog";
 import CustomButton from "@/components/CustomButton";
+import { LoadingScreen } from "@/components/LoadingScreen";
 
 function AddCardButton() {
   const { showAlert } = useAlert();
@@ -212,10 +213,13 @@ export default function CardsScreen() {
           alwaysBounceVertical={false}
         >
           {isLoadingCards && cards.length === 0 ? (
-            <View style={styles.centerContent}>
-              <ActivityIndicator size="large" color={colors.tintPrimary} />
-              <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading cards...</Text>
-            </View>
+            <LoadingScreen 
+              variant="card-creation"
+              message="Loading your cards"
+              subtitle="Retrieving your payment cards from secure storage..."
+              action="card data synchronization"
+              showIcon={true}
+            />
           ) : cards.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>No cards yet</Text>
