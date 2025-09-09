@@ -18,7 +18,7 @@ import {
 } from "@/lib/appwrite";
 import { User } from "@/types";
 import { create } from "zustand";
-import { logger } from "@/utils/logger";
+import { logger } from "@/lib/logger";
 
 /**
  * Authentication State Interface

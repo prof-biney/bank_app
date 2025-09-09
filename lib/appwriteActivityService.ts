@@ -1,4 +1,4 @@
-import { logger } from '@/utils/logger';
+import { logger } from '@/lib/logger';
 import { ID, Query } from 'react-native-appwrite';
 import { databases, appwriteConfig } from './appwrite';
 import { ActivityEvent } from '@/types/activity';

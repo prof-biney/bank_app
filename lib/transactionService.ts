@@ -1,6 +1,6 @@
 import { Transaction } from '@/types';
 import { StorageManager } from './storageService';
-import { logger } from '@/utils/logger';
+import { logger } from '@/lib/logger';
 
 /**
  * Transaction Service

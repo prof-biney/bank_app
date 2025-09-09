@@ -2,7 +2,7 @@ import { ID, Query } from 'react-native-appwrite';
 import { databases, appwriteConfig, logCardEvent, ensureAuthenticatedClient } from './appwrite';
 import { Card } from '@/types';
 import useAuthStore from '@/store/auth.store';
-import { logger } from '@/utils/logger';
+import { logger } from '@/lib/logger';
 
 /**
  * Appwrite Card Database Service

@@ -1,4 +1,4 @@
-import { logger } from '@/utils/logger';
+import { logger } from '@/lib/logger';
 import { router } from "expo-router";
 import { ArrowLeft, Clock, CheckCircle, AlertCircle, CreditCard, Plus } from "lucide-react-native";
 import React, { useState } from "react";

@@ -1,4 +1,4 @@
-import { logger } from '@/utils/logger';
+import { logger } from '@/lib/logger';
 import { Link, router } from "expo-router";
 import React, { useEffect, useState, useRef } from "react";
 import {

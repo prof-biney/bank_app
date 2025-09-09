@@ -1,4 +1,4 @@
-import { logger } from '@/utils/logger';
+import { logger } from '@/lib/logger';
 /**
  * Enhanced Notification Loading Service
  * 

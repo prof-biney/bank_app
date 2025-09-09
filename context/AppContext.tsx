@@ -14,7 +14,7 @@ import {
 } from "@/lib/transactionService";
 import { StorageManager } from "@/lib/storageService";
 import { initNotificationService } from "@/lib/notificationService";
-import { logger } from "@/utils/logger";
+import { logger } from "@/lib/logger";
 
 // Appwrite database services
 import {
@@ -197,8 +197,33 @@ const pushActivity: AppContextType["pushActivity"] = (evt) => {
   };
 
 const addCard: AppContextType["addCard"] = async (cardData) => {
+    logger.info('CARDS', 'Starting card creation flow', {
+      hasFingerprint: Boolean(cardData.token),
+      cardHolderName: cardData.cardHolderName,
+      last4: cardData.cardNumber.slice(-4)
+    });
+
+    // Check for potential duplicate by card number (last 4 digits)
+    const last4 = cardData.cardNumber.replace(/\D/g, '').slice(-4);
+    const existingCard = cards.find(card => {
+      const cardLast4 = card.cardNumber.replace(/[^\d]/g, '').slice(-4);
+      return cardLast4 === last4 && card.cardHolderName === cardData.cardHolderName;
+    });
+    
+    if (existingCard) {
+      logger.warn('CARDS', 'Potential duplicate card detected', {
+        existingCardId: existingCard.id,
+        newCardLast4: last4,
+        holderName: cardData.cardHolderName
+      });
+      // Don't create duplicate - just return early
+      return;
+    }
+
+    // Generate a unique temporary ID using card details to prevent duplicates
+    const tempId = `temp_${cardData.cardNumber.slice(-4)}_${cardData.cardHolderName.replace(/\s+/g, '_')}_${Date.now()}`;
     const newCard: Card = {
-      id: Date.now().toString(),
+      id: tempId,
       userId: cardData.userId,
       cardNumber: cardData.cardNumber,
       cardHolderName: cardData.cardHolderName,
@@ -217,53 +242,81 @@ const addCard: AppContextType["addCard"] = async (cardData) => {
 
     // Activity
     const activityEvent = {
-      id: `card.added.${newCard.id}`,
+      id: `card.added.${tempId}`,
       category: 'card' as const,
       type: 'card.added',
       title: 'Card added',
       subtitle: `${newCard.cardHolderName} • ${newCard.cardNumber}`,
       timestamp: new Date().toISOString(),
-      cardId: newCard.id,
+      cardId: tempId,
       tags: ['card','added'],
     };
     pushActivity(activityEvent);
 
-    // Persist to Appwrite in background
+    // Persist to Appwrite in background with improved error handling
     const persistCardInBackground = async () => {
       try {
-        logger.info('CARDS', 'Persisting card to Appwrite', { cardId: newCard.id });
+        logger.info('CARDS', 'Persisting card to Appwrite', { 
+          tempId, 
+          fingerprint: newCard.token ? 'present' : 'null' 
+        });
+        
         const appwriteCard = await createAppwriteCard(newCard);
-        logger.info('CARDS', 'Card persisted successfully', { appwriteCardId: appwriteCard.id });
+        logger.info('CARDS', 'Card persisted successfully', { 
+          appwriteCardId: appwriteCard.id,
+          fingerprint: appwriteCard.token ? 'present' : 'null'
+        });
         
-        // Update local state with Appwrite document ID if different
-        if (appwriteCard.id !== newCard.id) {
-          setCards(prev => prev.map(card => 
-            card.id === newCard.id 
-              ? { ...card, id: appwriteCard.id }
-              : card
-          ));
-          setActiveCard(prev => 
-            prev?.id === newCard.id 
-              ? { ...prev, id: appwriteCard.id }
-              : prev
-          );
-        }
+        // Replace temporary card with real card from Appwrite
+        setCards(prev => prev.map(card => 
+          card.id === tempId 
+            ? { ...appwriteCard } // Use the complete card data from Appwrite
+            : card
+        ));
         
-        // Create activity event in Appwrite
+        setActiveCard(prev => 
+          prev?.id === tempId 
+            ? { ...appwriteCard }
+            : prev
+        );
+        
+        // Create activity event in Appwrite with real card ID
         await createAppwriteActivityEvent({
           ...activityEvent,
           id: `card.added.${appwriteCard.id}`,
           cardId: appwriteCard.id,
         });
         
+        logger.info('CARDS', 'Card creation flow completed successfully', {
+          tempId,
+          finalId: appwriteCard.id,
+          hasFingerprint: Boolean(appwriteCard.token)
+        });
+        
       } catch (error) {
-        logger.warn('CARDS', 'Failed to persist to Appwrite', error);
-        // Could implement retry logic or queue for later sync
+        logger.error('CARDS', 'Failed to persist card to Appwrite', {
+          tempId,
+          error: error instanceof Error ? error.message : error
+        });
+        
+        // Remove the temporary card on failure
+        setCards(prev => prev.filter(card => card.id !== tempId));
+        if (activeCard?.id === tempId) {
+          setActiveCard(null);
+        }
+        
+        // Could implement retry logic or show user feedback
+        throw error; // Re-throw so calling code can handle it
       }
     };
     
-    // Fire and forget - don't block UI
-    persistCardInBackground();
+    // Execute persistence - don't use fire-and-forget to handle errors
+    try {
+      await persistCardInBackground();
+    } catch (error) {
+      logger.error('CARDS', 'Card creation failed', error);
+      // Error is already handled above by removing temporary card
+    }
   };
 
 const removeCard: AppContextType["removeCard"] = async (cardId) => {

@@ -1,4 +1,4 @@
-import { logger } from '@/utils/logger';
+import { logger } from '@/lib/logger';
 import { Bell, CreditCard, TrendingUp, X, Mail, MailOpen, Trash2, Eraser, Archive, ArchiveRestore } from "lucide-react-native";
 import ConfirmDialog from '@/components/modals/ConfirmDialog';
 import React from "react";

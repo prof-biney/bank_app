@@ -1,4 +1,4 @@
-import { logger } from '@/utils/logger';
+import { logger } from '@/lib/logger';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { CreditCard, Shield, Smartphone } from "lucide-react-native";

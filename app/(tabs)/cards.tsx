@@ -15,7 +15,7 @@ import { BankCard } from "@/components/BankCard";
 import { useApp } from "@/context/AppContext";
 import useAuthStore from "@/store/auth.store";
 import { useTheme } from "@/context/ThemeContext";
-import { logger } from "@/utils/logger";
+import { logger } from "@/lib/logger";
 
 import AddCardModal from "@/components/modals/AddCardModal";
 import ConfirmDialog from "@/components/modals/ConfirmDialog";

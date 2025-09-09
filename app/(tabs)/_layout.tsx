@@ -1,4 +1,4 @@
-import { logger } from '@/utils/logger';
+import { logger } from '@/lib/logger';
 import useAuthStore from "@/store/auth.store";
 import { Redirect, Tabs } from "expo-router";
 import { Activity, CreditCard, House, User, Wallet } from "lucide-react-native";

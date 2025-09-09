@@ -1,4 +1,4 @@
-import { logger } from '@/utils/logger';
+import { logger } from '@/lib/logger';
 import useAuthStore from "@/store/auth.store";
 import { router } from "expo-router";
 import {

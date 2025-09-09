@@ -1,4 +1,4 @@
-import { logger } from '@/utils/logger';
+import { logger } from '@/lib/logger';
 import React, { createContext, useContext, useMemo, useState, useEffect, useRef } from 'react';
 import { ColorSchemeName, useColorScheme, Appearance, Animated, ViewStyle } from 'react-native';
 import { withAlpha } from '@/theme/color-utils';

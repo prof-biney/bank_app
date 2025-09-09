@@ -1,4 +1,4 @@
-import { logger } from '@/utils/logger';
+import { logger } from '@/lib/logger';
 import React, { useEffect } from 'react';
 import { useAlert } from '@/context/AlertContext';
 import { initConnectionMonitoring } from '@/lib/connectionService';

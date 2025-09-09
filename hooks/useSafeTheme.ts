@@ -1,4 +1,4 @@
-import { logger } from '@/utils/logger';
+import { logger } from '@/lib/logger';
 import { useTheme, type Theme } from '@/context/ThemeContext';
 
 // Fallback theme for when ThemeContext is not available

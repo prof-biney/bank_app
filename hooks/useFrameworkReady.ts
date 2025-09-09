@@ -1,4 +1,4 @@
-import { logger } from '@/utils/logger';
+import { logger } from '@/lib/logger';
 import { useEffect } from "react";
 
 // React Native doesn't have window object, so we use global instead

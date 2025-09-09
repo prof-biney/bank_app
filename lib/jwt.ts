@@ -1,5 +1,5 @@
 import { account } from './appwrite';
-import { logger } from '@/utils/logger';
+import { logger } from '@/lib/logger';
 
 declare const global: any;
 

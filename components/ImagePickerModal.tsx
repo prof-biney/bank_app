@@ -1,4 +1,4 @@
-import { logger } from '@/utils/logger';
+import { logger } from '@/lib/logger';
 import { useTheme } from '@/context/ThemeContext';
 import {
   pickImageFromCamera,
