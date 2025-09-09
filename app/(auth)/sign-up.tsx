@@ -35,6 +35,7 @@ import {
   ConfirmPasswordValidationState
 } from "@/components/form";
 import { withAlpha } from "@/theme/color-utils";
+import { LoadingScreen } from "@/components/LoadingScreen";
 
 // Get all available countries and create a comprehensive country data array
 // This uses the getCountries function from libphonenumber-js to get all country codes
@@ -850,6 +851,18 @@ export default function SignUpScreen() {
   };
 
   const { width } = Dimensions.get('window');
+
+  // Show loading screen during account creation process
+  if (isSubmitting) {
+    return (
+      <LoadingScreen 
+        variant="auth"
+        message="Creating your account"
+        subtitle="Setting up your banking profile and security features..."
+        action="account creation"
+      />
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>

@@ -26,14 +26,10 @@ import {
 } from "@/components/form";
 import { useTheme } from "@/context/ThemeContext";
 import { chooseReadableText, withAlpha } from "@/theme/color-utils";
+import { LoadingScreen } from "@/components/LoadingScreen";
 
 
 export default function SignInScreen() {
-  // const [email, setEmail] = useState("");
-  // const [password, setPassword] = useState("");
-  // const [isLoading, setIsLoading] = useState(false);
-  // const { signIn } = useAuth();
-
   const { login } = useAuthStore();
   const { showAlert } = useAlert();
 
@@ -176,25 +172,21 @@ export default function SignInScreen() {
     }
   };
 
-  // const handleSignIn = async () => {
-  //   if (!email || !password) {
-  //     Alert.alert("Error", "Please fill in all fields");
-  //     return;
-  //   }
-
-  //   setIsLoading(true);
-  //   const success = await signIn(email, password);
-  //   setIsLoading(false);
-
-  //   if (success) {
-  //     router.replace("/(tabs)");
-  //   } else {
-  //     Alert.alert("Error", "Invalid credentials");
-  //   }
-  // };
 
   const { colors, transitionStyle } = useTheme();
   const { width } = Dimensions.get('window');
+
+  // Show loading screen during authentication process
+  if (isSubmitting) {
+    return (
+      <LoadingScreen 
+        variant="auth"
+        message="Signing you in"
+        subtitle="Verifying your credentials and preparing your dashboard..."
+        action="sign-in process"
+      />
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
