@@ -14,7 +14,7 @@ import {
 } from "@/lib/transactionService";
 import { StorageManager } from "@/lib/storageService";
 import { initNotificationService } from "@/lib/notificationService";
-import { logger } from "@/lib/logger";
+import { logger } from "@/utils/logger";
 
 // Appwrite database services
 import {
@@ -231,9 +231,9 @@ const addCard: AppContextType["addCard"] = async (cardData) => {
     // Persist to Appwrite in background
     const persistCardInBackground = async () => {
       try {
-        console.log('[addCard] Persisting card to Appwrite:', newCard.id);
+        logger.info('CARDS', 'Persisting card to Appwrite', { cardId: newCard.id });
         const appwriteCard = await createAppwriteCard(newCard);
-        console.log('[addCard] Card persisted successfully:', appwriteCard.id);
+        logger.info('CARDS', 'Card persisted successfully', { appwriteCardId: appwriteCard.id });
         
         // Update local state with Appwrite document ID if different
         if (appwriteCard.id !== newCard.id) {
@@ -257,7 +257,7 @@ const addCard: AppContextType["addCard"] = async (cardData) => {
         });
         
       } catch (error) {
-        console.warn('[addCard] Failed to persist to Appwrite:', error);
+        logger.warn('CARDS', 'Failed to persist to Appwrite', error);
         // Could implement retry logic or queue for later sync
       }
     };
@@ -289,15 +289,15 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
     // Persist removal to Appwrite in background
     const persistCardRemovalInBackground = async () => {
       try {
-        console.log('[removeCard] Removing card from Appwrite:', cardId);
+        logger.info('CARDS', 'Removing card from Appwrite', { cardId });
         await deleteAppwriteCard(cardId);
-        console.log('[removeCard] Card removed successfully from Appwrite');
+        logger.info('CARDS', 'Card removed successfully from Appwrite');
         
         // Create activity event in Appwrite
         await createAppwriteActivityEvent(activityEvent);
         
       } catch (error) {
-        console.warn('[removeCard] Failed to remove from Appwrite:', error);
+        logger.warn('CARDS', 'Failed to remove from Appwrite', error);
         // Could revert local state or queue for retry
         // For now, we'll keep the optimistic update
       }
@@ -321,9 +321,9 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
     // Persist balance update to Appwrite in background
     const persistBalanceUpdateInBackground = async () => {
       try {
-        console.log('[updateCardBalance] Updating card balance in Appwrite:', { cardId, newBalance });
+        logger.info('CARDS', 'Updating card balance in Appwrite', { cardId, newBalance });
         await updateAppwriteCardBalance(cardId, newBalance);
-        console.log('[updateCardBalance] Card balance updated successfully in Appwrite');
+        logger.info('CARDS', 'Card balance updated successfully in Appwrite');
         
         // Create activity event for balance update
         const activityEvent = {
@@ -343,7 +343,7 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
         await createAppwriteActivityEvent(activityEvent);
         
       } catch (error) {
-        console.warn('[updateCardBalance] Failed to update balance in Appwrite:', error);
+        logger.warn('CARDS', 'Failed to update balance in Appwrite', error);
         // Could implement retry logic or queue for later sync
       }
     };
@@ -353,7 +353,7 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
   };
 
   const makeTransfer: AppContextType["makeTransfer"] = async (cardId, amount, recipientCardNumber, description) => {
-    console.log('[MakeTransfer] Function called with:', { 
+    logger.info('TRANSFERS', 'Function called', { 
       cardId, 
       amount, 
       recipientCardNumber: recipientCardNumber?.substring(0, 10) + '...', 
@@ -363,7 +363,7 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
     // Validate user session is active before initiating transfers
     const { isAuthenticated, user } = useAuthStore.getState();
     if (!isAuthenticated || !user) {
-      console.error('[MakeTransfer] User not authenticated');
+      logger.error('TRANSFERS', 'User not authenticated');
       return {
         success: false,
         error: 'User not authenticated. Please sign in again.'
@@ -373,7 +373,7 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
     // Get source card details
     const sourceCard = cards.find(card => card.id === cardId);
     if (!sourceCard) {
-      console.error('[MakeTransfer] Source card not found');
+      logger.error('TRANSFERS', 'Source card not found');
       return {
         success: false,
         error: 'Source card not found. Please try again.'
@@ -408,7 +408,7 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
     
     // Handle internal transfer (between user's own cards) - local only
     if (recipientCard && sourceCard) {
-      console.log('[MakeTransfer] Internal transfer detected - handling locally');
+      logger.info('TRANSFERS', 'Internal transfer detected - handling locally');
       
       try {
         const newSourceBalance = sourceCard.balance - amount;
@@ -444,7 +444,7 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
         const { pushTransferNotification } = require('../lib/notificationService');
         pushTransferNotification('received', amount, sourceCard.cardHolderName, newRecipientBalance);
         
-        console.log('[MakeTransfer] Internal transfer completed successfully');
+        logger.info('TRANSFERS', 'Internal transfer completed successfully');
         
         return {
           success: true,
@@ -452,7 +452,7 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
           recipientNewBalance: newRecipientBalance
         };
       } catch (error) {
-        console.error('[MakeTransfer] Internal transfer error:', error);
+        logger.error('TRANSFERS', 'Internal transfer error', error);
         return {
           success: false,
           error: error instanceof Error ? error.message : 'Internal transfer failed'
@@ -461,10 +461,10 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
     }
     
     // Handle external transfer (to external card/recipient)
-    console.log('[MakeTransfer] Attempting external transfer');
+    logger.info('TRANSFERS', 'Attempting external transfer');
     
     if (!sourceCard) {
-      console.error('[MakeTransfer] Source card not found');
+      logger.error('TRANSFERS', 'Source card not found');
       return {
         success: false,
         error: 'Source card not found. Please try again.'
@@ -486,25 +486,25 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
       
       const apiBase = getApiBase();
       if (!apiBase || apiBase.includes('undefined') || apiBase === 'undefined') {
-        console.log('[MakeTransfer] API base URL not configured, using local simulation');
+        logger.warn('TRANSFERS', 'API base URL not configured, using local simulation');
         throw new Error('Server not configured');
       }
       
       const url = `${apiBase}/v1/transfers`;
       
-      console.log('[MakeTransfer] API Base:', apiBase);
+      logger.info('TRANSFERS', 'API Base', { apiBase });
       
       // Use improved JWT handling with auto-refresh
       let jwt = await getValidJWTWithAutoRefresh();
       if (!jwt) {
-        console.log('[MakeTransfer] No JWT available, attempting refresh with retry');
+        logger.warn('TRANSFERS', 'No JWT available, attempting refresh with retry');
         jwt = await refreshAppwriteJWTWithRetry();
         if (!jwt) {
-          console.warn('[MakeTransfer] Could not obtain JWT after retries, using local simulation');
+          logger.warn('TRANSFERS', 'Could not obtain JWT after retries, using local simulation');
           throw new Error('Authentication failed');
         }
       }
-      console.log('[MakeTransfer] JWT obtained:', !!jwt);
+      logger.info('TRANSFERS', 'JWT obtained', { hasJwt: !!jwt });
       
       const requestBody = {
         cardId,
@@ -515,7 +515,7 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
         description: description || `Transfer To: ${recipientCardNumber}`
       };
       
-      console.log('[MakeTransfer] Request details:', {
+      logger.info('TRANSFERS', 'Request details', {
         url,
         cardId,
         amount,
@@ -535,17 +535,17 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
       
       let res = await makeRequest(jwt);
       
-      console.log('[MakeTransfer] Response status:', res.status);
+      logger.info('TRANSFERS', 'Response status', { status: res.status });
       
       // If we get a 401, try refreshing the token once
       if (res.status === 401 && jwt) {
-        console.log('[MakeTransfer] Got 401, refreshing JWT and retrying...');
+        logger.warn('TRANSFERS', 'Got 401, refreshing JWT and retrying...');
         jwt = await refreshAppwriteJWT();
         if (jwt) {
           res = await makeRequest(jwt);
-          console.log('[MakeTransfer] Retry response status:', res.status);
+          logger.info('TRANSFERS', 'Retry response status', { status: res.status });
         } else {
-          console.error('[MakeTransfer] Failed to refresh JWT after 401');
+          logger.error('TRANSFERS', 'Failed to refresh JWT after 401');
           return {
             success: false,
             error: 'Authentication failed. Please sign in again.'
@@ -558,7 +558,7 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
         const data = await res.json();
         const newBalance = data.newBalance;
         
-        console.log('[MakeTransfer] Server transfer successful:', { newBalance });
+        logger.info('TRANSFERS', 'Server transfer successful', { newBalance });
         
         // Update local card balance
         updateCardBalance(cardId, newBalance);
@@ -581,7 +581,7 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
       } else {
         // Server transfer failed, fall back to local simulation
         const responseText = await res.text().catch(() => 'Unknown error');
-        console.warn('[MakeTransfer] Server transfer failed, falling back to local simulation:', {
+        logger.warn('TRANSFERS', 'Server transfer failed, falling back to local simulation', {
           status: res.status,
           statusText: res.statusText,
           responseText
@@ -590,13 +590,13 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
         // Fall through to local simulation below
       }
     } catch (error) {
-      console.warn('[MakeTransfer] Server transfer error, falling back to local simulation:', error);
+      logger.warn('TRANSFERS', 'Server transfer error, falling back to local simulation', error);
       // Fall through to local simulation below
     }
     
     // Local simulation fallback
     try {
-      console.log('[MakeTransfer] Using local simulation for external transfer');
+      logger.info('TRANSFERS', 'Using local simulation for external transfer');
       const newSourceBalance = sourceCard.balance - amount;
       
       // Update source card balance locally
@@ -613,14 +613,14 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
         status: 'completed'
       });
       
-      console.log('[MakeTransfer] External transfer simulated locally');
+      logger.info('TRANSFERS', 'External transfer simulated locally');
       
       return {
         success: true,
         newBalance: newSourceBalance
       };
     } catch (error) {
-      console.error('[MakeTransfer] Local simulation error:', error);
+      logger.error('TRANSFERS', 'Local simulation error', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'External transfer failed'
@@ -629,12 +629,12 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
   };
 
   const makeDeposit: AppContextType["makeDeposit"] = async (params) => {
-    console.log('[MakeDeposit] Function called with:', params);
+    logger.info('DEPOSITS', 'Function called', params);
     
     // Validate user session is active
     const { isAuthenticated, user } = useAuthStore.getState();
     if (!isAuthenticated || !user) {
-      console.error('[MakeDeposit] User not authenticated');
+      logger.error('DEPOSITS', 'User not authenticated');
       return {
         success: false,
         error: 'User not authenticated. Please sign in again.'
@@ -649,7 +649,7 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
         
         const apiBase = getApiBase();
         if (!apiBase || apiBase.includes('undefined') || apiBase === 'undefined') {
-          console.log('[MakeDeposit] API base URL not configured');
+          logger.warn('DEPOSITS', 'API base URL not configured');
           return {
             success: false,
             error: 'Server not configured. Please try again later.'
@@ -661,10 +661,10 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
         // Use improved JWT handling with auto-refresh
         let jwt = await getValidJWTWithAutoRefresh();
         if (!jwt) {
-          console.log('[MakeDeposit] No JWT available, attempting refresh with retry');
+          logger.warn('DEPOSITS', 'No JWT available, attempting refresh with retry');
           jwt = await refreshAppwriteJWTWithRetry();
           if (!jwt) {
-            console.warn('[MakeDeposit] Could not obtain JWT after retries');
+            logger.warn('DEPOSITS', 'Could not obtain JWT after retries');
             return {
               success: false,
               error: 'Authentication failed. Please sign in again.'
@@ -672,7 +672,7 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
           }
         }
         
-        console.log('[MakeDeposit] Confirming deposit:', params.depositId);
+        logger.info('DEPOSITS', 'Confirming deposit', { depositId: params.depositId });
         
         const makeRequest = async (token: string | undefined) => {
           const headers: any = { 'Content-Type': 'application/json' };
@@ -688,7 +688,7 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
         
         // Handle 401 by refreshing token once
         if (res.status === 401 && jwt) {
-          console.log('[MakeDeposit] Got 401, refreshing JWT and retrying...');
+          logger.warn('DEPOSITS', 'Got 401, refreshing JWT and retrying...');
           const { refreshAppwriteJWT } = require('../lib/jwt');
           jwt = await refreshAppwriteJWT();
           if (jwt) {

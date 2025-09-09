@@ -18,6 +18,7 @@ import {
 } from "@/lib/appwrite";
 import { User } from "@/types";
 import { create } from "zustand";
+import { logger } from "@/utils/logger";
 
 /**
  * Authentication State Interface
@@ -125,7 +126,7 @@ const useAuthStore = create<AuthState>((set) => ({
       if (session) {
         const user = await getCurrentUser();
 
-        if (!user) console.log("No user found");
+        if (!user) logger.warn('AUTH', 'No user found');
 
         if (user) {
           set({
@@ -161,7 +162,7 @@ const useAuthStore = create<AuthState>((set) => ({
         (global as any).__APPWRITE_JWT__ = undefined;
       }
     } catch (error) {
-      console.log("fetchAuthenticatedUser error", error);
+      logger.error('AUTH', 'fetchAuthenticatedUser error', error);
       // Set authenticated state to false on error
       set({
         isAuthenticated: false,
@@ -184,8 +185,8 @@ const useAuthStore = create<AuthState>((set) => ({
     set({ isLoading: true });
     try {
       if (__DEV__) {
-        console.log('[Auth Store] Starting login process for:', email);
-        console.log('[Auth Store] SignIn function debug:', {
+        logger.info('AUTH', 'Starting login process', { email });
+        logger.debug('AUTH', 'SignIn function debug', {
           signInType: typeof signIn,
           signInExists: signIn !== undefined,
           signInFunction: signIn.toString().substring(0, 100)
@@ -195,24 +196,24 @@ const useAuthStore = create<AuthState>((set) => ({
       const session = await signIn(email, password);
       
       if (__DEV__) {
-        console.log('[Auth Store] Session created:', { sessionId: session.$id, userId: session.userId });
+        logger.info('AUTH', 'Session created', { sessionId: session.$id, userId: session.userId });
       }
 
       if (session) {
         // If login is successful, fetch the user using getCurrentUser which handles the database lookup
         if (__DEV__) {
-          console.log('[Auth Store] Fetching user data from database');
+          logger.info('AUTH', 'Fetching user data from database');
         }
         
         const user = await getCurrentUser();
 
         if (!user) {
-          console.error('[Auth Store] No user found in database for authenticated session');
+          logger.error('AUTH', 'No user found in database for authenticated session');
           throw new Error('User not found in database. Your account may not be properly configured.');
         }
 
         if (__DEV__) {
-          console.log('[Auth Store] User data retrieved:', { userId: user.$id, email: user.email });
+          logger.info('AUTH', 'User data retrieved', { userId: user.$id, email: user.email });
         }
         
         set({
@@ -223,14 +224,14 @@ const useAuthStore = create<AuthState>((set) => ({
         // Obtain and cache Appwrite JWT for server API calls
         try {
           if (__DEV__) {
-            console.log('[Auth Store] Creating JWT token for server API calls');
+            logger.info('AUTH', 'Creating JWT token for server API calls');
           }
           
           const jwt = await account.createJWT();
           (global as any).__APPWRITE_JWT__ = jwt?.jwt;
           
           if (__DEV__) {
-            console.log('[Auth Store] JWT created successfully');
+            logger.info('AUTH', 'JWT created successfully');
           }
           
           // Seed demo transactions on login (idempotent if transactions exist)
@@ -246,24 +247,24 @@ const useAuthStore = create<AuthState>((set) => ({
             }
           } catch {}
         } catch (jwtError) {
-          console.error('[Auth Store] JWT creation failed:', jwtError);
+          logger.error('AUTH', 'JWT creation failed', jwtError);
           
           // Check if this is a scope error
           if (jwtError instanceof Error && jwtError.message.includes('missing scope')) {
-            console.error('[Auth Store] Missing scope error detected - this indicates authentication configuration issues');
-            console.error('[Auth Store] Please verify Appwrite project settings and user permissions');
+            logger.error('AUTH', 'Missing scope error detected - this indicates authentication configuration issues');
+            logger.error('AUTH', 'Please verify Appwrite project settings and user permissions');
           }
           
           (global as any).__APPWRITE_JWT__ = undefined;
           // Don't throw here - the user is authenticated, just JWT creation failed
-          console.warn('[Auth Store] Continuing without JWT token');
+          logger.warn('AUTH', 'Continuing without JWT token');
         }
       } else {
-        console.error('[Auth Store] No session returned from signIn');
+        logger.error('AUTH', 'No session returned from signIn');
         throw new Error('Failed to create authentication session');
       }
     } catch (error: any) {
-      console.error('[Auth Store] Login error:', error);
+      logger.error('AUTH', 'Login error', error);
       
       // Provide more specific error messages
       let errorMessage = 'Authentication failed';
@@ -304,14 +305,14 @@ const useAuthStore = create<AuthState>((set) => ({
     set({ isLoading: true });
     try {
       if (__DEV__) {
-        console.log('[Auth Store] Starting logout with token expiration');
+        logger.info('AUTH', 'Starting logout with token expiration');
       }
       
       // signOut now handles complete token cleanup including expiration
       await signOut();
       
       if (__DEV__) {
-        console.log('[Auth Store] Appwrite logout completed, clearing local state');
+        logger.info('AUTH', 'Appwrite logout completed, clearing local state');
       }
       
       set({
@@ -320,15 +321,15 @@ const useAuthStore = create<AuthState>((set) => ({
       });
       
       if (__DEV__) {
-        console.log('[Auth Store] Logout completed successfully');
+        logger.info('AUTH', 'Logout completed successfully');
       }
     } catch (error) {
-      console.error('[Auth Store] Logout error:', error);
+      logger.error('AUTH', 'Logout error', error);
       
       // Even if logout fails, perform emergency cleanup
       try {
         if (__DEV__) {
-          console.log('[Auth Store] Performing emergency token cleanup');
+          logger.info('AUTH', 'Performing emergency token cleanup');
         }
         
         // Import and use token manager for emergency cleanup
@@ -337,10 +338,10 @@ const useAuthStore = create<AuthState>((set) => ({
         clearTokenData();
         
         if (__DEV__) {
-          console.log('[Auth Store] Emergency cleanup completed');
+          logger.info('AUTH', 'Emergency cleanup completed');
         }
       } catch (cleanupError) {
-        console.error('[Auth Store] Emergency cleanup failed:', cleanupError);
+        logger.error('AUTH', 'Emergency cleanup failed', cleanupError);
         // Force clear the global JWT as last resort
         (global as any).__APPWRITE_JWT__ = undefined;
       }
@@ -378,7 +379,7 @@ const useAuthStore = create<AuthState>((set) => ({
         try {
           await deleteProfilePicture(user.avatarFileId);
         } catch (error) {
-          console.log('Failed to delete old profile picture:', error);
+          logger.warn('AUTH', 'Failed to delete old profile picture', error);
           // Don't throw here, continue with upload
         }
       }
@@ -398,9 +399,9 @@ const useAuthStore = create<AuthState>((set) => ({
         } as User,
       });
       
-      console.log('Profile picture updated successfully');
+      logger.info('AUTH', 'Profile picture updated successfully');
     } catch (error) {
-      console.error('Update profile picture error:', error);
+      logger.error('AUTH', 'Update profile picture error', error);
       throw error;
     } finally {
       set({ isLoading: false });

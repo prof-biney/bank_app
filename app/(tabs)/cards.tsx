@@ -15,6 +15,7 @@ import { BankCard } from "@/components/BankCard";
 import { useApp } from "@/context/AppContext";
 import useAuthStore from "@/store/auth.store";
 import { useTheme } from "@/context/ThemeContext";
+import { logger } from "@/utils/logger";
 
 import AddCardModal from "@/components/modals/AddCardModal";
 import ConfirmDialog from "@/components/modals/ConfirmDialog";
@@ -32,9 +33,9 @@ function AddCardButton() {
   try {
     const apiBase = getApiBase();
     cardsUrl = `${apiBase}/v1/cards`;
-    console.log('[AddCard] API Configuration:', { apiBase, cardsUrl });
+        logger.info('CARDS', 'API Configuration:', { apiBase, cardsUrl });
   } catch (error) {
-    console.error('[AddCard] API Configuration Error:', error);
+      logger.error('CARDS', 'API Configuration Error:', error);
     throw error;
   }
 
@@ -50,7 +51,7 @@ function AddCardButton() {
       let jwt = await getValidJWT();
       const normalized = payload.number.replace(/\s+/g, "");
       const last4In = normalized.slice(-4);
-      console.log('[AddCard] Submitting', { hasJwt: Boolean(jwt), last4: last4In });
+      logger.info('CARDS', 'Submitting card', { hasJwt: Boolean(jwt), last4: last4In });
       
       const makeRequest = async (token: string | undefined) => {
         const requestBody = {
@@ -68,7 +69,7 @@ function AddCardButton() {
         };
         
         // Log the request details
-        console.log('[AddCard] Request Details:', {
+        logger.info('CARDS', 'Request Details:', {
           url: cardsUrl,
           method: 'POST',
           headers: {
@@ -95,7 +96,7 @@ function AddCardButton() {
       
       // If we get a 401, try refreshing the token once
       if (res.status === 401 && jwt) {
-        console.log('[AddCard] Got 401, refreshing JWT and retrying...');
+        logger.warn('CARDS', 'Got 401, refreshing JWT and retrying...');
         jwt = await refreshAppwriteJWT();
         if (jwt) {
           res = await makeRequest(jwt);
@@ -107,7 +108,7 @@ function AddCardButton() {
       try { data = JSON.parse(raw); } catch {}
       
       // Log the response details
-      console.log('[AddCard] Response Details:', {
+      logger.info('CARDS', 'Response Details:', {
         status: res.status,
         statusText: res.statusText,
         headers: Object.fromEntries(res.headers.entries()),
@@ -116,7 +117,7 @@ function AddCardButton() {
       });
       
       if (!res.ok) {
-        console.error('[AddCard] Error response', { 
+        logger.error('CARDS', 'Error response', { 
           status: res.status, 
           statusText: res.statusText,
           url: cardsUrl,
@@ -126,7 +127,7 @@ function AddCardButton() {
         
         // For 500 errors, provide more detailed context
         if (res.status === 500) {
-          console.error('[AddCard] Server Error Details:', {
+          logger.error('CARDS', 'Server Error Details:', {
             'Possible causes': [
               'Server misconfiguration (missing environment variables)',
               'Database connection issues',
@@ -142,7 +143,7 @@ function AddCardButton() {
           : (data && typeof data === 'object' && ((data as any).message || (data as any).error)) || `HTTP ${res.status}: ${res.statusText || 'Server Error'}`;
         throw new Error(msg);
       }
-      console.log('[AddCard] Success', { status: res.status, last4: data?.authorization?.last4 || last4In });
+      logger.info('CARDS', 'Card creation successful', { status: res.status, last4: data?.authorization?.last4 || last4In });
       
       // Server has created the card - trigger a refresh to load it from server
       // This prevents duplication since the server already persists the card
@@ -150,15 +151,15 @@ function AddCardButton() {
       try {
         // Refresh the cards list to include the newly created card
         const { cards: updatedCards } = await queryAppwriteCards();
-        console.log('[AddCard] Loaded updated cards from server:', updatedCards.length);
+        logger.info('CARDS', 'Loaded updated cards from server:', updatedCards.length);
       } catch (error) {
-        console.warn('[AddCard] Failed to refresh cards from server:', error);
+        logger.warn('CARDS', 'Failed to refresh cards from server:', error);
       }
       
       showAlert("success", "Card added successfully.", "Card Added");
       close();
     } catch (e: any) {
-      console.error('[AddCard] Exception', { message: e?.message, stack: e?.stack });
+      logger.error('CARDS', 'Card creation exception', { message: e?.message, stack: e?.stack });
       showAlert("error", e?.message || "Failed to add card", "Error");
     }
   };
