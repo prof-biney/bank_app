@@ -13,6 +13,7 @@ import 'react-native-url-polyfill/auto';
 import { Alert } from "@/components/Alert";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { initializeErrorSuppression } from "@/config/errorSuppression";
+import { LoadingScreen } from "@/components/LoadingScreen";
 
 // Initialize error suppression configuration
 initializeErrorSuppression();
@@ -64,13 +65,25 @@ function RootLayoutContent() {
   // This prevents navigation errors and ensures proper routing
   if (isLoading || !providersReady) {
     console.log('[RootLayout] Loading or providers not ready, showing loading state');
-    return null;
+    return (
+      <LoadingScreen 
+        variant="startup"
+        message="Welcome"
+        subtitle="Initializing your banking experience..."
+      />
+    );
   }
   
   // If user is authenticated but onboarding status is still loading, wait
   if (isAuthenticated && onboardingComplete === null) {
     console.log('[RootLayout] User authenticated but onboarding status loading, waiting...');
-    return null;
+    return (
+      <LoadingScreen 
+        variant="transition"
+        message="Preparing your account"
+        subtitle="Just a moment while we set things up..."
+      />
+    );
   }
   
   console.log('[RootLayout] Rendering navigation stack:', {

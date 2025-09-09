@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/context/ThemeContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useState } from "react";
+import { LoadingScreen } from "@/components/LoadingScreen";
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
@@ -34,7 +35,13 @@ export default function TabLayout() {
   // If onboarding status is still being checked, don't redirect yet
   if (onboardingComplete === null) {
     console.log('[TabLayout] Onboarding status still loading, waiting...');
-    return null;
+    return (
+      <LoadingScreen 
+        variant="transition"
+        message="Preparing your dashboard"
+        subtitle="Loading your financial overview..."
+      />
+    );
   }
   
   // If user is authenticated but hasn't completed onboarding, redirect to onboarding
