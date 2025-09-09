@@ -1656,6 +1656,10 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
   };
 
   const clearAllTransactions: AppContextType['clearAllTransactions'] = async () => {
+    const { logger } = require('@/lib/logger');
+    
+    logger.info('TRANSACTION', 'Starting clear all transactions operation');
+    
     // Clear local state
     setTransactions([]);
     setTransactionsCursor(null);
@@ -1677,9 +1681,14 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
         });
       }
       
-      console.log('[clearAllTransactions] Transaction data cleared successfully');
+      // Set a flag to indicate transactions were manually cleared
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      await AsyncStorage.setItem('transactions_manually_cleared', Date.now().toString());
+      
+      logger.info('TRANSACTION', 'Transaction data cleared successfully');
     } catch (error) {
-      console.warn('[clearAllTransactions] Failed to clear cached data:', error);
+      logger.error('TRANSACTION', 'Failed to clear cached data:', error);
+      throw error;
     }
     
     // Note: We don't delete transactions from Appwrite server as this would be destructive
@@ -1687,6 +1696,10 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
   };
 
   const clearAllActivity: AppContextType['clearAllActivity'] = async () => {
+    const { logger } = require('@/lib/logger');
+    
+    logger.info('ACTIVITY', 'Starting clear all activity operation');
+    
     // Clear local activity state
     setActivity([]);
     
@@ -1694,9 +1707,14 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
       // Clear cached activity events
       await StorageManager.clearActivityCache();
       
-      console.log('[clearAllActivity] Activity data cleared successfully');
+      // Set a flag to indicate activity was manually cleared
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      await AsyncStorage.setItem('activity_manually_cleared', Date.now().toString());
+      
+      logger.info('ACTIVITY', 'Activity data cleared successfully');
     } catch (error) {
-      console.warn('[clearAllActivity] Failed to clear cached activity:', error);
+      logger.error('ACTIVITY', 'Failed to clear cached activity:', error);
+      throw error;
     }
     
     // Note: We don't delete activity from Appwrite server as this would be destructive
@@ -1704,13 +1722,14 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
   };
 
   const updateTransaction: AppContextType['updateTransaction'] = async (id, updateData) => {
-    console.log('[updateTransaction] Updating transaction:', { id, updateData });
+    const { logger } = require('@/lib/logger');
+    logger.debug('TRANSACTION', 'Updating transaction:', { id, updateData });
     
     try {
       // Validate user session is active
       const { isAuthenticated, user } = useAuthStore.getState();
       if (!isAuthenticated || !user) {
-        console.error('[updateTransaction] User not authenticated');
+        logger.error('TRANSACTION', 'User not authenticated');
         return {
           success: false,
           error: 'User not authenticated. Please sign in again.'
@@ -1744,11 +1763,11 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
         )
       );
       
-      console.log('[updateTransaction] Transaction updated successfully');
+      logger.info('TRANSACTION', 'Transaction updated successfully');
       return { success: true };
       
     } catch (error) {
-      console.error('[updateTransaction] Failed to update transaction:', error);
+      logger.error('TRANSACTION', 'Failed to update transaction:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to update transaction'
@@ -1757,13 +1776,14 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
   };
 
   const deleteTransaction: AppContextType['deleteTransaction'] = async (id) => {
-    console.log('[deleteTransaction] Deleting transaction:', { id });
+    const { logger } = require('@/lib/logger');
+    logger.debug('TRANSACTION', 'Deleting transaction:', { id });
     
     try {
       // Validate user session is active
       const { isAuthenticated, user } = useAuthStore.getState();
       if (!isAuthenticated || !user) {
-        console.error('[deleteTransaction] User not authenticated');
+        logger.error('TRANSACTION', 'User not authenticated');
         return {
           success: false,
           error: 'User not authenticated. Please sign in again.'
@@ -1802,11 +1822,11 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
         pushActivity(deletionEvent);
       }
       
-      console.log('[deleteTransaction] Transaction deleted successfully');
+      logger.info('TRANSACTION', 'Transaction deleted successfully');
       return { success: true };
       
     } catch (error) {
-      console.error('[deleteTransaction] Failed to delete transaction:', error);
+      logger.error('TRANSACTION', 'Failed to delete transaction:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to delete transaction'

@@ -5,12 +5,15 @@ import { useTheme } from '@/context/ThemeContext';
 import CustomButton from '@/components/CustomButton';
 import Card from '@/components/ui/Card';
 import { useApp } from '@/context/AppContext';
+import { ClearDataModal } from '@/components/ClearDataModal';
 
 export default function PaymentsScreen() {
   const [amount, setAmount] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<any[]>([]);
+  const [showClearPayments, setShowClearPayments] = useState(false);
+  const [isClearingPayments, setIsClearingPayments] = useState(false);
   const { activeCard } = useApp();
 
   useEffect(() => {
@@ -80,6 +83,34 @@ export default function PaymentsScreen() {
     }
   };
 
+  const handleClearPayments = async () => {
+    const { logger } = require('@/lib/logger');
+    setIsClearingPayments(true);
+    try {
+      logger.info('UI', 'Starting clear payments operation');
+      
+      // Clear the payments from the local state
+      setItems([]);
+      
+      // Clear payment data from AsyncStorage if applicable
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      await AsyncStorage.removeItem('paymentData');
+      await AsyncStorage.removeItem('payments_cache');
+      
+      logger.info('UI', 'Payments cleared successfully');
+      setShowClearPayments(false);
+    } catch (error) {
+      logger.error('UI', 'Failed to clear payments:', error);
+      setError('Failed to clear payments. Please try again.');
+    } finally {
+      setIsClearingPayments(false);
+    }
+  };
+
+  const handleCancelClearPayments = () => {
+    setShowClearPayments(false);
+  };
+
   const { colors } = useTheme();
 
   return (
@@ -105,7 +136,14 @@ export default function PaymentsScreen() {
         </Card>
 
         <Card>
-          <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Recent Payments</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 0 }]}>Recent Payments</Text>
+            {items.length > 0 && (
+              <TouchableOpacity onPress={() => setShowClearPayments(true)}>
+                <Text style={{ color: colors.negative, fontSize: 14, fontWeight: '600' }}>Clear All</Text>
+              </TouchableOpacity>
+            )}
+          </View>
           {items.length === 0 ? (
             <View style={{ paddingVertical: 16, alignItems: 'center' }}>
               <Text style={{ color: colors.textSecondary }}>No payments yet</Text>
@@ -134,6 +172,15 @@ export default function PaymentsScreen() {
           )}
         </Card>
       </ScrollView>
+      
+      <ClearDataModal
+        visible={showClearPayments}
+        onClose={handleCancelClearPayments}
+        onConfirm={handleClearPayments}
+        dataType="payments"
+        count={items.length}
+        isLoading={isClearingPayments}
+      />
     </SafeAreaView>
   );
 }
