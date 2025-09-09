@@ -24,6 +24,7 @@ import CustomButton from "@/components/CustomButton";
 import { withAlpha } from "@/theme/color-utils";
 import Badge from "@/components/ui/Badge";
 import { getBadgeVisuals } from "@/theme/badge-utils";
+import { LoadingScreen } from "@/components/LoadingScreen";
 
 export default function TransferScreen() {
   const { cards, activeCard, setActiveCard, makeTransfer } = useApp();
@@ -159,6 +160,20 @@ export default function TransferScreen() {
   };
 
   const { colors } = useTheme();
+  
+  // Show loading screen during transfer processing
+  if (isTransferring) {
+    return (
+      <LoadingScreen 
+        variant="transfer"
+        message="Processing your transfer"
+        subtitle="Transferring funds between accounts securely..."
+        action={`transfer of GHS ${amount} to ${recipientCardNumber}`}
+        showIcon={true}
+      />
+    );
+  }
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView
