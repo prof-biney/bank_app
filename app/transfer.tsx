@@ -17,6 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { BankCard } from "@/components/BankCard";
 import { useApp } from "@/context/AppContext";
 import { useAlert } from "@/context/AlertContext";
+import { useLoading } from "@/context/LoadingContext";
 import { showAlertWithNotification } from "@/lib/notificationService";
 import { Recipient } from "@/types/index";
 import { useTheme } from "@/context/ThemeContext";
@@ -29,10 +30,10 @@ import { getBadgeVisuals } from "@/theme/badge-utils";
 export default function TransferScreen() {
   const { cards, activeCard, setActiveCard, makeTransfer } = useApp();
   const { showAlert } = useAlert();
+  const { startLoading, stopLoading } = useLoading();
   const [recipientCardNumber, setRecipientCardNumber] = useState("");
   const [recipientName, setRecipientName] = useState("");
   const [amount, setAmount] = useState("");
-  const [isTransferring, setIsTransferring] = useState(false);
   const [step, setStep] = useState<
     "select-card" | "select-recipient" | "enter-amount" | "confirm-transfer"
   >("select-card");
@@ -121,7 +122,7 @@ export default function TransferScreen() {
       recipientCardNumber
     });
     
-    setIsTransferring(true);
+    const loadingId = startLoading('transfer', `Transferring GHS ${transferAmount.toFixed(2)}...`);
     
     try {
       const result = await makeTransfer(
@@ -155,7 +156,7 @@ export default function TransferScreen() {
       showAlertWithNotification(showAlert, 'error', 'An unexpected error occurred. Please try again.', 'Transfer Failed');
       logger.error('SCREEN', 'Transfer error:', error);
     } finally {
-      setIsTransferring(false);
+      stopLoading(loadingId);
     }
   };
 
@@ -407,9 +408,8 @@ export default function TransferScreen() {
                 style={styles.editButton}
               />
               <CustomButton
-                title={isTransferring ? "Processing..." : "Confirm Transfer"}
+                title="Confirm Transfer"
                 variant="primary"
-                disabled={isTransferring}
                 onPress={handleTransfer}
                 style={styles.confirmButton}
               />

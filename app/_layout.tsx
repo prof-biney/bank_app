@@ -13,6 +13,7 @@ import "./global.css";
 import 'react-native-url-polyfill/auto';
 import { Alert } from "@/components/Alert";
 import { ThemeProvider } from "@/context/ThemeContext";
+import { LoadingProvider } from "@/context/LoadingContext";
 import { initializeErrorSuppression } from "@/config/errorSuppression";
 import { LoadingScreen } from "@/components/LoadingScreen";
 
@@ -114,10 +115,12 @@ export default function RootLayout() {
       <AlertProvider>
         <AuthProvider>
           <ThemeProvider>
-            <AppProvider>
-              <RootLayoutContent />
-              <Alert />
-            </AppProvider>
+            <LoadingProvider>
+              <AppProvider>
+                <RootLayoutContent />
+                <Alert />
+              </AppProvider>
+            </LoadingProvider>
           </ThemeProvider>
         </AuthProvider>
       </AlertProvider>

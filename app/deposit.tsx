@@ -17,6 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { BankCard } from "@/components/BankCard";
 import { useApp } from "@/context/AppContext";
 import { useAlert } from "@/context/AlertContext";
+import { useLoading } from "@/context/LoadingContext";
 import { showAlertWithNotification } from "@/lib/notificationService";
 import { useTheme } from "@/context/ThemeContext";
 import CustomButton from "@/components/CustomButton";
@@ -28,10 +29,10 @@ import { validatePhoneForNetwork, getNetworkInfo, formatPhoneForDisplay, type Mo
 export default function DepositScreen() {
   const { cards, activeCard, setActiveCard, makeDeposit } = useApp();
   const { showAlert } = useAlert();
+  const { startLoading, stopLoading } = useLoading();
   const [amount, setAmount] = useState("");
   const [escrowMethod, setEscrowMethod] = useState<'mobile_money' | 'bank_transfer' | 'cash'>('mobile_money');
   const [description, setDescription] = useState("");
-  const [isProcessing, setIsProcessing] = useState(false);
   const [step, setStep] = useState<
     "select-card" | "enter-details" | "mobile-money" | "confirm-deposit" | "escrow-instructions" | "processing"
   >("select-card");
@@ -129,7 +130,7 @@ export default function DepositScreen() {
     }
 
     const depositAmount = parseFloat(amount);
-    setIsProcessing(true);
+    const loadingId = startLoading('deposit', `Creating deposit request for GHS ${depositAmount.toFixed(2)}...`);
     
     try {
       const result = await makeDeposit({
@@ -164,7 +165,7 @@ export default function DepositScreen() {
       showAlertWithNotification(showAlert, 'error', 'An unexpected error occurred. Please try again.', 'Deposit Failed');
       logger.error('SCREEN', 'Deposit error:', error);
     } finally {
-      setIsProcessing(false);
+      stopLoading(loadingId);
     }
   };
 
@@ -175,7 +176,7 @@ export default function DepositScreen() {
     }
 
     setStep("processing");
-    setIsProcessing(true);
+    const loadingId = startLoading('deposit', 'Confirming payment and updating balance...');
     
     try {
       const result = await makeDeposit({
@@ -204,7 +205,7 @@ export default function DepositScreen() {
       logger.error('SCREEN', 'Deposit confirmation error:', error);
       setStep("escrow-instructions"); // Go back to instructions
     } finally {
-      setIsProcessing(false);
+      stopLoading(loadingId);
     }
   };
 
@@ -562,9 +563,8 @@ export default function DepositScreen() {
                 style={styles.editButton}
               />
               <CustomButton
-                title={isProcessing ? "Creating..." : "Create Deposit"}
+                title="Create Deposit"
                 variant="primary"
-                disabled={isProcessing}
                 onPress={handleCreateDeposit}
                 style={styles.confirmButton}
               />
@@ -646,22 +646,15 @@ export default function DepositScreen() {
           <View style={styles.content}>
             <View style={styles.processingContainer}>
               <View style={styles.processingIcon}>
-                {isProcessing ? (
-                  <Clock color={colors.warning} size={48} />
-                ) : (
-                  <CheckCircle color={colors.positive} size={48} />
-                )}
+                <CheckCircle color={colors.positive} size={48} />
               </View>
               
               <Text style={[styles.processingTitle, { color: colors.textPrimary }]}>
-                {isProcessing ? "Processing Your Deposit..." : "Deposit Completed!"}
+                Deposit Completed!
               </Text>
               
               <Text style={[styles.processingText, { color: colors.textSecondary }]}>
-                {isProcessing 
-                  ? "Please wait while we verify your payment and update your balance."
-                  : "Your deposit has been successfully processed and your balance has been updated."
-                }
+                Your deposit has been successfully processed and your balance has been updated.
               </Text>
             </View>
           </View>

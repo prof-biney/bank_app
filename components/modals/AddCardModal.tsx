@@ -1,21 +1,24 @@
 import React from "react";
-import { Modal, View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform } from "react-native";
+import { Modal, View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator } from "react-native";
 import { useTheme } from "@/context/ThemeContext";
 import { chooseReadableText } from "@/theme/color-utils";
+import { logger } from "@/lib/logger";
 
 interface AddCardModalProps {
   visible: boolean;
   onClose: () => void;
-  onSubmit: (payload: { number: string; name: string; exp_month: string; exp_year: string; cvc: string }) => void;
+  onSubmit: (payload: { number: string; name: string; exp_month: string; exp_year: string; cvc: string }) => Promise<void>;
+  isLoading?: boolean;
 }
 
-export default function AddCardModal({ visible, onClose, onSubmit }: AddCardModalProps) {
+export default function AddCardModal({ visible, onClose, onSubmit, isLoading = false }: AddCardModalProps) {
   const { isDark, colors } = useTheme();
   const [number, setNumber] = React.useState("");
   const [name, setName] = React.useState("");
   const [expMonth, setExpMonth] = React.useState("");
   const [expYear, setExpYear] = React.useState("");
   const [cvc, setCvc] = React.useState("");
+  // Remove local isSubmitting since we use isLoading prop from parent
 
   const formatCardNumber = (raw: string) => {
     const digits = raw.replace(/\D/g, "").slice(0, 16); // max 16 digits
@@ -55,8 +58,36 @@ export default function AddCardModal({ visible, onClose, onSubmit }: AddCardModa
     onClose();
   };
 
-  const handleSubmit = () => {
-    onSubmit({ number, name, exp_month: expMonth, exp_year: expYear, cvc });
+  const isFormValid = () => {
+    const cleanNumber = number.replace(/\s+/g, "");
+    return (
+      name.trim().length >= 2 &&
+      cleanNumber.length >= 13 && cleanNumber.length <= 19 &&
+      expMonth.length === 2 && parseInt(expMonth) >= 1 && parseInt(expMonth) <= 12 &&
+      expYear.length === 4 && parseInt(expYear) >= new Date().getFullYear() &&
+      cvc.length >= 3 && cvc.length <= 4
+    );
+  };
+
+  const handleSubmit = async () => {
+    if (!isFormValid() || isLoading) {
+      return;
+    }
+    
+    logger.info('MODAL', 'Submitting card form', {
+      holderName: name,
+      cardLast4: number.slice(-4),
+      expiry: `${expMonth}/${expYear}`
+    });
+    
+    try {
+      // Parent component manages loading state and all error handling
+      await onSubmit({ number, name, exp_month: expMonth, exp_year: expYear, cvc });
+      logger.info('MODAL', 'Card submission completed successfully');
+    } catch (error) {
+      // Error handling is done in parent component
+      logger.error('MODAL', 'Card submission error in modal:', error);
+    }
   };
 
   return (
@@ -142,11 +173,38 @@ export default function AddCardModal({ visible, onClose, onSubmit }: AddCardModa
           </View>
 
           <View style={styles.footer}>
-            <TouchableOpacity style={[styles.button, { backgroundColor: colors.border }]} onPress={handleClose}>
+            <TouchableOpacity 
+              style={[styles.button, { backgroundColor: colors.border }]} 
+              onPress={handleClose}
+              disabled={isLoading}
+            >
               <Text style={[styles.buttonTextCancel, { color: colors.textPrimary }]}>Cancel</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.button, { backgroundColor: colors.tintPrimary }]} onPress={handleSubmit}>
-              <Text style={[styles.buttonText, { color: chooseReadableText(colors.tintPrimary) }]}>Add Card</Text>
+            <TouchableOpacity 
+              style={[
+                styles.button, 
+                { 
+                  backgroundColor: (isLoading || !isFormValid()) ? colors.border : colors.tintPrimary,
+                  opacity: (isLoading || !isFormValid()) ? 0.6 : 1
+                }
+              ]} 
+              onPress={handleSubmit}
+              disabled={isLoading || !isFormValid()}
+            >
+              {isLoading ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator 
+                    size="small" 
+                    color={chooseReadableText(colors.tintPrimary)} 
+                    style={styles.loadingIndicator}
+                  />
+                  <Text style={[styles.buttonText, { color: chooseReadableText(colors.tintPrimary) }]}>
+                    Adding Card...
+                  </Text>
+                </View>
+              ) : (
+                <Text style={[styles.buttonText, { color: chooseReadableText(colors.tintPrimary) }]}>Add Card</Text>
+              )}
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
@@ -218,6 +276,14 @@ const styles = StyleSheet.create({
   },
   buttonTextCancel: {
     fontWeight: '600',
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingIndicator: {
+    marginRight: 8,
   },
 });
 
