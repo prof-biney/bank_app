@@ -36,7 +36,7 @@ import {
 } from "@/components/form";
 import { withAlpha } from "@/theme/color-utils";
 import { LoadingScreen } from "@/components/LoadingScreen";
-import { logger } from "@/utils/logger";
+import { logger } from "@/lib/logger";
 
 // Get all available countries and create a comprehensive country data array
 // This uses the getCountries function from libphonenumber-js to get all country codes
