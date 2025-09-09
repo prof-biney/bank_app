@@ -182,13 +182,13 @@ class ConnectionMonitor {
         const matches = message.match(/Reconnect will be attempted in (\d+) seconds/);
         const delaySeconds = matches ? parseInt(matches[1], 10) : 1;
         this.onReconnecting(this.state.reconnectAttempts + 1, delaySeconds);
-        console.debug('[Realtime] Connection lost, attempting reconnect in', delaySeconds, 'seconds');
+        logger.debug('CONNECTION', `[Realtime] Connection lost, attempting reconnect in ${delaySeconds} seconds`);
         return;
       }
       
       if (message.includes('Reconnect will be attempted') ||
           message.includes('WebSocket connection')) {
-        console.debug('[Realtime]', ...args);
+        logger.debug('CONNECTION', `[Realtime] ${args.join(' ')}`);
         return;
       }
       
@@ -202,20 +202,20 @@ class ConnectionMonitor {
       // Detect connection events from logs
       if (message.includes('Realtime connection established')) {
         this.onConnected();
-        console.debug('[Realtime] Connected to real-time services');
+        logger.debug('CONNECTION', '[Realtime] Connected to real-time services');
         return;
       }
       
       if (message.includes('Realtime connection closed')) {
         this.onDisconnected('Connection closed');
-        console.debug('[Realtime] Connection closed');
+        logger.debug('CONNECTION', '[Realtime] Connection closed');
         return;
       }
       
       // Suppress verbose realtime logs
       if (message.includes('[realtime]') ||
           message.includes('WebSocket')) {
-        console.debug('[Realtime]', ...args);
+        logger.debug('CONNECTION', `[Realtime] ${args.join(' ')}`);
         return;
       }
       
@@ -228,7 +228,7 @@ class ConnectionMonitor {
       
       // Handle WebSocket warnings
       if (message.includes('WebSocket') || message.includes('realtime')) {
-        console.debug('[Realtime]', ...args);
+        logger.debug('CONNECTION', `[Realtime] ${args.join(' ')}`);
         return;
       }
       

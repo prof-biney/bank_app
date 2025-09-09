@@ -1,3 +1,4 @@
+import { logger } from '@/utils/logger';
 import useAuthStore from "@/store/auth.store";
 import { router } from "expo-router";
 import {
@@ -42,7 +43,7 @@ export default function HomeScreen() {
   const unreadCount = React.useMemo(() => {
     const unreadNotifications = notifications.filter(n => n.unread && !n.archived);
     const count = unreadNotifications.length;
-    console.log('[HomeScreen] Notification count calculation:', {
+    logger.info('SCREEN', '[HomeScreen] Notification count calculation:', {
       totalNotifications: notifications.length,
       unreadCount: count,
       unreadNotifications: unreadNotifications,
@@ -113,7 +114,7 @@ export default function HomeScreen() {
       await clearAllTransactions();
       setShowClearTransactions(false);
     } catch (error) {
-      console.error('Failed to clear transactions:', error);
+      logger.error('SCREEN', 'Failed to clear transactions:', error);
     } finally {
       setIsClearingTransactions(false);
     }

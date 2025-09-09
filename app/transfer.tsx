@@ -1,3 +1,4 @@
+import { logger } from '@/utils/logger';
 import { router } from "expo-router";
 import { ArrowLeft, CreditCard, Plus } from "lucide-react-native";
 import React, { useState } from "react";
@@ -77,10 +78,10 @@ export default function TransferScreen() {
   };
 
   const handleTransfer = async () => {
-    console.log('[TransferScreen] handleTransfer called');
+    logger.info('SCREEN', '[TransferScreen] handleTransfer called');
     
     if (!activeCard || !recipientCardNumber || !amount) {
-      console.log('[TransferScreen] Missing required fields:', { activeCard: !!activeCard, recipientCardNumber, amount });
+      logger.info('SCREEN', '[TransferScreen] Missing required fields:', { activeCard: !!activeCard, recipientCardNumber, amount });
       showAlertWithNotification(showAlert, 'error', 'Please complete all required fields.', 'Transfer Error');
       return;
     }
@@ -94,13 +95,13 @@ export default function TransferScreen() {
     const transferAmount = parseFloat(amount);
     
     if (isNaN(transferAmount) || transferAmount <= 0) {
-      console.log('[TransferScreen] Invalid amount:', { amount, transferAmount });
+      logger.info('SCREEN', '[TransferScreen] Invalid amount:', { amount, transferAmount });
       showAlertWithNotification(showAlert, 'error', 'Please enter a valid amount.', 'Transfer Error');
       return;
     }
     
     if (transferAmount > activeCard.balance) {
-      console.log('[TransferScreen] Insufficient funds:', { transferAmount, balance: activeCard.balance });
+      logger.info('SCREEN', '[TransferScreen] Insufficient funds:', { transferAmount, balance: activeCard.balance });
       showAlertWithNotification(showAlert, 'error', 'Insufficient funds for this transfer.', 'Transfer Error');
       return;
     }
@@ -114,7 +115,7 @@ export default function TransferScreen() {
       return;
     }
 
-    console.log('[TransferScreen] Starting transfer:', {
+    logger.info('SCREEN', '[TransferScreen] Starting transfer:', {
       cardId: activeCard.id,
       amount: transferAmount,
       recipientCardNumber
@@ -152,7 +153,7 @@ export default function TransferScreen() {
       }
     } catch (error) {
       showAlertWithNotification(showAlert, 'error', 'An unexpected error occurred. Please try again.', 'Transfer Failed');
-      console.error('Transfer error:', error);
+      logger.error('SCREEN', 'Transfer error:', error);
     } finally {
       setIsTransferring(false);
     }

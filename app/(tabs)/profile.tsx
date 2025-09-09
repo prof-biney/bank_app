@@ -1,3 +1,4 @@
+import { logger } from '@/utils/logger';
 import useAuthStore from "@/store/auth.store";
 import { router } from "expo-router";
 import { navigateAfterLogout } from "@/lib/safeNavigation";
@@ -43,7 +44,7 @@ export default function ProfileScreen() {
       // Use safe navigation utility to handle post-logout navigation
       await navigateAfterLogout('/sign-in');
     } catch (error) {
-      console.error('Logout error:', error);
+      logger.error('SCREEN', 'Logout error:', error);
       setShowLogoutModal(false);
       Alert.alert(
         'Error',
@@ -72,7 +73,7 @@ export default function ProfileScreen() {
       await updateProfilePicture(imageUri);
       Alert.alert('Success', 'Profile picture updated successfully!');
     } catch (error) {
-      console.error('Profile picture update error:', error);
+      logger.error('SCREEN', 'Profile picture update error:', error);
       Alert.alert(
         'Error',
         error instanceof Error ? error.message : 'Failed to update profile picture'

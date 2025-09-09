@@ -1,3 +1,4 @@
+import { logger } from '@/utils/logger';
 import React, { useEffect, useState, useRef } from "react";
 import { 
   Text, 
@@ -223,7 +224,7 @@ const PhoneNumberField: React.FC<PhoneNumberFieldProps> = ({
         maxDigits
       };
     } catch (error) {
-      console.log('Error validating phone number:', error);
+      logger.info('UI', 'Error validating phone number:', error);
       return { 
         isValid: false, 
         message: "Error validating phone number", 
@@ -281,7 +282,7 @@ const PhoneNumberField: React.FC<PhoneNumberFieldProps> = ({
         });
       }
     } catch (error) {
-      console.log('Error getting example number:', error);
+      logger.info('UI', 'Error getting example number:', error);
       // Default to 10 digits (US standard) if there's an error
       onValidationChange({
         ...validation,

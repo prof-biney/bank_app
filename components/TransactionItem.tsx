@@ -1,3 +1,4 @@
+import { logger } from '@/utils/logger';
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -115,11 +116,11 @@ export function TransactionItem({ transaction }: TransactionItemProps) {
         onClose={() => setShowDetailModal(false)}
         onTransactionUpdated={() => {
           // Transaction updated - the AppContext will handle state updates
-          console.log('Transaction updated:', transaction.id);
+          logger.info('UI', 'Transaction updated:', transaction.id);
         }}
         onTransactionDeleted={() => {
           // Transaction deleted - the AppContext will handle state updates
-          console.log('Transaction deleted:', transaction.id);
+          logger.info('UI', 'Transaction deleted:', transaction.id);
         }}
       />
     </>

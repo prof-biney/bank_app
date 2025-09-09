@@ -1,3 +1,4 @@
+import { logger } from '@/utils/logger';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { CreditCard, Shield, Smartphone } from "lucide-react-native";
@@ -52,7 +53,7 @@ export default function OnboardingScreen() {
       await AsyncStorage.setItem("onboardingComplete", "true");
       router.replace("/(tabs)");
     } catch (error) {
-      console.error("Error saving onboarding state:", error);
+      logger.error('SCREEN', "Error saving onboarding state:", error);
     }
   };
 

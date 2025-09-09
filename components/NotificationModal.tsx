@@ -1,3 +1,4 @@
+import { logger } from '@/utils/logger';
 import { Bell, CreditCard, TrendingUp, X, Mail, MailOpen, Trash2, Eraser, Archive, ArchiveRestore } from "lucide-react-native";
 import ConfirmDialog from '@/components/modals/ConfirmDialog';
 import React from "react";
@@ -56,7 +57,7 @@ export function NotificationModal({
   
   const filtered = React.useMemo(() => {
     const base = notifications;
-    console.log('[NotificationModal] Filtering notifications:', {
+    logger.info('UI', '[NotificationModal] Filtering notifications:', {
       total: base.length,
       filter,
       unreadCount: base.filter(n => n.unread).length,
@@ -69,7 +70,7 @@ export function NotificationModal({
     else if (filter === 'archived') result = base.filter(n => n.archived);
     else result = base.filter(n => n.type === filter && !n.archived);
     
-    console.log('[NotificationModal] Filtered result:', {
+    logger.info('UI', '[NotificationModal] Filtered result:', {
       count: result.length,
       unreadInResult: result.filter(n => n.unread).length
     });

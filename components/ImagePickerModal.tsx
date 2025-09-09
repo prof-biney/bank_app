@@ -1,3 +1,4 @@
+import { logger } from '@/utils/logger';
 import { useTheme } from '@/context/ThemeContext';
 import {
   pickImageFromCamera,
@@ -49,7 +50,7 @@ export function ImagePickerModal({
       const processedUri = await processProfileImage(asset.uri);
       setSelectedImage(processedUri);
     } catch (error) {
-      console.error('Image processing error:', error);
+      logger.error('UI', 'Image processing error:', error);
       Alert.alert(
         'Error',
         error instanceof Error ? error.message : 'Failed to process image'
@@ -64,7 +65,7 @@ export function ImagePickerModal({
       const asset = await pickImageFromCamera();
       await handleImagePicked(asset);
     } catch (error) {
-      console.error('Camera error:', error);
+      logger.error('UI', 'Camera error:', error);
       Alert.alert(
         'Camera Error',
         error instanceof Error ? error.message : 'Failed to take photo'
@@ -77,7 +78,7 @@ export function ImagePickerModal({
       const asset = await pickImageFromGallery();
       await handleImagePicked(asset);
     } catch (error) {
-      console.error('Gallery error:', error);
+      logger.error('UI', 'Gallery error:', error);
       Alert.alert(
         'Gallery Error',
         error instanceof Error ? error.message : 'Failed to select image'

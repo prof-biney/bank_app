@@ -1,3 +1,4 @@
+import { logger } from '@/utils/logger';
 import React, { createContext, useContext, useMemo, useState, useEffect, useRef } from 'react';
 import { ColorSchemeName, useColorScheme, Appearance, Animated, ViewStyle } from 'react-native';
 import { withAlpha } from '@/theme/color-utils';
@@ -97,7 +98,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
           setThemeModeState(savedTheme as ThemeMode);
         }
       } catch (error) {
-        console.warn('Failed to load theme preference:', error);
+        logger.warn('CONTEXT', 'Failed to load theme preference:', error);
       }
     };
     loadThemePreference();
@@ -193,7 +194,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       await AsyncStorage.setItem(THEME_STORAGE_KEY, mode);
       setThemeModeState(mode);
     } catch (error) {
-      console.warn('Failed to save theme preference:', error);
+      logger.warn('CONTEXT', 'Failed to save theme preference:', error);
       setThemeModeState(mode); // Still update state even if save fails
     }
   };

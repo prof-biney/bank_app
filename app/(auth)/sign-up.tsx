@@ -149,7 +149,7 @@ export default function SignUpScreen() {
         updateMaxDigitsForCountry(data.country_code);
       }
     } catch (error) {
-      console.log('Error detecting country:', error);
+      logger.info('SCREEN', 'Error detecting country:', error);
       // Default to US if detection fails
       setCountryCode('US');
       updateMaxDigitsForCountry('US');
@@ -176,7 +176,7 @@ export default function SignUpScreen() {
         }));
       }
     } catch (error) {
-      console.log('Error getting example number:', error);
+      logger.info('SCREEN', 'Error getting example number:', error);
       // Default to 10 digits (US standard) if there's an error
       setValidation(prev => ({
         ...prev,
@@ -264,7 +264,7 @@ export default function SignUpScreen() {
         maxDigits
       };
     } catch (error) {
-      console.log('Error validating phone number:', error);
+      logger.info('SCREEN', 'Error validating phone number:', error);
       return { 
         isValid: false, 
         message: "Error validating phone number", 

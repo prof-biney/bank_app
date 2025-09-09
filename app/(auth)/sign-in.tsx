@@ -1,3 +1,4 @@
+import { logger } from '@/utils/logger';
 import { Link, router } from "expo-router";
 import React, { useEffect, useState, useRef } from "react";
 import {
@@ -196,7 +197,7 @@ export default function SignInScreen() {
       }
 
       showAlert("error", errorMessage, errorTitle);
-      console.log("Sign in error:", error);
+      logger.info('SCREEN', "Sign in error:", error);
       setShowSuccessAlert(false); // Reset success alert state on error
     } finally {
       setIsSubmitting(false);

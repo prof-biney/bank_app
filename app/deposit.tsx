@@ -1,3 +1,4 @@
+import { logger } from '@/utils/logger';
 import { router } from "expo-router";
 import { ArrowLeft, Clock, CheckCircle, AlertCircle, CreditCard, Plus } from "lucide-react-native";
 import React, { useState } from "react";
@@ -161,7 +162,7 @@ export default function DepositScreen() {
       }
     } catch (error) {
       showAlertWithNotification(showAlert, 'error', 'An unexpected error occurred. Please try again.', 'Deposit Failed');
-      console.error('Deposit error:', error);
+      logger.error('SCREEN', 'Deposit error:', error);
     } finally {
       setIsProcessing(false);
     }
@@ -200,7 +201,7 @@ export default function DepositScreen() {
       }
     } catch (error) {
       showAlertWithNotification(showAlert, 'error', 'An unexpected error occurred. Please try again.', 'Deposit Failed');
-      console.error('Deposit confirmation error:', error);
+      logger.error('SCREEN', 'Deposit confirmation error:', error);
       setStep("escrow-instructions"); // Go back to instructions
     } finally {
       setIsProcessing(false);

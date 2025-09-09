@@ -1,3 +1,4 @@
+import { logger } from '@/utils/logger';
 import { AppProvider } from "@/context/AppContext";
 import { AlertProvider } from "@/context/AlertContext";
 import { AuthProvider } from "@/context/AuthContext";
@@ -29,9 +30,9 @@ function RootLayoutContent() {
     try {
       const onboardingStatus = await AsyncStorage.getItem("onboardingComplete");
       setOnboardingComplete(onboardingStatus === "true");
-      console.log('[RootLayout] Onboarding status checked:', onboardingStatus === "true");
+      logger.info('SCREEN', '[RootLayout] Onboarding status checked:', onboardingStatus === "true");
     } catch (error) {
-      console.warn('[RootLayout] Failed to check onboarding status:', error);
+      logger.warn('SCREEN', '[RootLayout] Failed to check onboarding status:', error);
       setOnboardingComplete(false);
     }
   };
@@ -39,11 +40,11 @@ function RootLayoutContent() {
   // Check onboarding status when user authentication changes
   useEffect(() => {
     if (isAuthenticated && user) {
-      console.log('[RootLayout] User authenticated, checking onboarding status');
+      logger.info('SCREEN', '[RootLayout] User authenticated, checking onboarding status');
       checkOnboardingStatus();
     } else if (!isAuthenticated) {
       // Reset onboarding status when user logs out
-      console.log('[RootLayout] User not authenticated, resetting onboarding status');
+      logger.info('SCREEN', '[RootLayout] User not authenticated, resetting onboarding status');
       setOnboardingComplete(null);
     }
   }, [isAuthenticated, user]);
@@ -64,7 +65,7 @@ function RootLayoutContent() {
   // Don't render navigation stack until providers are ready and onboarding status is determined
   // This prevents navigation errors and ensures proper routing
   if (isLoading || !providersReady) {
-    console.log('[RootLayout] Loading or providers not ready, showing loading state');
+    logger.info('SCREEN', '[RootLayout] Loading or providers not ready, showing loading state');
     return (
       <LoadingScreen 
         variant="startup"
@@ -76,7 +77,7 @@ function RootLayoutContent() {
   
   // If user is authenticated but onboarding status is still loading, wait
   if (isAuthenticated && onboardingComplete === null) {
-    console.log('[RootLayout] User authenticated but onboarding status loading, waiting...');
+    logger.info('SCREEN', '[RootLayout] User authenticated but onboarding status loading, waiting...');
     return (
       <LoadingScreen 
         variant="transition"
@@ -86,7 +87,7 @@ function RootLayoutContent() {
     );
   }
   
-  console.log('[RootLayout] Rendering navigation stack:', {
+  logger.info('SCREEN', '[RootLayout] Rendering navigation stack:', {
     isAuthenticated,
     onboardingComplete,
     providersReady

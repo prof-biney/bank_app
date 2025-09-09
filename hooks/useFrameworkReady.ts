@@ -1,3 +1,4 @@
+import { logger } from '@/utils/logger';
 import { useEffect } from "react";
 
 // React Native doesn't have window object, so we use global instead
@@ -15,6 +16,6 @@ export function useFrameworkReady() {
     }
     
     // For React Native, we can just do nothing or add any app initialization logic here
-    console.log('Framework ready - React Native app initialized');
+    logger.info('HOOKS', 'Framework ready - React Native app initialized');
   }, []);
 }
