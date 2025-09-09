@@ -1,5 +1,5 @@
 import { Link, router } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -30,10 +30,12 @@ import { LoadingScreen } from "@/components/LoadingScreen";
 
 
 export default function SignInScreen() {
-  const { login } = useAuthStore();
+  const { login, isAuthenticated } = useAuthStore();
   const { showAlert } = useAlert();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showSuccessAlert, setShowSuccessAlert] = useState(false);
+  const navigationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [form, setForm] = useState({
     email: "",
@@ -89,6 +91,36 @@ export default function SignInScreen() {
     }
   }, [form.email, validation.email.isTouched]);
 
+  // Monitor authentication state changes for navigation
+  useEffect(() => {
+    if (isAuthenticated && showSuccessAlert) {
+      // User is now authenticated and we've shown the success alert
+      // Navigate to the home screen
+      const timer = setTimeout(() => {
+        router.replace("/");
+        setIsSubmitting(false);
+        setShowSuccessAlert(false);
+      }, 1200); // Small delay to ensure smooth transition
+      
+      navigationTimeoutRef.current = timer;
+      
+      return () => {
+        if (navigationTimeoutRef.current) {
+          clearTimeout(navigationTimeoutRef.current);
+        }
+      };
+    }
+  }, [isAuthenticated, showSuccessAlert]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (navigationTimeoutRef.current) {
+        clearTimeout(navigationTimeoutRef.current);
+      }
+    };
+  }, []);
+
   // Validate all fields and return if the form is valid
   const validateForm = (): boolean => {
     const emailValidation = isValidEmail(form.email);
@@ -133,13 +165,11 @@ export default function SignInScreen() {
     try {
       await login(email, password);
 
-      // Show success message before navigation
+      // Show success message and set flag for navigation monitoring
       showAlert("success", "You have successfully signed in.", "Welcome Back");
-
-      // Navigate after a short delay to allow the user to see the alert
-      setTimeout(() => {
-        router.replace("/");
-      }, 1000);
+      setShowSuccessAlert(true);
+      
+      // Navigation will be handled by the authentication state monitoring effect
     } catch (error: any) {
       // Handle specific error types with more descriptive messages
       let errorMessage = "Authentication failed. Please try again.";
@@ -167,6 +197,7 @@ export default function SignInScreen() {
 
       showAlert("error", errorMessage, errorTitle);
       console.log("Sign in error:", error);
+      setShowSuccessAlert(false); // Reset success alert state on error
     } finally {
       setIsSubmitting(false);
     }

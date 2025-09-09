@@ -56,6 +56,7 @@ export default function ActivityScreen() {
 		} catch (e) {}
 	};
 	const { transactions, activity, clearAllActivity } = useApp();
+	const [suppressAllLogs, setSuppressAllLogs] = useState(false);
 	const { getApiBase } = require('@/lib/api');
 	const [payments, setPayments] = React.useState<Payment[]>([]);
 	const [loading, setLoading] = React.useState(false);
@@ -223,9 +224,13 @@ export default function ActivityScreen() {
 		setIsClearingActivity(true);
 		try {
 			await clearAllActivity();
+			// Also suppress any locally loaded logs (payments/transactions) for this session
+			setPayments([]);
+			setSuppressAllLogs(true);
 			setShowClearActivity(false);
 		} catch (error) {
-			console.error('Failed to clear activity:', error);
+			const { logger } = require('@/lib/logger');
+			logger.error('ACTIVITY', 'Failed to clear activity:', error);
 		} finally {
 			setIsClearingActivity(false);
 		}
@@ -329,6 +334,7 @@ export default function ActivityScreen() {
 
 	// Create unified, deduplicated activity list
 	const allActivities = useMemo(() => {
+		if (suppressAllLogs) return [] as any[];
 		const items: Array<{
 			id: string;
 			type: 'activity' | 'transaction' | 'payment';
@@ -560,9 +566,9 @@ export default function ActivityScreen() {
 						{/* Horizontal separator bar */}
 						<View style={[styles.horizontalBar, { backgroundColor: colors.border }]} />
 						
-						{/* Clear All Button */}
-						{activity.length > 0 && (
-							<View style={styles.clearAllContainer}>
+					{/* Clear All Button */}
+					{allActivities.length > 0 && (
+						<View style={styles.clearAllContainer}>
 								<TouchableOpacity onPress={() => setShowClearActivity(true)}>
 									<Text style={[styles.clearAllText, { color: colors.negative }]}>Clear All</Text>
 								</TouchableOpacity>
@@ -788,6 +794,10 @@ const styles = StyleSheet.create({
 		paddingHorizontal: 20,
 		marginTop: 12,
 		marginBottom: 8,
+	},
+	clearAllText: {
+		fontSize: 14,
+		fontWeight: '600',
 	},
 	transactionsList: {
 		flex: 1,

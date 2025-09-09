@@ -36,6 +36,7 @@ import {
 } from "@/components/form";
 import { withAlpha } from "@/theme/color-utils";
 import { LoadingScreen } from "@/components/LoadingScreen";
+import { logger } from "@/utils/logger";
 
 // Get all available countries and create a comprehensive country data array
 // This uses the getCountries function from libphonenumber-js to get all country codes
@@ -128,8 +129,10 @@ export default function SignUpScreen() {
   // Animated values for smooth transitions
   const animatedWidth = useRef(new Animated.Value(0)).current;
   const phoneAnimatedWidth = useRef(new Animated.Value(0)).current;
-  const { login } = useAuthStore();
+  const { login, isAuthenticated } = useAuthStore();
   const { showAlert } = useAlert();
+  const [showSuccessAlert, setShowSuccessAlert] = useState(false);
+  const navigationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Function to detect user's country based on IP address
   const detectUserCountry = async () => {
@@ -490,6 +493,36 @@ export default function SignUpScreen() {
     detectUserCountry();
   }, []);
   
+  // Monitor authentication state changes for navigation
+  useEffect(() => {
+    if (isAuthenticated && showSuccessAlert) {
+      // User is now authenticated and we've shown the success alert
+      // Navigate to the onboarding screen
+      const timer = setTimeout(() => {
+        router.replace("/onboarding");
+        setIsSubmitting(false);
+        setShowSuccessAlert(false);
+      }, 1200); // Small delay to ensure smooth transition
+      
+      navigationTimeoutRef.current = timer;
+      
+      return () => {
+        if (navigationTimeoutRef.current) {
+          clearTimeout(navigationTimeoutRef.current);
+        }
+      };
+    }
+  }, [isAuthenticated, showSuccessAlert]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (navigationTimeoutRef.current) {
+        clearTimeout(navigationTimeoutRef.current);
+      }
+    };
+  }, []);
+  
   // Real-time validation as user types
   useEffect(() => {
     if (validation.name.isTouched) {
@@ -760,12 +793,13 @@ export default function SignUpScreen() {
         "Your account has been created successfully.",
         "Welcome!"
       );
-
-      // Navigate after a short delay to allow the user to see the alert
-      setTimeout(() => {
-        router.replace("/onboarding");
-      }, 500);
+      
+      // Set the success alert flag to trigger navigation via the useEffect
+      setShowSuccessAlert(true);
     } catch (error: any) {
+      // Reset the success alert flag in case of error
+      setShowSuccessAlert(false);
+      
       // Handle specific error types with more descriptive messages
       let errorMessage = "Failed to create account. Please try again.";
       let errorTitle = "Sign Up Error";
@@ -793,7 +827,8 @@ export default function SignUpScreen() {
       }
 
       showAlert("error", errorMessage, errorTitle);
-      console.log("Sign up error:", error);
+      // Replace console.log with logger utility
+      logger.error("AUTHENTICATION", "Sign up error:", error);
     } finally {
       setIsSubmitting(false);
     }
