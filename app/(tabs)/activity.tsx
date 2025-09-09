@@ -58,6 +58,7 @@ export default function ActivityScreen() {
 	};
 	const { transactions, activity, clearAllActivity } = useApp();
 	const [suppressAllLogs, setSuppressAllLogs] = useState(false);
+	const [activitySuppressed, setActivitySuppressed] = useState(false);
 	const { getApiBase } = require('@/lib/api');
 	const [payments, setPayments] = React.useState<Payment[]>([]);
 	const [loading, setLoading] = React.useState(false);
@@ -119,6 +120,21 @@ export default function ActivityScreen() {
 	}, [typeFilter, statusFilter]);
 
 	React.useEffect(() => {
+		// Check if activity was manually cleared and suppress if needed
+		(async () => {
+			try {
+				const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+				const activityClearedFlag = await AsyncStorage.getItem('activity_manually_cleared');
+				if (activityClearedFlag) {
+					logger.info('UI', 'Activity is suppressed, hiding logs');
+					setActivitySuppressed(true);
+					setSuppressAllLogs(true);
+				}
+			} catch (error) {
+				logger.error('UI', 'Failed to check activity suppression flag:', error);
+			}
+		})();
+
 		// initial load
 		fetchPayments(true);
 		// eslint-disable-next-line react-hooks/exhaustive-deps
@@ -228,9 +244,9 @@ export default function ActivityScreen() {
 			// Also suppress any locally loaded logs (payments/transactions) for this session
 			setPayments([]);
 			setSuppressAllLogs(true);
+			setActivitySuppressed(true);
 			setShowClearActivity(false);
 		} catch (error) {
-			const { logger } = require('@/lib/logger');
 			logger.error('ACTIVITY', 'Failed to clear activity:', error);
 		} finally {
 			setIsClearingActivity(false);
@@ -239,6 +255,25 @@ export default function ActivityScreen() {
 
 	const handleCancelClearActivity = () => {
 		setShowClearActivity(false);
+	};
+
+	const handleRestoreActivity = async () => {
+		try {
+			logger.info('UI', 'Restoring activity after clear');
+			
+			// Remove suppression flag
+			const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+			await AsyncStorage.removeItem('activity_manually_cleared');
+			setActivitySuppressed(false);
+			setSuppressAllLogs(false);
+			
+			// Reload payments
+			fetchPayments(true);
+			
+			logger.info('UI', 'Activity restored successfully');
+		} catch (error) {
+			logger.error('UI', 'Failed to restore activity:', error);
+		}
 	};
 
 	const getFilteredTransactions = () => {
@@ -589,10 +624,29 @@ export default function ActivityScreen() {
 						{/* Empty state when there are no activities */}
 						{!loading && !error && allActivities.length === 0 && (
 							<View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 48 }}>
-								<Text style={{ fontSize: 18, fontWeight: '700', color: colors.textPrimary }}>No activities yet</Text>
-								<Text style={{ marginTop: 8, color: colors.textSecondary, textAlign: 'center', paddingHorizontal: 32 }}>
-									Once you add cards, make payments, or perform transfers, your activity will appear here.
+								<Text style={{ fontSize: 18, fontWeight: '700', color: colors.textPrimary }}>
+									{activitySuppressed ? 'Activity cleared' : 'No activities yet'}
 								</Text>
+								<Text style={{ marginTop: 8, color: colors.textSecondary, textAlign: 'center', paddingHorizontal: 32 }}>
+									{activitySuppressed 
+										? 'Your activity history has been cleared from this session.'
+										: 'Once you add cards, make payments, or perform transfers, your activity will appear here.'
+									}
+								</Text>
+								{activitySuppressed && (
+									<TouchableOpacity 
+										onPress={handleRestoreActivity}
+										style={{ 
+											marginTop: 12, 
+											paddingVertical: 8, 
+											paddingHorizontal: 16, 
+											backgroundColor: colors.tintPrimary, 
+											borderRadius: 8 
+										}}
+									>
+										<Text style={{ color: 'white', fontWeight: '600', fontSize: 14 }}>Restore Activity</Text>
+									</TouchableOpacity>
+								)}
 							</View>
 						)}
 

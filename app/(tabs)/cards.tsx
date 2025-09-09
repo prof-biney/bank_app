@@ -65,7 +65,7 @@ function AddCardButton() {
         const headers = {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          "Idempotency-Key": `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          "Idempotency-Key": `card-${normalized.slice(-4)}-${payload.name.replace(/\s+/g, '-')}-${Date.now()}`,
         };
         
         // Log the request details
@@ -147,13 +147,30 @@ function AddCardButton() {
       
       // Server has created the card - trigger a refresh to load it from server
       // This prevents duplication since the server already persists the card
-      const { queryAppwriteCards } = require('@/lib/appwriteCardService');
+      const { getAppwriteActiveCards } = require('@/lib/appwriteCardService');
       try {
         // Refresh the cards list to include the newly created card
-        const { cards: updatedCards } = await queryAppwriteCards();
-        logger.info('CARDS', 'Loaded updated cards from server:', updatedCards.length);
+        const updatedCards = await getAppwriteActiveCards();
+        logger.info('CARDS', 'Loaded updated cards from server:', { count: updatedCards.length });
+        
+        // Verify the new card is in the list
+        const newCard = updatedCards.find(card => 
+          card.cardNumber.slice(-4) === last4In
+        );
+        
+        if (newCard) {
+          logger.info('CARDS', 'New card found in refreshed list', {
+            cardId: newCard.id,
+            hasFingerprint: Boolean(newCard.token),
+            last4: newCard.cardNumber.slice(-4)
+          });
+        } else {
+          logger.warn('CARDS', 'New card not found in refreshed list - possible delay or sync issue');
+        }
+        
       } catch (error) {
-        logger.warn('CARDS', 'Failed to refresh cards from server:', error);
+        logger.error('CARDS', 'Failed to refresh cards from server', error);
+        // Don't throw here - card creation was successful even if refresh failed
       }
       
       showAlert("success", "Card added successfully.", "Card Added");

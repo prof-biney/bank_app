@@ -15,14 +15,26 @@ export default function PaymentsScreen() {
   const [items, setItems] = useState<any[]>([]);
   const [showClearPayments, setShowClearPayments] = useState(false);
   const [isClearingPayments, setIsClearingPayments] = useState(false);
+  const [paymentsSuppressed, setPaymentsSuppressed] = useState(false);
   const { activeCard } = useApp();
 
   useEffect(() => {
-    const { getApiBase } = require('@/lib/api');
-    const apiBase = getApiBase();
-    const url = `${apiBase}/v1/payments`;
     (async () => {
       try {
+        // Check if payments were manually cleared
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        const suppressedFlag = await AsyncStorage.getItem('payments_manually_cleared');
+        
+        if (suppressedFlag) {
+          logger.info('UI', 'Payments are suppressed, skipping fetch');
+          setPaymentsSuppressed(true);
+          setItems([]);
+          return;
+        }
+        
+        const { getApiBase } = require('@/lib/api');
+        const apiBase = getApiBase();
+        const url = `${apiBase}/v1/payments`;
         const jwt = (global as any).__APPWRITE_JWT__ || undefined;
         const res = await fetch(url, { headers: { ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) } });
         const data = await res.json();
@@ -85,7 +97,6 @@ export default function PaymentsScreen() {
   };
 
   const handleClearPayments = async () => {
-    const { logger } = require('@/lib/logger');
     setIsClearingPayments(true);
     try {
       logger.info('UI', 'Starting clear payments operation');
@@ -97,6 +108,10 @@ export default function PaymentsScreen() {
       const AsyncStorage = require('@react-native-async-storage/async-storage').default;
       await AsyncStorage.removeItem('paymentData');
       await AsyncStorage.removeItem('payments_cache');
+      
+      // Set suppression flag to prevent reloading on next visit
+      await AsyncStorage.setItem('payments_manually_cleared', Date.now().toString());
+      setPaymentsSuppressed(true);
       
       logger.info('UI', 'Payments cleared successfully');
       setShowClearPayments(false);
@@ -110,6 +125,32 @@ export default function PaymentsScreen() {
 
   const handleCancelClearPayments = () => {
     setShowClearPayments(false);
+  };
+  
+  const handleRestorePayments = async () => {
+    try {
+      logger.info('UI', 'Restoring payments after clear');
+      
+      // Remove suppression flag
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      await AsyncStorage.removeItem('payments_manually_cleared');
+      setPaymentsSuppressed(false);
+      
+      // Reload payments
+      const { getApiBase } = require('@/lib/api');
+      const apiBase = getApiBase();
+      const url = `${apiBase}/v1/payments`;
+      const jwt = (global as any).__APPWRITE_JWT__ || undefined;
+      const res = await fetch(url, { headers: { ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) } });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      setItems(Array.isArray(data?.data) ? data.data : []);
+      
+      logger.info('UI', 'Payments restored successfully');
+    } catch (e: any) {
+      setError(e?.message || 'Failed to restore payments');
+      logger.error('UI', 'Failed to restore payments:', e);
+    }
   };
 
   const { colors } = useTheme();
@@ -147,10 +188,29 @@ export default function PaymentsScreen() {
           </View>
           {items.length === 0 ? (
             <View style={{ paddingVertical: 16, alignItems: 'center' }}>
-              <Text style={{ color: colors.textSecondary }}>No payments yet</Text>
-              <Text style={{ color: colors.textSecondary, marginTop: 4, textAlign: 'center' }}>
-                Create your first payment above to see it here.
+              <Text style={{ color: colors.textSecondary }}>
+                {paymentsSuppressed ? 'Payments cleared' : 'No payments yet'}
               </Text>
+              <Text style={{ color: colors.textSecondary, marginTop: 4, textAlign: 'center' }}>
+                {paymentsSuppressed 
+                  ? 'Your payment history has been cleared from this session.'
+                  : 'Create your first payment above to see it here.'
+                }
+              </Text>
+              {paymentsSuppressed && (
+                <TouchableOpacity 
+                  onPress={handleRestorePayments}
+                  style={{ 
+                    marginTop: 12, 
+                    paddingVertical: 8, 
+                    paddingHorizontal: 16, 
+                    backgroundColor: colors.tintPrimary, 
+                    borderRadius: 8 
+                  }}
+                >
+                  <Text style={{ color: 'white', fontWeight: '600', fontSize: 14 }}>Restore Payments</Text>
+                </TouchableOpacity>
+              )}
             </View>
           ) : (
             items.map((p) => (
