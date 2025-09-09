@@ -109,6 +109,7 @@ export function NotificationModal({
                     message: 'This will mark your latest notifications as read.',
                     onConfirm: async () => {
                       await markAllNotificationsRead();
+                      setConfirm(null);
                     }
                   });
                 }} 
@@ -125,6 +126,7 @@ export function NotificationModal({
                     message: 'This will mark your latest notifications as unread.',
                     onConfirm: async () => {
                       await markAllNotificationsUnread();
+                      setConfirm(null);
                     }
                   });
                 }} 
@@ -141,6 +143,7 @@ export function NotificationModal({
                     message: 'This will archive all read notifications. You can find them in the Archived filter.',
                     onConfirm: async () => {
                       await archiveAllReadNotifications();
+                      setConfirm(null);
                     }
                   });
                 }} 
@@ -158,6 +161,7 @@ export function NotificationModal({
                     tone: 'danger',
                     onConfirm: async () => {
                       await clearAllNotifications();
+                      setConfirm(null);
                     },
                   });
                 }} 
@@ -260,6 +264,7 @@ export function NotificationModal({
                             tone: notification.archived ? 'success' : 'default',
                             onConfirm: async () => {
                               await toggleNotificationArchive(notification.id);
+                              setConfirm(null);
                             }
                           });
                         }}
@@ -277,6 +282,7 @@ export function NotificationModal({
                             tone: 'danger',
                             onConfirm: async () => {
                               await deleteNotification(notification.id);
+                              setConfirm(null);
                             }
                           });
                         }}
@@ -299,9 +305,9 @@ export function NotificationModal({
             confirmText="Confirm"
             cancelText="Cancel"
             tone={confirm?.tone || 'default'}
-            onConfirm={() => { 
+            onConfirm={async () => { 
               try { 
-                confirm?.onConfirm?.(); 
+                await confirm?.onConfirm?.(); 
               } finally { 
                 setConfirm(null); 
               } 

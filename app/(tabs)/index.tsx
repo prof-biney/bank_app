@@ -112,6 +112,7 @@ export default function HomeScreen() {
     setIsClearingTransactions(true);
     try {
       await clearAllTransactions();
+      logger.info('SCREEN', 'Transactions cleared successfully, dismissing modal');
       setShowClearTransactions(false);
     } catch (error) {
       logger.error('SCREEN', 'Failed to clear transactions:', error);

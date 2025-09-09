@@ -213,7 +213,13 @@ export function ClearDataModal({
                 { backgroundColor: colors.negative },
                 isLoading && { opacity: 0.7 }
               ]}
-              onPress={onConfirm}
+              onPress={async () => {
+                try {
+                  await onConfirm();
+                } catch (error) {
+                  console.error('Error in onConfirm:', error);
+                }
+              }}
               disabled={isLoading}
             >
               <Text style={[styles.buttonText, styles.confirmButtonText]}>
