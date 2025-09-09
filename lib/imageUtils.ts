@@ -1,3 +1,4 @@
+import { logger } from '@/utils/logger';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -109,7 +110,7 @@ export const processProfileImage = async (
 
     return result.uri;
   } catch (error) {
-    console.error('Image processing error:', error);
+    logger.error('IMAGES', 'Image processing error:', error);
     throw new Error('Failed to process image. Please try again.');
   }
 };
@@ -134,7 +135,7 @@ export const requestImagePermissions = async (): Promise<{
       mediaLibrary: mediaResult.status === 'granted',
     };
   } catch (error) {
-    console.error('Permission request error:', error);
+    logger.error('IMAGES', 'Permission request error:', error);
     return {
       camera: false,
       mediaLibrary: false,
@@ -169,7 +170,7 @@ export const pickImageFromCamera = async (): Promise<ImagePicker.ImagePickerAsse
 
     return null;
   } catch (error) {
-    console.error('Camera picker error:', error);
+    logger.error('IMAGES', 'Camera picker error:', error);
     throw error;
   }
 };
@@ -201,7 +202,7 @@ export const pickImageFromGallery = async (): Promise<ImagePicker.ImagePickerAss
 
     return null;
   } catch (error) {
-    console.error('Gallery picker error:', error);
+    logger.error('IMAGES', 'Gallery picker error:', error);
     throw error;
   }
 };

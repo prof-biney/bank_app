@@ -1,3 +1,4 @@
+import { logger } from '@/utils/logger';
 import { ID, Query } from 'react-native-appwrite';
 import { databases, appwriteConfig, ensureAuthenticatedClient } from './appwrite';
 import { Transaction } from '@/types';
@@ -35,7 +36,7 @@ function getCurrentUserId(): string {
   // Handle both id and $id fields for compatibility
   const userId = (user as any)?.id || (user as any)?.$id;
   if (!userId) {
-    console.error('[getCurrentUserId] User object:', user);
+    logger.error('DATABASE', '[getCurrentUserId] User object:', user);
     throw new Error('User not authenticated - no user ID found');
   }
   return userId;
@@ -73,7 +74,7 @@ export async function createAppwriteTransaction(transactionData: CreateTransacti
       // Note: 'date' field removed as server uses $createdAt timestamp
     };
 
-    console.log('[createAppwriteTransaction] Creating transaction:', {
+    logger.info('DATABASE', '[createAppwriteTransaction] Creating transaction:', {
       userId,
       type: transactionData.type,
       amount: transactionData.amount,
@@ -101,11 +102,11 @@ export async function createAppwriteTransaction(transactionData: CreateTransacti
       date: document.$createdAt || document.date || new Date().toISOString(),
     };
 
-    console.log('[createAppwriteTransaction] Transaction created successfully:', transaction.id);
+    logger.info('DATABASE', '[createAppwriteTransaction] Transaction created successfully:', transaction.id);
     return transaction;
 
   } catch (error) {
-    console.error('[createAppwriteTransaction] Failed to create transaction:', error);
+    logger.error('DATABASE', '[createAppwriteTransaction] Failed to create transaction:', error);
     throw new Error(`Failed to create transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
@@ -132,7 +133,7 @@ export async function updateAppwriteTransaction(
     
     const userId = getCurrentUserId();
 
-    console.log('[updateAppwriteTransaction] Updating transaction:', {
+    logger.info('DATABASE', '[updateAppwriteTransaction] Updating transaction:', {
       transactionId,
       userId,
       updateData
@@ -170,11 +171,11 @@ export async function updateAppwriteTransaction(
       date: document.date,
     };
 
-    console.log('[updateAppwriteTransaction] Transaction updated successfully:', transaction.id);
+    logger.info('DATABASE', '[updateAppwriteTransaction] Transaction updated successfully:', transaction.id);
     return transaction;
 
   } catch (error) {
-    console.error('[updateAppwriteTransaction] Failed to update transaction:', error);
+    logger.error('DATABASE', '[updateAppwriteTransaction] Failed to update transaction:', error);
     throw new Error(`Failed to update transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
@@ -198,7 +199,7 @@ export async function deleteAppwriteTransaction(transactionId: string): Promise<
     
     const userId = getCurrentUserId();
 
-    console.log('[deleteAppwriteTransaction] Deleting transaction:', {
+    logger.info('DATABASE', '[deleteAppwriteTransaction] Deleting transaction:', {
       transactionId,
       userId
     });
@@ -220,10 +221,10 @@ export async function deleteAppwriteTransaction(transactionId: string): Promise<
       transactionId
     );
 
-    console.log('[deleteAppwriteTransaction] Transaction deleted successfully:', transactionId);
+    logger.info('DATABASE', '[deleteAppwriteTransaction] Transaction deleted successfully:', transactionId);
 
   } catch (error) {
-    console.error('[deleteAppwriteTransaction] Failed to delete transaction:', error);
+    logger.error('DATABASE', '[deleteAppwriteTransaction] Failed to delete transaction:', error);
     throw new Error(`Failed to delete transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
@@ -274,7 +275,7 @@ export async function getAppwriteTransaction(transactionId: string): Promise<Tra
     return transaction;
 
   } catch (error) {
-    console.error('[getAppwriteTransaction] Failed to get transaction:', error);
+    logger.error('DATABASE', '[getAppwriteTransaction] Failed to get transaction:', error);
     throw new Error(`Failed to get transaction: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
@@ -335,7 +336,7 @@ export async function queryAppwriteTransactions(options: {
       queries.push(Query.offset(options.offset));
     }
 
-    console.log('[queryAppwriteTransactions] Querying transactions for user:', userId);
+    logger.info('DATABASE', '[queryAppwriteTransactions] Querying transactions for user:', userId);
 
     const response = await databases.listDocuments(
       databaseId,
@@ -357,7 +358,7 @@ export async function queryAppwriteTransactions(options: {
       date: doc.date,
     }));
 
-    console.log('[queryAppwriteTransactions] Found', transactions.length, 'transactions');
+    logger.info('DATABASE', '[queryAppwriteTransactions] Found', transactions.length, 'transactions');
 
     return {
       transactions,
@@ -365,7 +366,7 @@ export async function queryAppwriteTransactions(options: {
     };
 
   } catch (error) {
-    console.error('[queryAppwriteTransactions] Failed to query transactions:', error);
+    logger.error('DATABASE', '[queryAppwriteTransactions] Failed to query transactions:', error);
     throw new Error(`Failed to query transactions: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
@@ -383,7 +384,7 @@ export async function getAppwriteCardTransactions(cardId: string, limit = 20): P
     });
     return result.transactions;
   } catch (error) {
-    console.error('[getAppwriteCardTransactions] Failed to get card transactions:', error);
+    logger.error('DATABASE', '[getAppwriteCardTransactions] Failed to get card transactions:', error);
     return [];
   }
 }
@@ -400,7 +401,7 @@ export async function getAppwriteRecentTransactions(limit = 20): Promise<Transac
     });
     return result.transactions;
   } catch (error) {
-    console.error('[getAppwriteRecentTransactions] Failed to get recent transactions:', error);
+    logger.error('DATABASE', '[getAppwriteRecentTransactions] Failed to get recent transactions:', error);
     return [];
   }
 }

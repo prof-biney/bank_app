@@ -1,3 +1,4 @@
+import { logger } from '@/utils/logger';
 /**
  * Token Manager Module
  * 
@@ -13,17 +14,17 @@ import { account } from './appwrite';
 export const expireToken = (): void => {
   try {
     if (__DEV__) {
-      console.log('[TokenManager] Expiring global JWT token');
+      logger.info('TOKENS', '[TokenManager] Expiring global JWT token');
     }
     
     // Clear the global JWT token
     (global as any).__APPWRITE_JWT__ = undefined;
     
     if (__DEV__) {
-      console.log('[TokenManager] Global JWT token expired successfully');
+      logger.info('TOKENS', '[TokenManager] Global JWT token expired successfully');
     }
   } catch (error) {
-    console.error('[TokenManager] Error expiring token:', error);
+    logger.error('TOKENS', '[TokenManager] Error expiring token:', error);
   }
 };
 
@@ -33,7 +34,7 @@ export const expireToken = (): void => {
 export const clearTokenData = (): void => {
   try {
     if (__DEV__) {
-      console.log('[TokenManager] Clearing all token data');
+      logger.info('TOKENS', '[TokenManager] Clearing all token data');
     }
     
     // Clear global JWT
@@ -43,10 +44,10 @@ export const clearTokenData = (): void => {
     // This is a placeholder for future token storage mechanisms
     
     if (__DEV__) {
-      console.log('[TokenManager] All token data cleared successfully');
+      logger.info('TOKENS', '[TokenManager] All token data cleared successfully');
     }
   } catch (error) {
-    console.error('[TokenManager] Error clearing token data:', error);
+    logger.error('TOKENS', '[TokenManager] Error clearing token data:', error);
   }
 };
 
@@ -56,7 +57,7 @@ export const clearTokenData = (): void => {
 export const performCompleteCleanup = async (): Promise<void> => {
   try {
     if (__DEV__) {
-      console.log('[TokenManager] Starting complete cleanup process');
+      logger.info('TOKENS', '[TokenManager] Starting complete cleanup process');
     }
     
     // Step 1: Expire tokens first
@@ -66,12 +67,12 @@ export const performCompleteCleanup = async (): Promise<void> => {
     try {
       await account.deleteSession('current');
       if (__DEV__) {
-        console.log('[TokenManager] Appwrite session deleted successfully');
+        logger.info('TOKENS', '[TokenManager] Appwrite session deleted successfully');
       }
     } catch (sessionError: any) {
       // It's okay if session deletion fails (session might already be expired)
       if (__DEV__) {
-        console.log('[TokenManager] Session deletion failed (session may already be invalid):', sessionError.message);
+        logger.info('TOKENS', '[TokenManager] Session deletion failed (session may already be invalid):', sessionError.message);
       }
     }
     
@@ -79,17 +80,17 @@ export const performCompleteCleanup = async (): Promise<void> => {
     clearTokenData();
     
     if (__DEV__) {
-      console.log('[TokenManager] Complete cleanup finished successfully');
+      logger.info('TOKENS', '[TokenManager] Complete cleanup finished successfully');
     }
   } catch (error) {
-    console.error('[TokenManager] Error during complete cleanup:', error);
+    logger.error('TOKENS', '[TokenManager] Error during complete cleanup:', error);
     
     // Even if cleanup fails, ensure tokens are cleared
     try {
       expireToken();
       clearTokenData();
     } catch (fallbackError) {
-      console.error('[TokenManager] Fallback cleanup also failed:', fallbackError);
+      logger.error('TOKENS', '[TokenManager] Fallback cleanup also failed:', fallbackError);
     }
     
     throw error;
@@ -105,7 +106,7 @@ export const hasValidToken = (): boolean => {
     const jwt = (global as any).__APPWRITE_JWT__;
     return typeof jwt === 'string' && jwt.length > 0;
   } catch (error) {
-    console.error('[TokenManager] Error checking token validity:', error);
+    logger.error('TOKENS', '[TokenManager] Error checking token validity:', error);
     return false;
   }
 };
@@ -119,7 +120,7 @@ export const getCurrentToken = (): string | null => {
     const jwt = (global as any).__APPWRITE_JWT__;
     return typeof jwt === 'string' && jwt.length > 0 ? jwt : null;
   } catch (error) {
-    console.error('[TokenManager] Error getting current token:', error);
+    logger.error('TOKENS', '[TokenManager] Error getting current token:', error);
     return null;
   }
 };
@@ -131,16 +132,16 @@ export const getCurrentToken = (): string | null => {
 export const setToken = (token: string | null): void => {
   try {
     if (__DEV__) {
-      console.log('[TokenManager] Setting new JWT token:', token ? 'Token provided' : 'Token cleared');
+      logger.info('TOKENS', '[TokenManager] Setting new JWT token:', token ? 'Token provided' : 'Token cleared');
     }
     
     (global as any).__APPWRITE_JWT__ = token;
     
     if (__DEV__) {
-      console.log('[TokenManager] JWT token updated successfully');
+      logger.info('TOKENS', '[TokenManager] JWT token updated successfully');
     }
   } catch (error) {
-    console.error('[TokenManager] Error setting token:', error);
+    logger.error('TOKENS', '[TokenManager] Error setting token:', error);
   }
 };
 
@@ -153,10 +154,10 @@ export const emergencyCleanup = (): void => {
     expireToken();
     clearTokenData();
     if (__DEV__) {
-      console.log('[TokenManager] Emergency cleanup completed');
+      logger.info('TOKENS', '[TokenManager] Emergency cleanup completed');
     }
   } catch (error) {
     // Silent failure for emergency cleanup
-    console.error('[TokenManager] Emergency cleanup failed:', error);
+    logger.error('TOKENS', '[TokenManager] Emergency cleanup failed:', error);
   }
 };

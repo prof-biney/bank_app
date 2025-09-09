@@ -1,3 +1,4 @@
+import { logger } from '@/utils/logger';
 import { ID, Query } from 'react-native-appwrite';
 import { databases, appwriteConfig } from './appwrite';
 import { ActivityEvent } from '@/types/activity';
@@ -70,7 +71,7 @@ export async function createAppwriteActivityEvent(eventData: CreateActivityEvent
       timestamp: new Date().toISOString(),
     };
 
-    console.log('[createAppwriteActivityEvent] Creating activity event:', {
+    logger.info('ACTIVITY', '[createAppwriteActivityEvent] Creating activity event:', {
       userId,
       category: eventData.category,
       type: eventData.type,
@@ -101,11 +102,11 @@ export async function createAppwriteActivityEvent(eventData: CreateActivityEvent
       tags: document.tags ? JSON.parse(document.tags) : [],
     };
 
-    console.log('[createAppwriteActivityEvent] Activity event created successfully:', activityEvent.id);
+    logger.info('ACTIVITY', '[createAppwriteActivityEvent] Activity event created successfully:', activityEvent.id);
     return activityEvent;
 
   } catch (error) {
-    console.error('[createAppwriteActivityEvent] Failed to create activity event:', error);
+    logger.error('ACTIVITY', '[createAppwriteActivityEvent] Failed to create activity event:', error);
     throw new Error(`Failed to create activity event: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
@@ -126,7 +127,7 @@ export async function updateAppwriteActivityEvent(
   try {
     const userId = getCurrentUserId();
 
-    console.log('[updateAppwriteActivityEvent] Updating activity event:', {
+    logger.info('ACTIVITY', '[updateAppwriteActivityEvent] Updating activity event:', {
       eventId,
       userId,
       updateData
@@ -167,11 +168,11 @@ export async function updateAppwriteActivityEvent(
       tags: document.tags ? JSON.parse(document.tags) : [],
     };
 
-    console.log('[updateAppwriteActivityEvent] Activity event updated successfully:', activityEvent.id);
+    logger.info('ACTIVITY', '[updateAppwriteActivityEvent] Activity event updated successfully:', activityEvent.id);
     return activityEvent;
 
   } catch (error) {
-    console.error('[updateAppwriteActivityEvent] Failed to update activity event:', error);
+    logger.error('ACTIVITY', '[updateAppwriteActivityEvent] Failed to update activity event:', error);
     throw new Error(`Failed to update activity event: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
@@ -189,7 +190,7 @@ export async function deleteAppwriteActivityEvent(eventId: string): Promise<void
   try {
     const userId = getCurrentUserId();
 
-    console.log('[deleteAppwriteActivityEvent] Deleting activity event:', {
+    logger.info('ACTIVITY', '[deleteAppwriteActivityEvent] Deleting activity event:', {
       eventId,
       userId
     });
@@ -211,10 +212,10 @@ export async function deleteAppwriteActivityEvent(eventId: string): Promise<void
       eventId
     );
 
-    console.log('[deleteAppwriteActivityEvent] Activity event deleted successfully:', eventId);
+    logger.info('ACTIVITY', '[deleteAppwriteActivityEvent] Activity event deleted successfully:', eventId);
 
   } catch (error) {
-    console.error('[deleteAppwriteActivityEvent] Failed to delete activity event:', error);
+    logger.error('ACTIVITY', '[deleteAppwriteActivityEvent] Failed to delete activity event:', error);
     throw new Error(`Failed to delete activity event: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
@@ -262,7 +263,7 @@ export async function getAppwriteActivityEvent(eventId: string): Promise<Activit
     return activityEvent;
 
   } catch (error) {
-    console.error('[getAppwriteActivityEvent] Failed to get activity event:', error);
+    logger.error('ACTIVITY', '[getAppwriteActivityEvent] Failed to get activity event:', error);
     throw new Error(`Failed to get activity event: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
@@ -325,7 +326,7 @@ export async function queryAppwriteActivityEvents(options: {
       queries.push(Query.offset(options.offset));
     }
 
-    console.log('[queryAppwriteActivityEvents] Querying activity events for user:', userId);
+    logger.info('ACTIVITY', '[queryAppwriteActivityEvents] Querying activity events for user:', userId);
 
     const response = await databases.listDocuments(
       databaseId,
@@ -350,7 +351,7 @@ export async function queryAppwriteActivityEvents(options: {
       tags: doc.tags ? JSON.parse(doc.tags) : [],
     }));
 
-    console.log('[queryAppwriteActivityEvents] Found', events.length, 'activity events');
+    logger.info('ACTIVITY', '[queryAppwriteActivityEvents] Found', events.length, 'activity events');
 
     return {
       events,
@@ -358,7 +359,7 @@ export async function queryAppwriteActivityEvents(options: {
     };
 
   } catch (error) {
-    console.error('[queryAppwriteActivityEvents] Failed to query activity events:', error);
+    logger.error('ACTIVITY', '[queryAppwriteActivityEvents] Failed to query activity events:', error);
     throw new Error(`Failed to query activity events: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
@@ -379,7 +380,7 @@ export async function getAppwriteActivityEventsByCategory(
     });
     return result.events;
   } catch (error) {
-    console.error('[getAppwriteActivityEventsByCategory] Failed to get activity events by category:', error);
+    logger.error('ACTIVITY', '[getAppwriteActivityEventsByCategory] Failed to get activity events by category:', error);
     return [];
   }
 }
@@ -396,7 +397,7 @@ export async function getAppwriteRecentActivityEvents(limit = 50): Promise<Activ
     });
     return result.events;
   } catch (error) {
-    console.error('[getAppwriteRecentActivityEvents] Failed to get recent activity events:', error);
+    logger.error('ACTIVITY', '[getAppwriteRecentActivityEvents] Failed to get recent activity events:', error);
     return [];
   }
 }
@@ -408,7 +409,7 @@ export async function cleanupOldAppwriteActivityEvents(): Promise<void> {
   const { accountUpdatesCollectionId, databaseId } = appwriteConfig;
   
   if (!databaseId || !accountUpdatesCollectionId) {
-    console.warn('[cleanupOldAppwriteActivityEvents] Appwrite activity collection not configured');
+    logger.warn('ACTIVITY', '[cleanupOldAppwriteActivityEvents] Appwrite activity collection not configured');
     return;
   }
 
@@ -417,7 +418,7 @@ export async function cleanupOldAppwriteActivityEvents(): Promise<void> {
     const retentionDate = new Date();
     retentionDate.setDate(retentionDate.getDate() - 30); // 30 days retention
     
-    console.log('[cleanupOldAppwriteActivityEvents] Cleaning activity events older than:', retentionDate.toISOString());
+    logger.info('ACTIVITY', '[cleanupOldAppwriteActivityEvents] Cleaning activity events older than:', retentionDate.toISOString());
 
     // Query old events
     const queries = [
@@ -441,14 +442,14 @@ export async function cleanupOldAppwriteActivityEvents(): Promise<void> {
           doc.$id
         );
       } catch (error) {
-        console.warn('[cleanupOldAppwriteActivityEvents] Failed to delete event:', doc.$id, error);
+        logger.warn('ACTIVITY', '[cleanupOldAppwriteActivityEvents] Failed to delete event:', doc.$id, error);
       }
     }
 
-    console.log('[cleanupOldAppwriteActivityEvents] Cleaned up', response.documents.length, 'old activity events');
+    logger.info('ACTIVITY', '[cleanupOldAppwriteActivityEvents] Cleaned up', response.documents.length, 'old activity events');
 
   } catch (error) {
-    console.error('[cleanupOldAppwriteActivityEvents] Failed to cleanup activity events:', error);
+    logger.error('ACTIVITY', '[cleanupOldAppwriteActivityEvents] Failed to cleanup activity events:', error);
     // Don't throw - this is a background cleanup operation
   }
 }

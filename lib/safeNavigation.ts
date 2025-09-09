@@ -1,3 +1,4 @@
+import { logger } from '@/utils/logger';
 /**
  * Safe Navigation Utilities
  * 
@@ -40,14 +41,14 @@ export const safeNavigate = async (
   while (attemptCount < retries) {
     try {
       await attemptNavigation();
-      console.log(`[SafeNavigation] Successfully navigated to ${route} on attempt ${attemptCount + 1}`);
+      logger.info('NAVIGATION', `[SafeNavigation] Successfully navigated to ${route} on attempt ${attemptCount + 1}`);
       return;
     } catch (error) {
       attemptCount++;
-      console.warn(`[SafeNavigation] Navigation attempt ${attemptCount} failed:`, error);
+      logger.warn('NAVIGATION', `[SafeNavigation] Navigation attempt ${attemptCount} failed:`, error);
       
       if (attemptCount >= retries) {
-        console.error(`[SafeNavigation] All ${retries} navigation attempts failed for route: ${route}`);
+        logger.error('NAVIGATION', `[SafeNavigation] All ${retries} navigation attempts failed for route: ${route}`);
         throw error;
       }
       
@@ -69,14 +70,14 @@ export const navigateAfterLogout = async (route: string = '/sign-in'): Promise<v
         await safeNavigate(route, 'replace', 5, 150);
         resolve();
       } catch (error) {
-        console.error('[SafeNavigation] Post-logout navigation failed:', error);
+        logger.error('NAVIGATION', '[SafeNavigation] Post-logout navigation failed:', error);
         
         // Last resort: try a simple router.push
         try {
           router.push(route);
           resolve();
         } catch (finalError) {
-          console.error('[SafeNavigation] Final navigation attempt failed:', finalError);
+          logger.error('NAVIGATION', '[SafeNavigation] Final navigation attempt failed:', finalError);
           resolve(); // Don't throw - user can manually navigate
         }
       }
@@ -130,7 +131,7 @@ export const navigateWhenReady = async (
   const isReady = await waitForNavigationReady();
   
   if (!isReady) {
-    console.warn('[SafeNavigation] Navigation not ready after timeout, attempting anyway');
+    logger.warn('NAVIGATION', '[SafeNavigation] Navigation not ready after timeout, attempting anyway');
   }
   
   return safeNavigate(route, method);

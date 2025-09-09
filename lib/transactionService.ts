@@ -1,5 +1,6 @@
 import { Transaction } from '@/types';
 import { StorageManager } from './storageService';
+import { logger } from '@/utils/logger';
 
 /**
  * Transaction Service
@@ -49,29 +50,29 @@ export async function fetchUserTransactions(filters: TransactionFilters = {}): P
     }
 
     const url = `${getApiBase()}/v1/transactions?${params.toString()}`;
-    console.log('[fetchUserTransactions] Request URL:', url);
+    logger.info('TRANSACTIONS', '[fetchUserTransactions] Request URL:', url);
     
     // Use improved JWT handling with auto-refresh
     let jwt = await getValidJWTWithAutoRefresh();
-    console.log('[fetchUserTransactions] JWT obtained:', !!jwt);
+    logger.info('TRANSACTIONS', '[fetchUserTransactions] JWT obtained:', !!jwt);
 
     const makeRequest = async (token: string | undefined) => {
       const headers: any = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
-      console.log('[fetchUserTransactions] Request headers:', { hasAuth: !!token, contentType: headers['Content-Type'] });
+      logger.info('TRANSACTIONS', '[fetchUserTransactions] Request headers:', { hasAuth: !!token, contentType: headers['Content-Type'] });
       return await fetch(url, { headers });
     };
 
     let response = await makeRequest(jwt);
-    console.log('[fetchUserTransactions] Response status:', response.status, response.statusText);
+    logger.info('TRANSACTIONS', '[fetchUserTransactions] Response status:', response.status, response.statusText);
 
     // Handle token refresh if needed with improved retry logic
     if (response.status === 401) {
-      console.log('[fetchUserTransactions] Got 401, attempting JWT refresh with retry...');
+      logger.info('TRANSACTIONS', '[fetchUserTransactions] Got 401, attempting JWT refresh with retry...');
       jwt = await refreshAppwriteJWTWithRetry();
       if (jwt) {
         response = await makeRequest(jwt);
-        console.log('[fetchUserTransactions] Retry response status:', response.status, response.statusText);
+        logger.info('TRANSACTIONS', '[fetchUserTransactions] Retry response status:', response.status, response.statusText);
       } else {
         // JWT refresh failed, likely needs re-authentication
         return {
@@ -86,7 +87,7 @@ export async function fetchUserTransactions(filters: TransactionFilters = {}): P
       
       // Handle 404 as "no transactions found" rather than an error
       if (response.status === 404) {
-        console.log('[fetchUserTransactions] No transactions found (404), returning empty array');
+        logger.info('TRANSACTIONS', '[fetchUserTransactions] No transactions found (404), returning empty array');
         return {
           success: true,
           data: {
@@ -96,8 +97,8 @@ export async function fetchUserTransactions(filters: TransactionFilters = {}): P
         };
       }
       
-      console.error('[fetchUserTransactions] HTTP Error:', response.status, response.statusText);
-      console.debug('[fetchUserTransactions] Error details:', errorText);
+      logger.error('TRANSACTIONS', '[fetchUserTransactions] HTTP Error:', response.status, response.statusText);
+      logger.debug('TRANSACTIONS', '[fetchUserTransactions] Error details:', errorText);
       return {
         success: false,
         error: `Failed to fetch transactions: ${response.status} ${response.statusText}`
@@ -105,7 +106,7 @@ export async function fetchUserTransactions(filters: TransactionFilters = {}): P
     }
 
     const result = await response.json();
-    console.log('[fetchUserTransactions] Success response:', { dataLength: result.data?.length, hasNextCursor: !!result.nextCursor });
+    logger.info('TRANSACTIONS', '[fetchUserTransactions] Success response:', { dataLength: result.data?.length, hasNextCursor: !!result.nextCursor });
     
     return {
       success: true,
@@ -115,7 +116,7 @@ export async function fetchUserTransactions(filters: TransactionFilters = {}): P
       }
     };
   } catch (error) {
-    console.error('Error fetching user transactions:', error);
+    logger.error('TRANSACTIONS', 'Error fetching user transactions:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error occurred'
@@ -164,7 +165,7 @@ export async function createTransaction(
 
     // Handle token refresh if needed
     if (response.status === 401 && jwt) {
-      console.log('[createTransaction] Got 401, refreshing JWT and retrying...');
+      logger.info('TRANSACTIONS', '[createTransaction] Got 401, refreshing JWT and retrying...');
       jwt = await refreshAppwriteJWT();
       if (jwt) {
         response = await makeRequest(jwt);
@@ -179,7 +180,7 @@ export async function createTransaction(
     const result = await response.json();
     return result.data || result;
   } catch (error) {
-    console.error('Error creating transaction:', error);
+    logger.error('TRANSACTIONS', 'Error creating transaction:', error);
     throw error;
   }
 }
@@ -215,7 +216,7 @@ export async function updateTransaction(
 
     // Handle token refresh if needed
     if (response.status === 401 && jwt) {
-      console.log('[updateTransaction] Got 401, refreshing JWT and retrying...');
+      logger.info('TRANSACTIONS', '[updateTransaction] Got 401, refreshing JWT and retrying...');
       jwt = await refreshAppwriteJWT();
       if (jwt) {
         response = await makeRequest(jwt);
@@ -230,7 +231,7 @@ export async function updateTransaction(
     const result = await response.json();
     return result.data || result;
   } catch (error) {
-    console.error('Error updating transaction:', error);
+    logger.error('TRANSACTIONS', 'Error updating transaction:', error);
     throw error;
   }
 }
@@ -258,7 +259,7 @@ export async function getTransactionById(transactionId: string): Promise<Transac
 
     // Handle token refresh if needed
     if (response.status === 401 && jwt) {
-      console.log('[getTransactionById] Got 401, refreshing JWT and retrying...');
+      logger.info('TRANSACTIONS', '[getTransactionById] Got 401, refreshing JWT and retrying...');
       jwt = await refreshAppwriteJWT();
       if (jwt) {
         response = await makeRequest(jwt);
@@ -272,7 +273,7 @@ export async function getTransactionById(transactionId: string): Promise<Transac
     const result = await response.json();
     return result.data || result;
   } catch (error) {
-    console.error('Error fetching transaction by ID:', error);
+    logger.error('TRANSACTIONS', 'Error fetching transaction by ID:', error);
     throw error;
   }
 }
@@ -326,7 +327,7 @@ export async function getCachedTransactions(): Promise<{ transactions: Transacti
   try {
     return await StorageManager.getCachedTransactions();
   } catch (error) {
-    console.warn('[getCachedTransactions] Failed to read cache:', error);
+    logger.warn('TRANSACTIONS', '[getCachedTransactions] Failed to read cache:', error);
     return null;
   }
 }
@@ -339,7 +340,7 @@ export async function cacheTransactions(transactions: Transaction[]): Promise<vo
   try {
     await StorageManager.cacheTransactions(transactions);
   } catch (error) {
-    console.error('[cacheTransactions] Failed to cache transactions:', error);
+    logger.error('TRANSACTIONS', '[cacheTransactions] Failed to cache transactions:', error);
     // Don't throw - caching failures shouldn't break the app
   }
 }
@@ -365,7 +366,7 @@ export async function fetchUserTransactionsWithCache(
     try {
       cachedData = await getCachedTransactions();
       if (cachedData) {
-        console.log(`[fetchUserTransactionsWithCache] Found ${cachedData.transactions.length} cached transactions`);
+        logger.info('TRANSACTIONS', `[fetchUserTransactionsWithCache] Found ${cachedData.transactions.length} cached transactions`);
         
         // Return cached data immediately
         const cacheResult = {
@@ -380,19 +381,19 @@ export async function fetchUserTransactionsWithCache(
         
         // Start background sync (don't await)
         backgroundSyncTransactions(filters).catch(error => 
-          console.warn('[fetchUserTransactionsWithCache] Background sync failed:', error)
+          logger.warn('TRANSACTIONS', '[fetchUserTransactionsWithCache] Background sync failed:', error)
         );
         
         return cacheResult;
       }
     } catch (error) {
-      console.warn('[fetchUserTransactionsWithCache] Cache read failed:', error);
+      logger.warn('TRANSACTIONS', '[fetchUserTransactionsWithCache] Cache read failed:', error);
       // Continue to server fetch
     }
   }
   
   // Step 2: Fetch from server
-  console.log('[fetchUserTransactionsWithCache] Fetching from server');
+  logger.info('TRANSACTIONS', '[fetchUserTransactionsWithCache] Fetching from server');
   const serverResult = await fetchUserTransactions(filters);
   
   if (serverResult.success && serverResult.data) {
@@ -430,7 +431,7 @@ export async function fetchUserTransactionsWithCache(
   
   // Step 3: Server failed, return cached data if available
   if (cachedData) {
-    console.log('[fetchUserTransactionsWithCache] Server failed, using cache fallback');
+    logger.info('TRANSACTIONS', '[fetchUserTransactionsWithCache] Server failed, using cache fallback');
     return {
       success: true,
       data: {
@@ -451,7 +452,7 @@ export async function fetchUserTransactionsWithCache(
  */
 export async function backgroundSyncTransactions(filters: TransactionFilters = {}): Promise<void> {
   try {
-    console.log('[backgroundSyncTransactions] Starting background sync');
+    logger.info('TRANSACTIONS', '[backgroundSyncTransactions] Starting background sync');
     const serverResult = await fetchUserTransactions(filters);
     
     if (serverResult.success && serverResult.data) {
@@ -465,15 +466,15 @@ export async function backgroundSyncTransactions(filters: TransactionFilters = {
           serverResult.data.transactions
         );
         await cacheTransactions(merged);
-        console.log(`[backgroundSyncTransactions] Updated cache with ${merged.length} transactions`);
+        logger.info('TRANSACTIONS', `[backgroundSyncTransactions] Updated cache with ${merged.length} transactions`);
       } else {
         // No cache, just store server data
         await cacheTransactions(serverResult.data.transactions);
-        console.log(`[backgroundSyncTransactions] Cached ${serverResult.data.transactions.length} transactions`);
+        logger.info('TRANSACTIONS', `[backgroundSyncTransactions] Cached ${serverResult.data.transactions.length} transactions`);
       }
     }
   } catch (error) {
-    console.warn('[backgroundSyncTransactions] Background sync failed:', error);
+    logger.warn('TRANSACTIONS', '[backgroundSyncTransactions] Background sync failed:', error);
   }
 }
 
@@ -486,7 +487,7 @@ export async function checkTransactionsNeedSync(): Promise<boolean> {
     const staleInfo = await StorageManager.isDataStale();
     return staleInfo.transactions;
   } catch (error) {
-    console.warn('[checkTransactionsNeedSync] Check failed:', error);
+    logger.warn('TRANSACTIONS', '[checkTransactionsNeedSync] Check failed:', error);
     return true; // Assume needs sync if check fails
   }
 }
@@ -501,7 +502,7 @@ export async function forceRefreshTransactions(filters: TransactionFilters = {})
   data?: { transactions: Transaction[]; nextCursor?: string | null };
   error?: string;
 }> {
-  console.log('[forceRefreshTransactions] Force refreshing from server');
+  logger.info('TRANSACTIONS', '[forceRefreshTransactions] Force refreshing from server');
   
   const result = await fetchUserTransactions(filters);
   

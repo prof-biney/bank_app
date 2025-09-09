@@ -1,3 +1,4 @@
+import { logger } from '@/utils/logger';
 import type { Notification } from "@/types";
 
 /**
@@ -24,7 +25,7 @@ async function pushToNotificationSystem(payload: NotificationPayload): Promise<v
     
     const apiBase = getApiBase();
     if (!apiBase || apiBase.includes('undefined') || apiBase === 'undefined') {
-      console.log('[pushToNotificationSystem] API base URL not configured, skipping server notification');
+      logger.info('NOTIFICATIONS', '[pushToNotificationSystem] API base URL not configured, skipping server notification');
       return;
     }
     
@@ -32,7 +33,7 @@ async function pushToNotificationSystem(payload: NotificationPayload): Promise<v
     
     let jwt = await getValidJWT();
     if (!jwt) {
-      console.log('[pushToNotificationSystem] No JWT available, skipping server notification');
+      logger.info('NOTIFICATIONS', '[pushToNotificationSystem] No JWT available, skipping server notification');
       return;
     }
     
@@ -57,7 +58,7 @@ async function pushToNotificationSystem(payload: NotificationPayload): Promise<v
     
     // Handle token refresh if needed
     if (response.status === 401 && jwt) {
-      console.log('[pushToNotificationSystem] Got 401, refreshing JWT and retrying...');
+      logger.info('NOTIFICATIONS', '[pushToNotificationSystem] Got 401, refreshing JWT and retrying...');
       jwt = await refreshAppwriteJWT();
       if (jwt) {
         response = await makeRequest(jwt);
@@ -66,19 +67,19 @@ async function pushToNotificationSystem(payload: NotificationPayload): Promise<v
     
     if (!response.ok) {
       if (response.status === 404) {
-        console.log('[pushToNotificationSystem] Notification endpoint not found (404), server may not support notifications yet');
+        logger.info('NOTIFICATIONS', '[pushToNotificationSystem] Notification endpoint not found (404), server may not support notifications yet');
       } else {
         const errorText = await response.text().catch(() => 'Unknown error');
-        console.error('[pushToNotificationSystem] Failed to push notification:', response.status, errorText);
+        logger.error('NOTIFICATIONS', '[pushToNotificationSystem] Failed to push notification:', response.status, errorText);
       }
     } else {
-      console.log('[pushToNotificationSystem] Notification pushed successfully');
+      logger.info('NOTIFICATIONS', '[pushToNotificationSystem] Notification pushed successfully');
     }
   } catch (error) {
     if (error instanceof TypeError && error.message.includes('fetch')) {
-      console.log('[pushToNotificationSystem] Network error, server may be unavailable');
+      logger.info('NOTIFICATIONS', '[pushToNotificationSystem] Network error, server may be unavailable');
     } else {
-      console.error('[pushToNotificationSystem] Error pushing notification:', error);
+      logger.error('NOTIFICATIONS', '[pushToNotificationSystem] Error pushing notification:', error);
     }
     // Don't throw - we don't want notification failures to break the main flow
   }
@@ -103,14 +104,14 @@ function pushToLocalNotificationSystem(payload: NotificationPayload): void {
     // We'll need to access the AppContext's setNotifications function
     // This will be handled by passing the context functions to this service
     if ((global as any).__APP_CONTEXT__ && (global as any).__APP_CONTEXT__.setNotifications) {
-      console.log('[pushToLocalNotificationSystem] Pushing notification:', payload.title);
+      logger.info('NOTIFICATIONS', '[pushToLocalNotificationSystem] Pushing notification:', payload.title);
       const { setNotifications } = (global as any).__APP_CONTEXT__;
       setNotifications((prev: Notification[]) => [notification, ...prev]);
     } else {
-      console.warn('[pushToLocalNotificationSystem] AppContext not available, notification not persisted to drawer');
+      logger.warn('NOTIFICATIONS', '[pushToLocalNotificationSystem] AppContext not available, notification not persisted to drawer');
     }
   } catch (error) {
-    console.error('[pushToLocalNotificationSystem] Error pushing local notification:', error);
+    logger.error('NOTIFICATIONS', '[pushToLocalNotificationSystem] Error pushing local notification:', error);
   }
 }
 
@@ -141,7 +142,7 @@ export function showAlertWithNotification(
   
   // Try server-based notifications first, then local fallback (fire and forget)
   pushToNotificationSystem(payload).catch((error) => {
-    console.log('[showAlertWithNotification] Server notification failed, using local only:', error?.message || error);
+    logger.info('NOTIFICATIONS', '[showAlertWithNotification] Server notification failed, using local only:', error?.message || error);
   });
   
   // Always push to local notifications
@@ -210,7 +211,7 @@ export function pushTransferNotification(
   
   // Try server-based notifications first, then local fallback
   pushToNotificationSystem(payload).catch((error) => {
-    console.log('[pushTransferNotification] Server notification failed, using local only:', error?.message || error);
+    logger.info('NOTIFICATIONS', '[pushTransferNotification] Server notification failed, using local only:', error?.message || error);
   });
   
   // Always push to local notifications

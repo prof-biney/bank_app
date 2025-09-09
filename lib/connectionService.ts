@@ -1,3 +1,4 @@
+import { logger } from '@/utils/logger';
 /**
  * Connection Service
  * 
@@ -30,7 +31,7 @@ class ConnectionMonitor {
    */
   init(showAlert: (type: 'success' | 'error' | 'warning' | 'info', message: string, title?: string) => void) {
     this.state.showAlert = showAlert;
-    console.log('[ConnectionMonitor] Initialized with alert system');
+    logger.info('CONNECTION', '[ConnectionMonitor] Initialized with alert system');
   }
 
   /**
@@ -64,7 +65,7 @@ class ConnectionMonitor {
       );
     }
 
-    console.log('[ConnectionMonitor] Connected to real-time services');
+    logger.info('CONNECTION', '[ConnectionMonitor] Connected to real-time services');
   }
 
   /**
@@ -92,7 +93,7 @@ class ConnectionMonitor {
       );
     }
 
-    console.warn('[ConnectionMonitor] Disconnected from real-time services:', reason);
+    logger.warn('CONNECTION', '[ConnectionMonitor] Disconnected from real-time services:', reason);
   }
 
   /**
@@ -105,14 +106,14 @@ class ConnectionMonitor {
       reconnectAttempts: attempt,
     };
 
-    console.log(`[ConnectionMonitor] Reconnecting... (attempt ${attempt}, delay ${delaySeconds}s)`);
+    logger.info('CONNECTION', `[ConnectionMonitor] Reconnecting... (attempt ${attempt}, delay ${delaySeconds}s)`);
   }
 
   /**
    * Handle connection error
    */
   onError(error: any) {
-    console.warn('[ConnectionMonitor] Connection error:', error);
+    logger.warn('CONNECTION', '[ConnectionMonitor] Connection error:', error);
     
     // Don't spam error alerts, just log
     if (this.state.reconnectAttempts === 0) {
@@ -160,7 +161,7 @@ class ConnectionMonitor {
     if (this.state.showAlert) {
       this.state.showAlert(type, message, title);
     } else {
-      console.log(`[ConnectionMonitor] Alert: ${title} - ${message}`);
+      logger.info('CONNECTION', `[ConnectionMonitor] Alert: ${title} - ${message}`);
     }
   }
 
@@ -235,14 +236,14 @@ class ConnectionMonitor {
       originalWarn.apply(console, args);
     };
 
-    console.log('[ConnectionMonitor] Console error suppression enabled for realtime messages');
+    logger.info('CONNECTION', '[ConnectionMonitor] Console error suppression enabled for realtime messages');
   }
 
   /**
    * Force reconnection attempt (if supported by client)
    */
   forceReconnect() {
-    console.log('[ConnectionMonitor] Forcing reconnection attempt...');
+    logger.info('CONNECTION', '[ConnectionMonitor] Forcing reconnection attempt...');
     this.state.reconnectAttempts = 0;
     this.onReconnecting(1, 0);
   }
@@ -261,7 +262,7 @@ export function enhanceClientWithConnectionMonitoring(client: any) {
   const originalSubscribe = client.subscribe;
   
   client.subscribe = function(channels: string[], callback: (message: any) => void) {
-    console.log('[ConnectionMonitor] Setting up subscription with connection monitoring');
+    logger.info('CONNECTION', '[ConnectionMonitor] Setting up subscription with connection monitoring');
     
     const enhancedCallback = (message: any) => {
       // Handle connection events
@@ -290,9 +291,9 @@ export function enhanceClientWithConnectionMonitoring(client: any) {
     return () => {
       try {
         unsubscribe();
-        console.log('[ConnectionMonitor] Unsubscribed from channels');
+        logger.info('CONNECTION', '[ConnectionMonitor] Unsubscribed from channels');
       } catch (error) {
-        console.warn('[ConnectionMonitor] Error during unsubscribe:', error);
+        logger.warn('CONNECTION', '[ConnectionMonitor] Error during unsubscribe:', error);
       }
     };
   };
@@ -307,7 +308,7 @@ export function initConnectionMonitoring(
   showAlert: (type: 'success' | 'error' | 'warning' | 'info', message: string, title?: string) => void
 ) {
   connectionMonitor.init(showAlert);
-  console.log('[ConnectionMonitor] Monitoring initialized');
+  logger.info('CONNECTION', '[ConnectionMonitor] Monitoring initialized');
 }
 
 /**

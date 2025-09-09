@@ -1,3 +1,4 @@
+import { logger } from '@/utils/logger';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Transaction } from '@/types';
 import { ActivityEvent } from '@/types/activity';
@@ -49,9 +50,9 @@ export class StorageManager {
     try {
       const serialized = JSON.stringify(data);
       await AsyncStorage.setItem(key, serialized);
-      console.log(`[StorageManager] Successfully wrote ${key}`);
+      logger.info('STORAGE', `[StorageManager] Successfully wrote ${key}`);
     } catch (error) {
-      console.error(`[StorageManager] Failed to write ${key}:`, error);
+      logger.error('STORAGE', `[StorageManager] Failed to write ${key}:`, error);
       throw new Error(`Failed to save data to storage: ${key}`);
     }
   }
@@ -63,7 +64,7 @@ export class StorageManager {
       
       return JSON.parse(serialized) as T;
     } catch (error) {
-      console.error(`[StorageManager] Failed to read ${key}:`, error);
+      logger.error('STORAGE', `[StorageManager] Failed to read ${key}:`, error);
       // Don't throw here - return null for graceful degradation
       return null;
     }
@@ -239,9 +240,9 @@ export class StorageManager {
   static async clearTransactionCache(): Promise<void> {
     try {
       await AsyncStorage.removeItem(STORAGE_KEYS.TRANSACTIONS);
-      console.log('[StorageManager] Transaction cache cleared');
+      logger.info('STORAGE', '[StorageManager] Transaction cache cleared');
     } catch (error) {
-      console.warn('[StorageManager] Failed to clear transaction cache:', error);
+      logger.warn('STORAGE', '[StorageManager] Failed to clear transaction cache:', error);
       throw error;
     }
   }
@@ -252,9 +253,9 @@ export class StorageManager {
   static async clearActivityCache(): Promise<void> {
     try {
       await AsyncStorage.removeItem(STORAGE_KEYS.ACTIVITY_EVENTS);
-      console.log('[StorageManager] Activity cache cleared');
+      logger.info('STORAGE', '[StorageManager] Activity cache cleared');
     } catch (error) {
-      console.warn('[StorageManager] Failed to clear activity cache:', error);
+      logger.warn('STORAGE', '[StorageManager] Failed to clear activity cache:', error);
       throw error;
     }
   }
@@ -266,10 +267,10 @@ export class StorageManager {
     const keys = Object.values(STORAGE_KEYS);
     await Promise.all(keys.map(key => 
       AsyncStorage.removeItem(key).catch(error => 
-        console.warn(`[StorageManager] Failed to remove ${key}:`, error)
+        logger.warn('STORAGE', `[StorageManager] Failed to remove ${key}:`, error)
       )
     ));
-    console.log('[StorageManager] All cache cleared');
+    logger.info('STORAGE', '[StorageManager] All cache cleared');
   }
 
   /**
@@ -311,7 +312,7 @@ export class StorageManager {
         
         if (filteredEvents.length !== activityData.events.length) {
           await this.cacheActivityEvents(filteredEvents);
-          console.log(`[StorageManager] Cleaned ${activityData.events.length - filteredEvents.length} old activity events`);
+          logger.info('STORAGE', `[StorageManager] Cleaned ${activityData.events.length - filteredEvents.length} old activity events`);
         }
       }
 
@@ -321,11 +322,11 @@ export class StorageManager {
         const limitedTransactions = transactionData.transactions
           .slice(0, STORAGE_CONFIG.MAX_TRANSACTIONS);
         await this.cacheTransactions(limitedTransactions);
-        console.log(`[StorageManager] Trimmed transactions to ${STORAGE_CONFIG.MAX_TRANSACTIONS} limit`);
+        logger.info('STORAGE', `[StorageManager] Trimmed transactions to ${STORAGE_CONFIG.MAX_TRANSACTIONS} limit`);
       }
 
     } catch (error) {
-      console.error('[StorageManager] Cleanup failed:', error);
+      logger.error('STORAGE', '[StorageManager] Cleanup failed:', error);
     }
   }
 
@@ -337,17 +338,17 @@ export class StorageManager {
       const currentVersion = await this.safeRead<string>(STORAGE_KEYS.STORAGE_VERSION);
       
       if (!currentVersion || currentVersion !== STORAGE_CONFIG.CURRENT_VERSION) {
-        console.log(`[StorageManager] Migrating storage from ${currentVersion} to ${STORAGE_CONFIG.CURRENT_VERSION}`);
+        logger.info('STORAGE', `[StorageManager] Migrating storage from ${currentVersion} to ${STORAGE_CONFIG.CURRENT_VERSION}`);
         
         // For now, just clear cache on version mismatch
         // In future versions, add migration logic here
         await this.clearAllCache();
         await this.safeWrite(STORAGE_KEYS.STORAGE_VERSION, STORAGE_CONFIG.CURRENT_VERSION);
         
-        console.log('[StorageManager] Migration completed');
+        logger.info('STORAGE', '[StorageManager] Migration completed');
       }
     } catch (error) {
-      console.error('[StorageManager] Migration failed:', error);
+      logger.error('STORAGE', '[StorageManager] Migration failed:', error);
     }
   }
 }

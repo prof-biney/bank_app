@@ -2,6 +2,7 @@ import { ID, Query } from 'react-native-appwrite';
 import { databases, appwriteConfig, logCardEvent, ensureAuthenticatedClient } from './appwrite';
 import { Card } from '@/types';
 import useAuthStore from '@/store/auth.store';
+import { logger } from '@/utils/logger';
 
 /**
  * Appwrite Card Database Service
@@ -39,11 +40,11 @@ function getCurrentUserId(): string {
   // Check for $id first since that's the standard Appwrite document field
   const userId = (user as any)?.$id || (user as any)?.id;
   if (!userId) {
-    console.error('[getCurrentUserId] User object:', user);
-    console.error('[getCurrentUserId] Available user fields:', user ? Object.keys(user) : 'null');
+    logger.error('CARDS', '[getCurrentUserId] User object:', user);
+    logger.error('CARDS', '[getCurrentUserId] Available user fields:', user ? Object.keys(user) : 'null');
     throw new Error('User not authenticated - no user ID found');
   }
-  console.log('[getCurrentUserId] Using userId:', userId);
+  logger.info('CARDS', '[getCurrentUserId] Using userId:', userId);
   return userId;
 }
 
@@ -84,7 +85,7 @@ export async function createAppwriteCard(cardData: CreateCardData): Promise<Card
       token: cardData.token || null,
     };
 
-    console.log('[createAppwriteCard] Creating card:', {
+    logger.info('CARDS', '[createAppwriteCard] Creating card:', {
       userId,
       cardHolderName: cardData.cardHolderName,
       cardType: cardData.cardType,
@@ -127,17 +128,17 @@ export async function createAppwriteCard(cardData: CreateCardData): Promise<Card
         title: 'Card added',
         description: `${card.cardHolderName} • ${card.cardNumber}`,
       }).catch(error => {
-        console.warn('[createAppwriteCard] Failed to log card event:', error);
+        logger.warn('CARDS', '[createAppwriteCard] Failed to log card event:', error);
       });
     } catch (error) {
-      console.warn('[createAppwriteCard] Card event logging failed:', error);
+      logger.warn('CARDS', '[createAppwriteCard] Card event logging failed:', error);
     }
 
-    console.log('[createAppwriteCard] Card created successfully:', card.id);
+    logger.info('CARDS', '[createAppwriteCard] Card created successfully:', card.id);
     return card;
 
   } catch (error) {
-    console.error('[createAppwriteCard] Failed to create card:', error);
+    logger.error('CARDS', '[createAppwriteCard] Failed to create card:', error);
     throw new Error(`Failed to create card: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
@@ -164,7 +165,7 @@ export async function updateAppwriteCard(
     
     const userId = getCurrentUserId();
 
-    console.log('[updateAppwriteCard] Updating card:', {
+    logger.info('CARDS', '[updateAppwriteCard] Updating card:', {
       cardId,
       userId,
       updateData
@@ -224,11 +225,11 @@ export async function updateAppwriteCard(
       isActive: document.status !== 'inactive', // Map status to isActive
     };
 
-    console.log('[updateAppwriteCard] Card updated successfully:', card.id);
+    logger.info('CARDS', '[updateAppwriteCard] Card updated successfully:', card.id);
     return card;
 
   } catch (error) {
-    console.error('[updateAppwriteCard] Failed to update card:', error);
+    logger.error('CARDS', '[updateAppwriteCard] Failed to update card:', error);
     throw new Error(`Failed to update card: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
@@ -252,7 +253,7 @@ export async function deleteAppwriteCard(cardId: string): Promise<void> {
     
     const userId = getCurrentUserId();
 
-    console.log('[deleteAppwriteCard] Deactivating card:', {
+    logger.info('CARDS', '[deleteAppwriteCard] Deactivating card:', {
       cardId,
       userId
     });
@@ -290,16 +291,16 @@ export async function deleteAppwriteCard(cardId: string): Promise<void> {
         title: 'Card removed',
         description: `${existingDoc.holder || existingDoc.cardHolderName} • ****-****-****-${last4}`,
       }).catch(error => {
-        console.warn('[deleteAppwriteCard] Failed to log card event:', error);
+        logger.warn('CARDS', '[deleteAppwriteCard] Failed to log card event:', error);
       });
     } catch (error) {
-      console.warn('[deleteAppwriteCard] Card event logging failed:', error);
+      logger.warn('CARDS', '[deleteAppwriteCard] Card event logging failed:', error);
     }
 
-    console.log('[deleteAppwriteCard] Card deactivated successfully:', cardId);
+    logger.info('CARDS', '[deleteAppwriteCard] Card deactivated successfully:', cardId);
 
   } catch (error) {
-    console.error('[deleteAppwriteCard] Failed to delete card:', error);
+    logger.error('CARDS', '[deleteAppwriteCard] Failed to delete card:', error);
     throw new Error(`Failed to delete card: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
@@ -323,7 +324,7 @@ export async function permanentlyDeleteAppwriteCard(cardId: string): Promise<voi
     
     const userId = getCurrentUserId();
 
-    console.log('[permanentlyDeleteAppwriteCard] Permanently deleting card:', {
+    logger.info('CARDS', '[permanentlyDeleteAppwriteCard] Permanently deleting card:', {
       cardId,
       userId
     });
@@ -345,10 +346,10 @@ export async function permanentlyDeleteAppwriteCard(cardId: string): Promise<voi
       cardId
     );
 
-    console.log('[permanentlyDeleteAppwriteCard] Card permanently deleted:', cardId);
+    logger.info('CARDS', '[permanentlyDeleteAppwriteCard] Card permanently deleted:', cardId);
 
   } catch (error) {
-    console.error('[permanentlyDeleteAppwriteCard] Failed to permanently delete card:', error);
+    logger.error('CARDS', '[permanentlyDeleteAppwriteCard] Failed to permanently delete card:', error);
     throw new Error(`Failed to permanently delete card: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
@@ -400,7 +401,7 @@ export async function getAppwriteCard(cardId: string): Promise<Card> {
     return card;
 
   } catch (error) {
-    console.error('[getAppwriteCard] Failed to get card:', error);
+    logger.error('CARDS', '[getAppwriteCard] Failed to get card:', error);
     throw new Error(`Failed to get card: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
@@ -430,8 +431,8 @@ export async function queryAppwriteCards(options: {
     }
     
     const userId = getCurrentUserId();
-    console.log('[queryAppwriteCards] Using userId for query:', userId);
-    console.log('[queryAppwriteCards] Auth state from store:', {
+    logger.info('CARDS', '[queryAppwriteCards] Using userId for query:', userId);
+    logger.info('CARDS', '[queryAppwriteCards] Auth state from store:', {
       isAuthenticated: useAuthStore.getState().isAuthenticated,
       user: useAuthStore.getState().user ? 'present' : 'null'
     });
@@ -462,7 +463,7 @@ export async function queryAppwriteCards(options: {
       queries.push(Query.offset(options.offset));
     }
 
-    console.log('[queryAppwriteCards] Querying cards for user:', userId);
+    logger.info('CARDS', '[queryAppwriteCards] Querying cards for user:', userId);
 
     const response = await databases.listDocuments(
       databaseId,
@@ -485,7 +486,7 @@ export async function queryAppwriteCards(options: {
       isActive: doc.status !== 'inactive', // Map status to isActive
     }));
 
-    console.log('[queryAppwriteCards] Found', cards.length, 'cards');
+    logger.info('CARDS', '[queryAppwriteCards] Found', cards.length, 'cards');
 
     return {
       cards,
@@ -493,7 +494,7 @@ export async function queryAppwriteCards(options: {
     };
 
   } catch (error) {
-    console.error('[queryAppwriteCards] Failed to query cards:', error);
+    logger.error('CARDS', '[queryAppwriteCards] Failed to query cards:', error);
     throw new Error(`Failed to query cards: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
@@ -511,7 +512,7 @@ export async function getAppwriteActiveCards(): Promise<Card[]> {
     // Filter locally for isActive if the field exists
     return result.cards.filter(card => card.isActive !== false);
   } catch (error) {
-    console.error('[getAppwriteActiveCards] Failed to get active cards:', error);
+    logger.error('CARDS', '[getAppwriteActiveCards] Failed to get active cards:', error);
     return [];
   }
 }
@@ -521,14 +522,14 @@ export async function getAppwriteActiveCards(): Promise<Card[]> {
  */
 export async function updateAppwriteCardBalance(cardId: string, newBalance: number): Promise<Card> {
   try {
-    console.log('[updateAppwriteCardBalance] Updating card balance:', {
+    logger.info('CARDS', '[updateAppwriteCardBalance] Updating card balance:', {
       cardId,
       newBalance
     });
 
     return await updateAppwriteCard(cardId, { balance: newBalance });
   } catch (error) {
-    console.error('[updateAppwriteCardBalance] Failed to update card balance:', error);
+    logger.error('CARDS', '[updateAppwriteCardBalance] Failed to update card balance:', error);
     throw error;
   }
 }
@@ -540,7 +541,7 @@ export async function findAppwriteCardByNumber(cardNumber: string): Promise<Card
   const { cardsCollectionId, databaseId } = appwriteConfig;
   
   if (!databaseId || !cardsCollectionId) {
-    console.warn('[findAppwriteCardByNumber] Appwrite cards collection not configured');
+    logger.warn('CARDS', '[findAppwriteCardByNumber] Appwrite cards collection not configured');
     return null;
   }
 
@@ -562,7 +563,7 @@ export async function findAppwriteCardByNumber(cardNumber: string): Promise<Card
       // Note: isActive filter removed since field doesn't exist in Appwrite schema
     ];
 
-    console.log('[findAppwriteCardByNumber] Searching for card number ending in:', cleanCardNumber.slice(-4));
+    logger.info('CARDS', '[findAppwriteCardByNumber] Searching for card number ending in:', cleanCardNumber.slice(-4));
 
     const response = await databases.listDocuments(
       databaseId,
@@ -590,11 +591,11 @@ export async function findAppwriteCardByNumber(cardNumber: string): Promise<Card
       isActive: document.status ? (document.status !== 'inactive') : (document.isActive !== false),
     };
 
-    console.log('[findAppwriteCardByNumber] Found card:', card.id);
+    logger.info('CARDS', '[findAppwriteCardByNumber] Found card:', card.id);
     return card;
 
   } catch (error) {
-    console.error('[findAppwriteCardByNumber] Failed to find card by number:', error);
+    logger.error('CARDS', '[findAppwriteCardByNumber] Failed to find card by number:', error);
     return null;
   }
 }
