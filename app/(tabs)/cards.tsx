@@ -143,27 +143,18 @@ function AddCardButton() {
         throw new Error(msg);
       }
       console.log('[AddCard] Success', { status: res.status, last4: data?.authorization?.last4 || last4In });
-      const last4 = data?.authorization?.last4 || last4In || "0000";
-      const brand = (data?.authorization?.brand || "visa").toLowerCase();
-      const expMonth = String(data?.authorization?.exp_month || payload.exp_month).padStart(2, "0");
-      const expYear = String(data?.authorization?.exp_year || payload.exp_year).slice(-2);
-      const masked = `•••• •••• •••• ${last4}`;
-      const holder = data?.customer?.name || payload.name || "Card Holder";
-
-      // Default starting balance GHS 40,000
-      const startingBalance = 40000;
-
-      addCard({
-        userId: (user as any)?.accountId || (user as any)?.$id || "",
-        cardNumber: masked,
-        cardHolderName: holder,
-        expiryDate: `${expMonth}/${expYear}`,
-        cardType: brand,
-        cardColor: "#1F2937",
-        balance: startingBalance,
-        token: data?.token,
-        currency: 'GHS',
-      });
+      
+      // Server has created the card - trigger a refresh to load it from server
+      // This prevents duplication since the server already persists the card
+      const { queryAppwriteCards } = require('@/lib/appwriteCardService');
+      try {
+        // Refresh the cards list to include the newly created card
+        const { cards: updatedCards } = await queryAppwriteCards();
+        console.log('[AddCard] Loaded updated cards from server:', updatedCards.length);
+      } catch (error) {
+        console.warn('[AddCard] Failed to refresh cards from server:', error);
+      }
+      
       showAlert("success", "Card added successfully.", "Card Added");
       close();
     } catch (e: any) {
