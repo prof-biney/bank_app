@@ -1,6 +1,6 @@
 import { logger } from '@/lib/logger';
 import { router } from "expo-router";
-import { ArrowLeft, Clock, CheckCircle, AlertCircle, CreditCard, Plus } from "lucide-react-native";
+import { ArrowLeft, Clock, CheckCircle, CreditCard, Plus } from "lucide-react-native";
 import React, { useState } from "react";
 import { 
   KeyboardAvoidingView,
@@ -11,7 +11,6 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BankCard } from "@/components/BankCard";
@@ -346,7 +345,7 @@ export default function DepositScreen() {
                     // { key: 'cash' as const, label: 'Cash Deposit', desc: 'Immediate' }
                   ].map((method) => {
                     const isSelected = escrowMethod === method.key;
-                    const v = getBadgeVisuals(colors, { tone: 'accent', selected: isSelected, size: 'lg' });
+                    const v = getBadgeVisuals(colors, { tone: 'accent', selected: isSelected, size: 'md' });
                     return (
                       <TouchableOpacity
                         key={method.key}
@@ -621,14 +620,8 @@ export default function DepositScreen() {
                 title="Cancel Deposit"
                 variant="secondary"
                 onPress={() => {
-                  Alert.alert(
-                    'Cancel Deposit',
-                    'Are you sure you want to cancel this deposit request?',
-                    [
-                      { text: 'No', style: 'cancel' },
-                      { text: 'Yes', onPress: () => router.back() }
-                    ]
-                  );
+                  // Use in-app alert to keep UI consistent (non-blocking)
+                  showAlert('warning', 'Are you sure you want to cancel this deposit request?', 'Cancel Deposit');
                 }}
                 style={styles.cancelButton}
               />

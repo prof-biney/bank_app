@@ -23,7 +23,8 @@ export type LogCategory =
   | 'ACTIVITY'
   | 'JWT'
   | 'CONNECTION'
-  | 'GENERAL';
+  | 'GENERAL'
+  | 'SCREEN';
 
 interface LogConfig {
   enabled: boolean;
@@ -36,6 +37,12 @@ interface LogConfig {
 
 class Logger {
   private config: LogConfig;
+  private configuration: {
+    debug: (message: string, ...data: any[]) => void;
+    info: (message: string, ...data: any[]) => void;
+    warn: (message: string, ...data: any[]) => void;
+    error: (message: string, ...data: any[]) => void;
+  };
   private logLevels: Record<LogLevel, number> = {
     DEBUG: 0,
     INFO: 1,
@@ -153,12 +160,7 @@ class Logger {
     error: (message: string, ...data: any[]) => this.error('NETWORK', message, ...data),
   };
 
-  config = {
-    debug: (message: string, ...data: any[]) => this.debug('CONFIG', message, ...data),
-    info: (message: string, ...data: any[]) => this.info('CONFIG', message, ...data),
-    warn: (message: string, ...data: any[]) => this.warn('CONFIG', message, ...data),
-    error: (message: string, ...data: any[]) => this.error('CONFIG', message, ...data),
-  };
+  // 'config' runtime value is initialized in the constructor; no top-level initializer here
 
   constructor(config?: Partial<LogConfig>) {
     this.config = {
@@ -200,7 +202,7 @@ class Logger {
       error: (message: string, ...data: any[]) => this.error('NETWORK', message, ...data),
     };
 
-    // Configuration logging methods (renamed to avoid conflict with config property)
+    // Configuration logging methods (use 'configuration' helper)
     this.configuration = {
       debug: (message: string, ...data: any[]) => this.debug('CONFIG', message, ...data),
       info: (message: string, ...data: any[]) => this.info('CONFIG', message, ...data),

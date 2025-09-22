@@ -9,7 +9,6 @@ import {
 } from "lucide-react-native";
 import React, { useState } from "react";
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -17,6 +16,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useAlert } from '@/context/AlertContext';
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useTheme } from "@/context/ThemeContext";
@@ -25,7 +25,8 @@ import { ImagePickerModal } from "@/components/ImagePickerModal";
 import { LogoutModal } from "@/components/LogoutModal";
 
 export default function ProfileScreen() {
-  const { user, logout, updateProfilePicture, isLoading } = useAuthStore();
+  const { user, logout, updateProfilePicture } = useAuthStore();
+  const { showAlert } = useAlert();
   const [showImagePicker, setShowImagePicker] = useState(false);
   const [isUpdatingPicture, setIsUpdatingPicture] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
@@ -46,10 +47,7 @@ export default function ProfileScreen() {
     } catch (error) {
       logger.error('SCREEN', 'Logout error:', error);
       setShowLogoutModal(false);
-      Alert.alert(
-        'Error',
-        'Failed to sign out. Please try again.'
-      );
+      showAlert('error', 'Failed to sign out. Please try again.', 'Error');
     } finally {
       setIsLoggingOut(false);
     }
@@ -71,13 +69,10 @@ export default function ProfileScreen() {
     try {
       setIsUpdatingPicture(true);
       await updateProfilePicture(imageUri);
-      Alert.alert('Success', 'Profile picture updated successfully!');
+  showAlert('success', 'Profile picture updated successfully!', 'Success');
     } catch (error) {
       logger.error('SCREEN', 'Profile picture update error:', error);
-      Alert.alert(
-        'Error',
-        error instanceof Error ? error.message : 'Failed to update profile picture'
-      );
+  showAlert('error', error instanceof Error ? error.message : 'Failed to update profile picture', 'Error');
     } finally {
       setIsUpdatingPicture(false);
     }

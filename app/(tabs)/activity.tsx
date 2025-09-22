@@ -22,44 +22,15 @@ import { getBadgeVisuals } from "@/theme/badge-utils";
 import { TransactionItem } from "@/components/TransactionItem";
 import { useApp } from "@/context/AppContext";
 import { ActivityEvent } from "@/types/activity";
+import { getApiBase } from '@/lib/api';
 
 type Payment = { id: string; status: string; amount?: number; currency?: string; created?: string };
 
 export default function ActivityScreen() {
 
-	const handleCapture = async (id: string) => {
-		try {
-			const { getApiBase } = require('@/lib/api');
-			const apiBase = getApiBase();
-			const url = `${apiBase.replace(/\/$/, "")}/v1/payments/${id}/capture`;
-			const jwt = (global as any).__APPWRITE_JWT__ || undefined;
-			const headers: any = {};
-			if (jwt) headers['Authorization'] = `Bearer ${jwt}`;
-			const res = await fetch(url, { method: 'POST', headers });
-			const data = await res.json();
-			if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-			setPayments((prev) => prev.map((p) => (p.id === id ? { ...p, status: 'captured' } : p)));
-		} catch (e) {}
-	};
-
-	const handleRefund = async (id: string) => {
-		try {
-			const { getApiBase } = require('@/lib/api');
-			const apiBase = getApiBase();
-			const url = `${apiBase.replace(/\/$/, "")}/v1/payments/${id}/refund`;
-			const jwt = (global as any).__APPWRITE_JWT__ || undefined;
-			const headers: any = {};
-			if (jwt) headers['Authorization'] = `Bearer ${jwt}`;
-			const res = await fetch(url, { method: 'POST', headers });
-			const data = await res.json();
-			if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-			setPayments((prev) => prev.map((p) => (p.id === id ? { ...p, status: 'refunded' } : p)));
-		} catch (e) {}
-	};
 	const { transactions, activity, clearAllActivity } = useApp();
 	const [suppressAllLogs, setSuppressAllLogs] = useState(false);
 	const [activitySuppressed, setActivitySuppressed] = useState(false);
-	const { getApiBase } = require('@/lib/api');
 	const [payments, setPayments] = React.useState<Payment[]>([]);
 	const [loading, setLoading] = React.useState(false);
 	const [loadingMore, setLoadingMore] = React.useState(false);
@@ -77,53 +48,14 @@ export default function ActivityScreen() {
 		reversed: 'refunded',
 	};
 
-	const buildPaymentsQuery = (limit: number, cursor?: string) => {
-		const apiBase = getApiBase();
-		const types = Object.keys(typeFilter).filter((k) => (typeFilter as any)[k]);
-		const statuses = Object.keys(statusFilter)
-			.filter((k) => (statusFilter as any)[k])
-			.map((k) => paymentStatusMap[k] || '')
-			.filter(Boolean);
-		const params = new URLSearchParams();
-		params.set('limit', String(limit));
-		if (types.length) params.set('type', types.join(','));
-		if (statuses.length) params.set('status', statuses.join(','));
-		if (cursor) params.set('cursor', cursor);
-		return `${apiBase.replace(/\/$/, "")}/v1/payments?${params.toString()}`;
-	};
+    
 
-	const fetchPayments = async (reset: boolean) => {
-		try {
-			if (reset) {
-				setLoading(true);
-				setPayments([]);
-				setNextPaymentsCursor(null);
-			}
-			const jwt = (global as any).__APPWRITE_JWT__ || undefined;
-			const url = buildPaymentsQuery(PAY_PAGE_SIZE);
-			const res = await fetch(url, { headers: { ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) } });
-			const data = await res.json();
-			if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-			const list: Payment[] = Array.isArray(data?.data) ? data.data : [];
-			setPayments(list);
-			setNextPaymentsCursor(data?.nextCursor ?? null);
-		} catch (e: any) {
-			setError(e?.message || "Failed to load payments");
-		} finally {
-			if (reset) setLoading(false);
-		}
-	};
-
-	React.useEffect(() => {
-		fetchPayments(true);
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [typeFilter, statusFilter]);
+    
 
 	React.useEffect(() => {
 		// Check if activity was manually cleared and suppress if needed
 		(async () => {
 			try {
-				const AsyncStorage = require('@react-native-async-storage/async-storage').default;
 				const activityClearedFlag = await AsyncStorage.getItem('activity_manually_cleared');
 				if (activityClearedFlag) {
 					logger.info('UI', 'Activity is suppressed, hiding logs');
@@ -135,34 +67,10 @@ export default function ActivityScreen() {
 			}
 		})();
 
-		// initial load
-		fetchPayments(true);
-		// eslint-disable-next-line react-hooks/exhaustive-deps
+		// initial load will be triggered by fetchPayments below
 	}, []);
 
-	const loadMorePayments = async () => {
-		if (!nextPaymentsCursor || loadingMore) return;
-		try {
-			setLoadingMore(true);
-			const jwt = (global as any).__APPWRITE_JWT__ || undefined;
-			const url = buildPaymentsQuery(PAY_PAGE_SIZE, nextPaymentsCursor);
-			const res = await fetch(url, { headers: { ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) } });
-			const data = await res.json();
-			if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-			const list: Payment[] = Array.isArray(data?.data) ? data.data : [];
-			setPayments(prev => {
-				const seen = new Set(prev.map(p => p.id));
-				const merged = [...prev];
-				for (const item of list) if (!seen.has(item.id)) merged.push(item);
-				return merged;
-			});
-			setNextPaymentsCursor(data?.nextCursor ?? null);
-		} catch (e: any) {
-			setError(e?.message || "Failed to load more payments");
-		} finally {
-			setLoadingMore(false);
-		}
-	};
+    
 	const { colors } = useTheme();
 	const [showDateFilter, setShowDateFilter] = useState(false);
 	const [dateFilter, setDateFilter] = useState("all");
@@ -214,15 +122,7 @@ export default function ActivityScreen() {
 		});
 	};
 
-	const toggleType = (key: keyof typeof typeFilter) => {
-		setTypeFilter(prev => {
-			const next = { ...prev, [key]: !prev[key] };
-			if (!next.deposit && !next.transfer && !next.withdraw && !next.payment) {
-				return prev;
-			}
-			return next;
-		});
-	};
+	// toggleType removed (not used) to satisfy linter
 
 	const toggleStatus = (key: keyof typeof statusFilter) => {
 		setStatusFilter(prev => {
@@ -260,22 +160,117 @@ export default function ActivityScreen() {
 	const handleRestoreActivity = async () => {
 		try {
 			logger.info('UI', 'Restoring activity after clear');
-			
+
 			// Remove suppression flag
-			const AsyncStorage = require('@react-native-async-storage/async-storage').default;
 			await AsyncStorage.removeItem('activity_manually_cleared');
-			setActivitySuppressed(false);
 			setSuppressAllLogs(false);
-			
+
 			// Reload payments
-			fetchPayments(true);
-			
+			await fetchPayments(true);
 			logger.info('UI', 'Activity restored successfully');
 		} catch (error) {
 			logger.error('UI', 'Failed to restore activity:', error);
 		}
 	};
 
+
+	const buildPaymentsQuery = (limit: number, cursor?: string) => {
+		const apiBase = getApiBase();
+		const types = Object.keys(typeFilter).filter((k) => (typeFilter as any)[k]);
+		const statuses = Object.keys(statusFilter)
+			.filter((k) => (statusFilter as any)[k])
+			.map((k) => paymentStatusMap[k] || '')
+			.filter(Boolean);
+		const params = new URLSearchParams();
+		params.set('limit', String(limit));
+		if (types.length) params.set('type', types.join(','));
+		if (statuses.length) params.set('status', statuses.join(','));
+		if (cursor) params.set('cursor', cursor);
+		return `${apiBase.replace(/\/$/, "")}/v1/payments?${params.toString()}`;
+	};
+
+	const fetchPayments = async (reset: boolean) => {
+		try {
+			if (reset) {
+				setLoading(true);
+				setPayments([]);
+				setNextPaymentsCursor(null);
+			}
+			const jwt = (global as any).__APPWRITE_JWT__ || undefined;
+			const url = buildPaymentsQuery(PAY_PAGE_SIZE);
+			const res = await fetch(url, { headers: { ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) } });
+			const data = await res.json();
+			if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+			const list: Payment[] = Array.isArray(data?.data) ? data.data : [];
+			setPayments(list);
+			setNextPaymentsCursor(data?.nextCursor ?? null);
+		} catch (e: any) {
+			setError(e?.message || "Failed to load payments");
+		} finally {
+			if (reset) setLoading(false);
+		}
+	};
+
+	const loadMorePayments = async () => {
+		if (!nextPaymentsCursor || loadingMore) return;
+		try {
+			setLoadingMore(true);
+			const jwt = (global as any).__APPWRITE_JWT__ || undefined;
+			const url = buildPaymentsQuery(PAY_PAGE_SIZE, nextPaymentsCursor);
+			const res = await fetch(url, { headers: { ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) } });
+			const data = await res.json();
+			if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+			const list: Payment[] = Array.isArray(data?.data) ? data.data : [];
+			setPayments(prev => {
+				const seen = new Set(prev.map(p => p.id));
+				const merged = [...prev];
+				for (const item of list) if (!seen.has(item.id)) merged.push(item);
+				return merged;
+			});
+			setNextPaymentsCursor(data?.nextCursor ?? null);
+		} catch {
+			setError("Failed to load more payments");
+		} finally {
+			setLoadingMore(false);
+		}
+	};
+
+	const handleCapture = async (id: string) => {
+		try {
+			const apiBase = getApiBase();
+			const url = `${apiBase.replace(/\/$/, "")}/v1/payments/${id}/capture`;
+			const jwt = (global as any).__APPWRITE_JWT__ || undefined;
+			const headers: any = {};
+			if (jwt) headers['Authorization'] = `Bearer ${jwt}`;
+			const res = await fetch(url, { method: 'POST', headers });
+			const data = await res.json();
+			if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+			setPayments((prev) => prev.map((p) => (p.id === id ? { ...p, status: 'captured' } : p)));
+		} catch {
+			// ignore
+		}
+	};
+
+	const handleRefund = async (id: string) => {
+		try {
+			const apiBase = getApiBase();
+			const url = `${apiBase.replace(/\/$/, "")}/v1/payments/${id}/refund`;
+			const jwt = (global as any).__APPWRITE_JWT__ || undefined;
+			const headers: any = {};
+			if (jwt) headers['Authorization'] = `Bearer ${jwt}`;
+			const res = await fetch(url, { method: 'POST', headers });
+			const data = await res.json();
+			if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+			setPayments((prev) => prev.map((p) => (p.id === id ? { ...p, status: 'refunded' } : p)));
+		} catch {
+			// ignore
+		}
+	};
+
+	React.useEffect(() => {
+		fetchPayments(true);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [typeFilter, statusFilter]);
 	const getFilteredTransactions = () => {
 		if (!Array.isArray(transactions)) return [];
 
@@ -370,13 +365,13 @@ export default function ActivityScreen() {
 
 	// Create unified, deduplicated activity list
 	const allActivities = useMemo(() => {
-		if (suppressAllLogs) return [] as any[];
-		const items: Array<{
+		if (suppressAllLogs) return [];
+		const items: {
 			id: string;
 			type: 'activity' | 'transaction' | 'payment';
 			timestamp: string;
 			data: any;
-		}> = [];
+		}[] = [];
 
 		// Add activity cards
 		activityCards.forEach(evt => {
@@ -431,7 +426,7 @@ export default function ActivityScreen() {
 		return uniqueItems.sort((a, b) => 
 			new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
 		);
-	}, [activityCards, filteredTransactions, payments]);
+	}, [activityCards, filteredTransactions, payments, suppressAllLogs]);
 
 	return (
 		<SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -850,10 +845,7 @@ const styles = StyleSheet.create({
 		marginTop: 12,
 		marginBottom: 8,
 	},
-	clearAllText: {
-		fontSize: 14,
-		fontWeight: '600',
-	},
+
 	transactionsList: {
 		flex: 1,
 	},

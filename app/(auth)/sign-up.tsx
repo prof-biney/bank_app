@@ -1,5 +1,5 @@
 import { useAlert } from "@/context/AlertContext";
-import { createUser } from "@/lib/appwrite";
+import { createUser, fetchUser } from "@/lib/appwrite";
 import useAuthStore from "@/store/auth.store";
 import { Link, router } from "expo-router";
 import React, { useState, useEffect, useRef } from "react";
@@ -9,7 +9,6 @@ import {
   SafeAreaView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
   Animated,
@@ -21,7 +20,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, MaterialIcons } from "@expo/vector-icons";
 import { useTheme } from "@/context/ThemeContext";
-import { parsePhoneNumberFromString, getCountryCallingCode, getExampleNumber, AsYouType, getCountries } from 'libphonenumber-js';
+import { parsePhoneNumberFromString, getCountryCallingCode, getExampleNumber, getCountries } from 'libphonenumber-js';
 import examples from 'libphonenumber-js/examples.mobile.json';
 // Import reusable form components
 import { 
@@ -129,10 +128,10 @@ export default function SignUpScreen() {
   // Animated values for smooth transitions
   const animatedWidth = useRef(new Animated.Value(0)).current;
   const phoneAnimatedWidth = useRef(new Animated.Value(0)).current;
-  const { login, isAuthenticated } = useAuthStore();
+  const { login, isAuthenticated, fetchAuthenticatedUser } = useAuthStore();
   const { showAlert } = useAlert();
   const [showSuccessAlert, setShowSuccessAlert] = useState(false);
-  const navigationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const navigationTimeoutRef = useRef<NodeJS.Timeout | number | null>(null);
   
   // Function to detect user's country based on IP address
   const detectUserCountry = async () => {
@@ -573,6 +572,7 @@ export default function SignUpScreen() {
     }
   }, [form.phoneNumber, countryCode]);
   
+  // Replace the password validation effect
   useEffect(() => {
     if (validation.password.isTouched) {
       const passwordValidation = validatePassword(form.password);
@@ -582,14 +582,13 @@ export default function SignUpScreen() {
           ...prev.password, 
           isValid: passwordValidation.isValid, 
           errorMessage: passwordValidation.message 
-        }
+        },  // Add comma here
       }));
       
       // Update password strength whenever password changes
       updatePasswordStrength(form.password);
       
       // Also validate confirm password if it's been touched
-      // since changing password affects confirm password validation
       if (validation.confirmPassword.isTouched) {
         const confirmPasswordValidation = validateConfirmPassword(
           form.password,
@@ -741,9 +740,8 @@ export default function SignUpScreen() {
   };
 
   const submit = async () => {
-    const { name, email, phoneNumber, password, confirmPassword } = form;
+    const { name, email, phoneNumber, password } = form;
 
-    // Validate all fields
     if (!validateForm()) {
       // Show alert for the first error found
       if (!validation.name.isValid) {
@@ -768,67 +766,106 @@ export default function SignUpScreen() {
       }
       return;
     }
-    
-    // Double check password matching
-    if (password !== confirmPassword) {
-      showAlert("error", "Passwords do not match", "Password Mismatch");
-      return;
-    }
-    
-    // Format phone number with country code for submission
-    const formattedPhoneNumber = `+${getCountryCallingCode(countryCode)}${phoneNumber.replace(/\D/g, '')}`;
 
     setIsSubmitting(true);
 
     try {
-      // Include the formatted phone number in the user creation
-      await createUser({ email, name, password, phoneNumber: formattedPhoneNumber });
+      logger.debug('AUTH', '[SignUp] Attempting to create user account');
 
-      // login
-      await login(email, password);
+      // Format phone number with country code
+      const formattedPhoneNumber = `+${getCountryCallingCode(countryCode)}${phoneNumber.replace(/\D/g, '')}`;
 
-      // Show success message before navigation
-      showAlert(
-        "success",
-        "Your account has been created successfully.",
-        "Welcome!"
-      );
-      
-      // Set the success alert flag to trigger navigation via the useEffect
-      setShowSuccessAlert(true);
-    } catch (error: any) {
-      // Reset the success alert flag in case of error
-      setShowSuccessAlert(false);
-      
-      // Handle specific error types with more descriptive messages
-      let errorMessage = "Failed to create account. Please try again.";
-      let errorTitle = "Sign Up Error";
+      // Create user account (this function now ensures session/JWT and persists the profile)
+      const user = await createUser({
+        email,
+        name,
+        password,
+        phoneNumber: formattedPhoneNumber,
+      });
 
-      if (error.message) {
-        if (error.message.includes("email already exists")) {
-          errorMessage =
-            "An account with this email already exists. Please use a different email or sign in.";
-          errorTitle = "Email Already Registered";
-        } else if (error.message.includes("invalid email")) {
-          errorMessage =
-            "The email address format is invalid. Please check and try again.";
-        } else if (error.message.includes("password")) {
-          errorMessage =
-            "The password does not meet security requirements. Please try a different password.";
-          errorTitle = "Password Error";
-        } else if (error.message.includes("network")) {
-          errorMessage =
-            "Network error. Please check your internet connection and try again.";
-          errorTitle = "Connection Error";
-        } else {
-          // Use the original error message if it's available
-          errorMessage = error.message;
+      logger.debug('AUTH', '[SignUp] User account created successfully:', { userId: user.$id });
+
+      // Confirm the user document exists in the database. Use a small retry helper
+      // because writes may take a short moment to be readable.
+      const fetchWithRetry = async (id: string, attempts = 3, delayMs = 600) => {
+        let lastErr: any = null;
+        for (let i = 0; i < attempts; i++) {
+          try {
+            const res = await fetchUser(id);
+            return res;
+          } catch (e) {
+            lastErr = e;
+            logger.warn('AUTH', `[SignUp] fetchUser attempt ${i + 1} failed, retrying in ${delayMs}ms`, e);
+            // small backoff
+            // don't await on the last iteration
+            if (i < attempts - 1) await new Promise((r) => setTimeout(r, delayMs));
+          }
         }
+        throw lastErr;
+      };
+
+      let userData: any = null;
+      userData = await fetchWithRetry(user.$id, 3, 600);
+
+      if (!userData || !userData.$id) {
+        throw new Error('User document not found after account creation');
       }
 
-      showAlert("error", errorMessage, errorTitle);
-      // Replace console.log with logger utility
-      logger.error("AUTHENTICATION", "Sign up error:", error);
+      logger.debug('AUTH', '[SignUp] User data fetched successfully:', { userId: userData.$id });
+
+      // Attempt to ensure auth store state is updated by performing login and then
+      // fetching the authenticated user into the global store. If login fails we
+      // still consider the account created but navigation may not proceed.
+      try {
+        await login(email, password);
+        // Ensure the global auth store fetches and sets the authenticated user
+        try {
+          await fetchAuthenticatedUser();
+        } catch (fetchAuthErr) {
+          logger.warn('AUTH', '[SignUp] fetchAuthenticatedUser after login failed (non-fatal):', fetchAuthErr);
+        }
+      } catch (loginErr) {
+        logger.warn('AUTH', '[SignUp] Login after createUser failed (non-fatal):', loginErr);
+      }
+
+      // Show success message and navigate
+      showAlert('success', 'Your account has been created successfully!', 'Welcome!');
+      setShowSuccessAlert(true);
+
+      // Navigate to onboarding now that auth store should be in sync
+      router.replace('/onboarding');
+
+    } catch (err: any) {
+      setShowSuccessAlert(false);
+      // Log full error object for debugging
+      logger.error('AUTH', '[SignUp] Error during signup (full):', { err });
+
+      // If SDK provides structured error fields, include them in logs
+      if ((err as any)?.code) logger.error('AUTH', '[SignUp] SDK error code:', (err as any).code);
+      if ((err as any)?.response) logger.error('AUTH', '[SignUp] SDK response:', (err as any).response);
+
+      // Derive friendly message
+      let message = 'Failed to create account. Please try again.';
+      let serverDetails = '';
+      if (typeof err === 'string') {
+        message = err;
+      } else if (err?.message) {
+        message = err.message;
+      } else if ((err as any)?.response?.message) {
+        message = (err as any).response.message;
+      }
+
+      // Append server error details for diagnostics (kept concise for users)
+      if ((err as any)?.response?.message) serverDetails = (err as any).response.message;
+      else if ((err as any)?.message) serverDetails = (err as any).message;
+
+      const title = message.includes('email already exists') ? 'Email Already Registered' : 'Sign Up Error';
+      const alertMessage = serverDetails ? `${message}
+\nDetails: ${serverDetails}
+If this persists, contact support.` : `${message}
+If this persists, contact support.`;
+
+      showAlert('error', alertMessage, title);
     } finally {
       setIsSubmitting(false);
     }
@@ -885,7 +922,7 @@ export default function SignUpScreen() {
     );
   };
 
-  const { width } = Dimensions.get('window');
+  // const { width } = Dimensions.get('window');
 
   // Show loading screen during account creation process
   if (isSubmitting) {
@@ -1253,25 +1290,11 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     marginLeft: 8,
   },
-  buttonDisabled: {
-    opacity: 0.7,
-  },
   
   // Footer Styles
   authFooter: {
     alignItems: 'center',
     paddingBottom: 40,
-  },
-  footerText: {
-    fontSize: 15,
-    marginBottom: 8,
-  },
-  footerLink: {
-    padding: 8,
-  },
-  footerLinkText: {
-    fontSize: 16,
-    fontWeight: '600',
   },
   content: {
     flex: 1,
@@ -1575,6 +1598,13 @@ const styles = StyleSheet.create({
   footerText: {
     color: "#6B7280",
     fontSize: 14,
+  },
+  footerLink: {
+    padding: 8,
+  },
+  footerLinkText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   link: {
     marginLeft: 4,

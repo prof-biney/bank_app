@@ -8,7 +8,6 @@ import {
 import { Camera, Image as ImageIcon, X } from 'lucide-react-native';
 import React, { useState } from 'react';
 import {
-  Alert,
   Modal,
   StyleSheet,
   Text,
@@ -16,6 +15,7 @@ import {
   View,
   ActivityIndicator,
 } from 'react-native';
+import { useAlert } from '@/context/AlertContext';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -33,6 +33,7 @@ export function ImagePickerModal({
   const { colors } = useTheme();
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const { showAlert } = useAlert();
 
   const handleClose = () => {
     setSelectedImage(null);
@@ -51,10 +52,7 @@ export function ImagePickerModal({
       setSelectedImage(processedUri);
     } catch (error) {
       logger.error('UI', 'Image processing error:', error);
-      Alert.alert(
-        'Error',
-        error instanceof Error ? error.message : 'Failed to process image'
-      );
+  showAlert('error', error instanceof Error ? error.message : 'Failed to process image', 'Error');
     } finally {
       setIsProcessing(false);
     }
@@ -66,10 +64,7 @@ export function ImagePickerModal({
       await handleImagePicked(asset);
     } catch (error) {
       logger.error('UI', 'Camera error:', error);
-      Alert.alert(
-        'Camera Error',
-        error instanceof Error ? error.message : 'Failed to take photo'
-      );
+  showAlert('error', error instanceof Error ? error.message : 'Failed to take photo', 'Camera Error');
     }
   };
 
@@ -79,10 +74,7 @@ export function ImagePickerModal({
       await handleImagePicked(asset);
     } catch (error) {
       logger.error('UI', 'Gallery error:', error);
-      Alert.alert(
-        'Gallery Error',
-        error instanceof Error ? error.message : 'Failed to select image'
-      );
+  showAlert('error', error instanceof Error ? error.message : 'Failed to select image', 'Gallery Error');
     }
   };
 

@@ -1,5 +1,4 @@
 import {
-  Account,
   Avatars,
   Client,
   Databases,
@@ -9,6 +8,7 @@ import {
 } from "react-native-appwrite";
 import { enhanceClientWithConnectionMonitoring } from './connectionService';
 import { logger } from './logger';
+import { authAccount } from './appwrite-auth';
 
 // Helper to resolve env vars with fallback names (supports bank/.env APPWRITE_* keys)
 const env = (keys: string[], def?: string) => {
@@ -139,6 +139,22 @@ authenticatedClient
   .setProject(getRequiredConfig('projectId'))
   .setPlatform(getRequiredConfig('platform'));
 
+// Helper to add a timeout to promises (fail-fast for network hangs)
+const withTimeout = async <T>(promise: Promise<T>, ms: number, label = 'operation'): Promise<T> => {
+  let timeoutId: any;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  try {
+    const result = await Promise.race([promise, timeout]);
+    clearTimeout(timeoutId!);
+    return result as T;
+  } catch (err) {
+    clearTimeout(timeoutId!);
+    throw err;
+  }
+};
+
 // Note: setKey is not available in React Native Appwrite SDK
 // API keys are only used in server-side Node.js environments
 // In React Native, we use JWT tokens for authentication instead
@@ -147,9 +163,7 @@ if (apiKey && __DEV__) {
   logger.info('CONFIG', '🔑 Appwrite API key found (will be used for server operations only)');
 }
 
-// Import the dedicated authentication account instance
-// This uses a clean, unmodified client to avoid method binding issues
-import { authAccount } from './appwrite-auth';
+// Export the dedicated authentication account instance (imported at top)
 export const account = authAccount;
 
 // Create a wrapper for Databases to pre-bind all methods and avoid context issues
@@ -182,6 +196,9 @@ class BoundDatabases {
 
 // Use bound database client - no more manual binding needed!
 export const databases = new BoundDatabases(client);
+// Also expose a databases instance that uses the authenticated client.
+// This one should be used for operations that require a user's JWT (create/update/delete documents)
+export const authDatabases = new BoundDatabases(authenticatedClient);
 
 // Debug logging
 if (__DEV__) {
@@ -338,9 +355,7 @@ export const ensureAuthenticatedClient = async (): Promise<boolean> => {
         logger.auth.warn('[ensureAuthenticatedClient] JWT creation failed with unknown error:', jwtError.message);
         return false;
       }
-    }
-
-    return false;
+  }
   } catch (error) {
     if (__DEV__) {
       logger.auth.error('[ensureAuthenticatedClient] Error ensuring authenticated client:', error);
@@ -349,594 +364,217 @@ export const ensureAuthenticatedClient = async (): Promise<boolean> => {
   }
 };
 
-export const createUser = async ({
-  name,
-  email,
-  password,
-  phoneNumber,
-}: {
-  name: string;
-  email: string;
-  password: string;
-  phoneNumber?: string; // Make it optional for backward compatibility
-}) => {
+// Update the createUser function with better error handling
+// Minimal local types used by this module to avoid cross-file type coupling
+type CreateUserParams = { email: string; password: string; name: string; phoneNumber?: string };
+type User = any;
+
+export const createUser = async ({ email, password, name, phoneNumber }: CreateUserParams): Promise<User> => {
   try {
-    if (__DEV__) {
-      logger.auth.debug('[createUser] Starting user creation process:', {
-        name,
-        email,
-        phoneNumber,
-        accountType: typeof account,
-        accountCreateMethod: typeof account.create
-      });
-    }
-    
-    if (__DEV__) {
-      logger.auth.debug('[createUser] About to call account.create:', {
-        IDExists: typeof ID !== 'undefined',
-        IDUniqueExists: typeof ID.unique !== 'undefined',
-        accountExists: typeof account !== 'undefined',
-        accountCreateExists: typeof account.create !== 'undefined',
-        emailType: typeof email,
-        passwordType: typeof password,
-        nameType: typeof name
-      });
-    }
-    
-    let uniqueId;
+    logger.debug('AUTH', '[createUser] Starting user creation process:', {
+      accountCreateMethod: typeof account.create,
+      accountType: typeof account,
+      email,
+      name,
+      phoneNumber
+    });
+
+    // First check if user already exists. This is best-effort: if the public
+    // listDocuments call fails (permissions/network), we log and continue because
+    // it's preferable to attempt account creation and let the authenticated
+    // createDocument call surface errors reliably.
+    let existingUserFound = false;
     try {
-      uniqueId = ID.unique();
-      if (__DEV__) {
-        logger.auth.debug('[createUser] ID.unique() called successfully:', { uniqueId, uniqueIdType: typeof uniqueId });
+      logger.debug('AUTH', '[createUser] Checking for existing user with email:', { email });
+      const existingUser = await withTimeout(
+        databases.listDocuments(
+          getRequiredConfig('databaseId'),
+          getRequiredConfig('userCollectionId'),
+          [Query.equal('email', email)]
+        ),
+        8000,
+        'listDocuments'
+      );
+      logger.debug('AUTH', '[createUser] listDocuments returned:', { count: existingUser?.documents?.length });
+
+      if (existingUser && existingUser.documents && existingUser.documents.length > 0) {
+        existingUserFound = true;
       }
-    } catch (idError) {
-      logger.auth.error('[createUser] ID.unique() failed:', idError);
-      throw new Error(`Failed to generate unique ID: ${idError}`);
+    } catch (err: any) {
+      // Don't abort creation on listDocuments failures; log for diagnosis and continue
+      logger.warn('AUTH', '[createUser] Could not verify existing user (listDocuments failed). Proceeding with account creation. This may indicate a permissions or network issue:', err);
     }
-    
-    if (__DEV__) {
-      logger.auth.debug('[createUser] About to call account.create with resolved parameters:', {
-        uniqueId,
-        email,
-        passwordLength: password.length,
-        name,
-        accountCreateType: typeof account.create
-      });
+
+    if (existingUserFound) {
+      throw new Error('email already exists');
     }
-    
-    // Try the simplest possible implementation following official docs pattern
-    let newAccount;
-    
-    if (__DEV__) {
-      logger.auth.debug('[createUser] Attempting server-side account creation');
-    }
-    
-    // Use server-side account creation as workaround for SDK issue
+
+    // Generate unique ID
+    const uniqueId = ID.unique();
+    logger.debug('AUTH', '[createUser] Generated unique ID:', uniqueId);
+
+    // Create Appwrite account
+    logger.debug('AUTH', '[createUser] Calling account.create with uniqueId:', uniqueId);
+    let userAccount: any = null;
     try {
-      if (__DEV__) {
-        logger.auth.debug('[createUser] Using server-side account creation API');
-      }
-      
-      // Generate avatar URL first
-      const generateAvatarUrl = (userName: string): string => {
+      userAccount = await withTimeout(
+        account.create(uniqueId, email, password, name),
+        8000,
+        'account.create'
+      );
+      logger.debug('AUTH', '[createUser] Appwrite account created successfully:', { userId: userAccount?.$id });
+    } catch (acctErr) {
+      logger.error('AUTH', '[createUser] account.create failed:', acctErr);
+      throw acctErr;
+    }
+
+    // Create user preferences document
+    try {
+      logger.debug('AUTH', '[createUser] Preparing to create user preferences document...');
+
+      // Immediately create an email/password session for the newly created account so we can
+      // authenticate subsequent database operations. The authAccount wrapper provides
+      // createEmailPasswordSession and createJWT methods (see lib/appwrite-auth.ts).
+      try {
+        logger.debug('AUTH', '[createUser] Creating email/password session for new user');
+        await account.createEmailPasswordSession(email, password);
+        logger.debug('AUTH', '[createUser] Email/password session created');
+
+        // Create a JWT for the authenticated client and set it so authenticatedClient can be used
+        let jwtResp: any = null;
         try {
-          const initials = userName
-            .split(' ')
-            .filter(part => part.length > 0)
-            .map(part => part[0])
-            .join('')
-            .toUpperCase()
-            .slice(0, 2);
-          
-          return `https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&background=6366F1&color=ffffff&size=200&font-size=0.6&format=png`;
-        } catch (error) {
-          return 'https://ui-avatars.com/api/?name=U&background=6366F1&color=ffffff&size=200';
+          jwtResp = await withTimeout(account.createJWT(), 8000, 'createJWT');
+          if (jwtResp && jwtResp.jwt) {
+            setAuthenticatedClientJWT(jwtResp.jwt);
+            logger.debug('AUTH', '[createUser] JWT created and set on authenticated client');
+          } else {
+            logger.auth.warn('[createUser] createJWT did not return a jwt', jwtResp);
+            throw new Error('JWT creation returned no token');
+          }
+        } catch (jwtErr) {
+          logger.error('AUTH', '[createUser] createJWT failed:', jwtErr);
+          throw jwtErr;
         }
-      };
-      
-      let avatarUrl: string;
-      
-      // Try Appwrite avatars service first
+      } catch (sessionError) {
+        logger.error('AUTH', '[createUser] Failed to create session/JWT for new user:', sessionError);
+        // If we cannot create a session, we should cleanup the created account and fail early
+          try {
+            await (account.raw as any).delete();
+          } catch (cleanupErr) {
+            logger.error('AUTH', '[createUser] Failed to cleanup account after session failure:', cleanupErr);
+          }
+        throw new Error('Failed to authenticate newly created user');
+      }
+
+      // Now persist the user preferences using the authenticated databases client so permissions
+      // checks succeed. Use the user's ID as the document ID to make lookups straightforward.
+      let userDoc: any = null;
       try {
-        const avatarURLObject = avatars.getInitialsURL(name);
-        avatarUrl = avatarURLObject.toString();
-        
-        if (__DEV__) {
-          logger.auth.debug('[createUser] Appwrite avatar URL generated:', { avatarUrl });
-        }
-      } catch (avatarError) {
-        logger.auth.warn('[createUser] Appwrite avatar service failed, using fallback:', avatarError);
-        avatarUrl = generateAvatarUrl(name);
-      }
-      
-      const { getApiBase } = require('@/lib/api');
-      const apiUrl = `${getApiBase()}/v1/auth/create-account`;
-      
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userId: uniqueId,
-          email,
-          password,
-          name,
-          phoneNumber,
-          avatar: avatarUrl
-        })
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to create account via server API');
-      }
-      
-      newAccount = await response.json();
-      
-      if (__DEV__) {
-        logger.auth.debug('[createUser] Account created successfully via server API');
-      }
-    } catch (serverError: any) {
-      logger.auth.error('[createUser] Server-side account creation failed:', serverError);
-      
-      // If server API fails, we still need to handle this gracefully
-      throw new Error('Account creation is currently unavailable. Please try again later.');
-    }
-    
-    if (!newAccount) {
-      throw new Error("Failed to create account via server API");
-    }
-    
-    if (__DEV__) {
-      logger.auth.debug('[createUser] Account and user document created successfully via server API:', {
-        accountId: newAccount.$id
-      });
-    }
-    
-    return newAccount;
-  } catch (error) {
-    logger.auth.error("Create user error:", error);
-    throw error;
-  }
-};
+        logger.debug('AUTH', '[createUser] Creating user document with authDatabases...');
+        userDoc = await withTimeout(
+          authDatabases.createDocument(
+            getRequiredConfig('databaseId'),
+            getRequiredConfig('userCollectionId'),
+            uniqueId,
+            {
+              userId: uniqueId,
+              email,
+              name,
+              phoneNumber,
+              avatar: `https://cloud.appwrite.io/v1/avatars/initials?name=${encodeURIComponent(name)}`,
+              theme: 'system',
+              currency: 'USD',
+              language: 'en',
+              notifications: true,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            }
+          ),
+          8000,
+          'createDocument'
+        );
 
-export const signIn = async (email: string, password: string) => {
-  try {
-    if (__DEV__) {
-      logger.auth.info('[signIn] Attempting to create email password session');
-      logger.auth.debug('[signIn] Debug info:', {
-        accountObject: typeof account,
-        accountMethods: Object.getOwnPropertyNames(Object.getPrototypeOf(account)),
-        createEmailPasswordSessionMethod: typeof account.createEmailPasswordSession,
-        accountClientType: typeof account.client,
-        emailType: typeof email,
-        passwordType: typeof password
-      });
-    }
-    
-    // Clear any existing sessions first
-    try {
-      await account.deleteSession('current');
-    } catch (e) {
-      // Ignore errors when clearing sessions
-    }
-    
-    // Add specific debugging for the method call
-    if (__DEV__) {
-      logger.auth.debug('[signIn] About to call createEmailPasswordSession');
-      logger.auth.debug('[signIn] Method exists:', 'createEmailPasswordSession' in account);
-      logger.auth.debug('[signIn] Method type:', typeof account.createEmailPasswordSession);
-    }
-    
-    let session;
-    try {
-      if (__DEV__) {
-        logger.auth.debug('[signIn] Calling createEmailPasswordSession (correct method name)');
+        logger.debug('AUTH', '[createUser] authDatabases.createDocument returned:', { docId: userDoc?.$id, raw: userDoc });
+      } catch (createDocErr: any) {
+        logger.error('AUTH', '[createUser] authDatabases.createDocument failed:', createDocErr);
+        // Surface the original error message to the caller so UI can present it
+        throw createDocErr;
       }
-      // Use the correct method name from react-native-appwrite
-      // account methods are properly bound in appwrite-auth.ts
-      session = await account.createEmailPasswordSession(email, password);
-    } catch (methodError: any) {
-      logger.auth.error('[signIn] Method execution failed:', methodError);
-      logger.auth.error('[signIn] Method error details:', {
-        name: methodError.name,
-        message: methodError.message,
-        stack: methodError.stack
-      });
-      throw methodError;
-    }
-    
-    if (__DEV__) {
-      logger.auth.info('[signIn] Session created successfully:', { 
-        sessionId: session.$id,
-        userId: session.userId 
-      });
-    }
-    
-    // Immediately verify the session works by checking account
-    try {
-      const currentAccount = await account.get();
-      if (__DEV__) {
-        logger.auth.info('[signIn] Session verified, account accessible:', {
-          accountId: currentAccount.$id,
-          email: currentAccount.email
-        });
-      }
-    } catch (verifyError) {
-      logger.auth.error('[signIn] Session verification failed:', verifyError);
-      throw new Error('Authentication failed - session could not be verified');
-    }
-    
-    return session;
-  } catch (error) {
-    logger.auth.error("[signIn] Sign in error:", error);
-    
-    // Provide more specific error messaging
-    if (error instanceof Error) {
-      if (error.message.includes('Invalid credentials')) {
-        throw new Error('Invalid email or password. Please check your credentials and try again.');
-      } else if (error.message.includes('too many requests')) {
-        throw new Error('Too many login attempts. Please wait a few minutes before trying again.');
-      } else if (error.message.includes('User not found')) {
-        throw new Error('No account found with this email. Please sign up first.');
-      } else if (error.message.includes('missing scope')) {
-        throw new Error('Authentication system error. Please contact support.');
-      }
-    }
-    
-    throw error;
-  }
-};
 
-export const signOut = async () => {
-  try {
-    if (__DEV__) {
-      logger.auth.info('[signOut] Starting logout process with token expiration');
-    }
-    
-    // Import token manager functions
-    const { performCompleteCleanup } = await import('./tokenManager');
-    
-    // Perform comprehensive cleanup (expires tokens, deletes session, clears data)
-    await performCompleteCleanup();
-    
-    if (__DEV__) {
-      logger.auth.info('[signOut] Logout completed with token expiration');
-    }
-  } catch (error) {
-    logger.auth.error('[signOut] Sign out error:', error);
-    
-    // Even if logout fails, ensure local cleanup
-    try {
-      const { clearTokenData, expireToken } = await import('./tokenManager');
-      expireToken();
-      clearTokenData();
-      if (__DEV__) {
-        logger.auth.info('[signOut] Performed emergency token cleanup');
-      }
-    } catch (cleanupError) {
-      logger.auth.error('[signOut] Emergency cleanup failed:', cleanupError);
-    }
-    
-    throw error;
-  }
-};
+      logger.debug('AUTH', '[createUser] User preferences document created:', {
+        docId: userDoc.$id
+      });
 
-export const getCurrentUser = async () => {
-  try {
-    if (__DEV__) {
-      logger.auth.info('[getCurrentUser] Starting user retrieval process');
-    }
-    
-    // First verify we have an active session
-    try {
-      const session = await account.getSession('current');
-      if (!session) {
-        throw new Error('No active session found');
-      }
+  // Session already created above; no-op here (keeps behaviour consistent)
+  logger.debug('AUTH', '[createUser] Session ensured earlier, skipping extra session creation');
+
+      return userAccount;
+
+    } catch (error) {
+      logger.error('AUTH', '[createUser] Error creating user document:', error);
       
-      if (__DEV__) {
-        logger.auth.info('[getCurrentUser] Active session verified:', { sessionId: session.$id });
-      }
-    } catch (sessionError: any) {
-      logger.auth.error('[getCurrentUser] Session verification failed:', sessionError.message);
-      
-      // Perform automatic token cleanup on session errors
+      // Cleanup: Delete the Appwrite account if document creation fails
       try {
-        const { clearTokenData, expireToken } = await import('./tokenManager');
-        if (__DEV__) {
-          logger.auth.info('[getCurrentUser] Performing automatic token cleanup due to session error');
-        }
-        expireToken();
-        clearTokenData();
+        await (account.raw as any).delete();
+        logger.debug('AUTH', '[createUser] Cleaned up Appwrite account after document creation failure');
       } catch (cleanupError) {
-        logger.auth.error('[getCurrentUser] Token cleanup failed:', cleanupError);
+        logger.error('AUTH', '[createUser] Error cleaning up Appwrite account:', cleanupError);
       }
       
-      if (sessionError.message?.includes('missing scope')) {
-        throw new Error('Authentication session invalid. Please sign in again.');
-      }
-      throw new Error('No valid authentication session. Please sign in.');
-    }
-    
-    // get the current account
-    if (__DEV__) {
-      logger.auth.info('[getCurrentUser] Fetching current account details');
-    }
-    
-    const currentAccount = await account.get();
-    
-    if (__DEV__) {
-      logger.auth.info('[getCurrentUser] Current account retrieved:', { 
-        accountId: currentAccount.$id,
-        email: currentAccount.email,
-        emailVerification: currentAccount.emailVerification 
-      });
+      throw new Error('Failed to complete account setup');
     }
 
-    if (!currentAccount) {
-      throw new Error("No authenticated user account found");
-    }
-
-    // Ensure we have a JWT for database operations
-    if (__DEV__) {
-      logger.auth.info('[getCurrentUser] Ensuring authenticated client for database access');
+  } catch (error: any) {
+    logger.error('AUTH', '[createUser] Error in create user process:', error);
+    
+    if (error?.response?.message) {
+      throw new Error(error.response.message);
     }
     
-    const hasJWT = await ensureAuthenticatedClient();
-    if (!hasJWT) {
-      logger.auth.warn('[getCurrentUser] Warning: No JWT available for database operations, attempting without JWT');
-    }
+    throw error;
+  }
+};
 
-    if (__DEV__) {
-      logger.database.info('[getCurrentUser] Querying user document from database');
-      logger.database.debug('[getCurrentUser] Database params:', {
-        databaseId: appwriteConfig.databaseId,
-        userCollectionId: appwriteConfig.userCollectionId,
-        accountId: currentAccount.$id,
-        databasesObject: typeof databases,
-        listDocumentsMethod: typeof databases.listDocuments
-      });
-    }
-    
-    // get the user from the database
-    try {
-      // No need for manual binding - method is already bound
-      const currentUser = await databases.listDocuments(
+// Add function to fetch user data
+export const fetchUser = async (userId: string): Promise<any> => {
+  // Try authenticated client first (the user document is created with the authenticated client
+  // during signup, so the authenticated client may have immediate read permissions).
+  try {
+    if (__DEV__) logger.debug('AUTH', '[fetchUser] Attempting to fetch user using authDatabases');
+
+    const user = await withTimeout(
+      authDatabases.getDocument(
         getRequiredConfig('databaseId'),
         getRequiredConfig('userCollectionId'),
-        [Query.equal("accountId", currentAccount.$id)]
-      );
-      
-      if (__DEV__) {
-        logger.database.info('[getCurrentUser] Database query completed:', { 
-          documentsFound: currentUser.documents.length,
-          totalDocuments: currentUser.total 
-        });
-      }
-      
-      if (!currentUser || currentUser.documents.length === 0) {
-        logger.auth.error('[getCurrentUser] No user document found for authenticated account');
-        logger.auth.error('[getCurrentUser] This suggests the user account exists in Appwrite Auth but not in the users collection');
-        throw new Error(`No user profile found for account ID: ${currentAccount.$id}. Please contact support.`);
-      }
-
-      const userDocument = currentUser.documents[0];
-      
-      if (__DEV__) {
-        logger.database.info('[getCurrentUser] User document retrieved successfully:', {
-          documentId: userDocument.$id,
-          name: userDocument.name,
-          email: userDocument.email
-        });
-      }
-      
-      // return the user
-      return userDocument;
-    } catch (dbError: any) {
-      logger.database.error('[getCurrentUser] Database query failed:', dbError);
-      logger.database.error('[getCurrentUser] Database query error details:', {
-        message: dbError.message,
-        name: dbError.name,
-        stack: dbError.stack
-      });
-      throw dbError;
-    }
-  } catch (error) {
-    logger.auth.error('[getCurrentUser] Get current user error:', error);
-    
-    // Provide more specific error information
-    if (error instanceof Error) {
-      if (error.message.includes('missing scope (account)')) {
-        throw new Error('Authentication system error: missing account scope. Please sign in again.');
-      } else if (error.message.includes('missing scope (databases)')) {
-        throw new Error('Database access denied: missing permissions. Please contact support.');
-      } else if (error.message.includes('missing scope')) {
-        throw new Error('Authentication session has insufficient permissions. Please sign in again.');
-      } else if (error.message.includes('Unauthorized')) {
-        throw new Error('Access denied to user data. Please check your authentication and try again.');
-      } else if (error.message.includes('role: guests')) {
-        throw new Error('You are not properly authenticated. Please sign in to access your account.');
-      } else if (error.message.includes('No valid authentication session')) {
-        // Re-throw our custom session errors as-is
-        throw error;
-      } else if (error.message.includes('No user profile found')) {
-        // Re-throw our custom user document errors as-is
-        throw error;
-      }
-    }
-    
-    throw error;
-  }
-};
-
-// ---------------- Card Event Logging ----------------
-export type CardEventStatus = "added" | "removed";
-export type CardEventInput = {
-  cardId: string;
-  userId?: string;
-  last4?: string;
-  brand?: string;
-  cardHolderName?: string;
-  expiryDate?: string; // MM/YY
-  status: CardEventStatus;
-  title?: string;
-  description?: string;
-  // Optional extras for activity mapping
-  accountId?: string;
-};
-
-/**
- * Persist a card event (added/removed) to Appwrite in the cards collection.
- * This is designed to power the activity timeline via Realtime subscriptions.
- * If the cards collection id is not configured, this will no-op.
- */
-export const logCardEvent = async (input: CardEventInput) => {
-  const databaseId = getOptionalConfig('databaseId');
-  const cardsCollectionId = getOptionalConfig('cardsCollectionId');
-  if (!databaseId || !cardsCollectionId) {
-    // Silently skip if not configured
-    return null;
-  }
-
-  try {
-    const payload: Record<string, any> = {
-      type: "card.event",
-      status: input.status,
-      cardId: input.cardId,
-      userId: input.userId,
-      last4: input.last4,
-      brand: input.brand,
-      holder: input.cardHolderName, // Use 'holder' instead of 'cardHolderName' to match schema
-      expiryDate: input.expiryDate,
-      title: input.title || (input.status === "added" ? "Card added" : "Card removed"),
-      description: input.description,
-      accountId: input.accountId,
-      category: "card",
-      timestamp: new Date().toISOString(),
-    };
-
-    return await databases.createDocument(databaseId, cardsCollectionId, ID.unique(), payload);
-  } catch (error) {
-    logger.database.error("logCardEvent error:", error);
-    // Do not throw to avoid breaking UI flows; just report
-    return null;
-  }
-};
-
-// ---------------- Profile Picture Management ----------------
-
-/**
- * Uploads a profile picture to Appwrite Storage
- * @param imageUri - Local URI of the image to upload
- * @param userId - User's account ID for unique file naming
- * @returns Upload result with file ID and URL
- */
-export const uploadProfilePicture = async (imageUri: string, userId: string) => {
-  const storageBucketId = getOptionalConfig('storageBucketId');
-  
-  if (!storageBucketId) {
-    throw new Error("Storage bucket ID not configured");
-  }
-
-  try {
-    // Create a unique file name using user ID and timestamp
-    const fileName = `profile_${userId}_${Date.now()}.jpg`;
-    
-    // Create file object from image URI
-    const file = {
-      name: fileName,
-      type: "image/jpeg",
-      uri: imageUri,
-    } as any;
-
-    // Upload file to storage
-    const uploadedFile = await storage.createFile(
-      storageBucketId,
-      ID.unique(),
-      file
+        userId
+      ),
+      6000,
+      'auth-getDocument'
     );
 
-    // Generate public URL for the file
-    const fileUrl = storage.getFileView(storageBucketId, uploadedFile.$id);
-
-    return {
-      fileId: uploadedFile.$id,
-      fileUrl: fileUrl.toString(),
-      fileName: uploadedFile.name,
-    };
-  } catch (error) {
-    logger.error('STORAGE', "Upload profile picture error:", error);
-    throw error;
-  }
-};
-
-/**
- * Deletes a profile picture from Appwrite Storage
- * @param fileId - File ID to delete
- */
-export const deleteProfilePicture = async (fileId: string) => {
-  const storageBucketId = getOptionalConfig('storageBucketId');
-  
-  if (!storageBucketId) {
-    throw new Error("Storage bucket ID not configured");
+    if (user && user.$id) return user;
+  } catch (authErr) {
+    // Authenticated fetch may fail if JWT hasn't propagated yet; log and continue to fallback
+    logger.warn('AUTH', '[fetchUser] Authenticated fetch failed, will fallback to public databases:', authErr);
   }
 
+  // Fallback: try public (non-authenticated) databases instance
   try {
-    await storage.deleteFile(storageBucketId, fileId);
-  } catch (error) {
-    logger.error('STORAGE', "Delete profile picture error:", error);
-    // Don't throw error here as the file might already be deleted
-  }
-};
+    if (__DEV__) logger.debug('AUTH', '[fetchUser] Attempting to fetch user using public databases');
 
-/**
- * Gets the public URL for a profile picture
- * @param fileId - File ID to get URL for
- * @returns Public URL of the file
- */
-export const getProfilePictureUrl = (fileId: string): string => {
-  const storageBucketId = getOptionalConfig('storageBucketId');
-  
-  if (!storageBucketId) {
-    throw new Error("Storage bucket ID not configured");
-  }
-
-  return storage.getFileView(storageBucketId, fileId).toString();
-};
-
-/**
- * Updates user profile with new avatar information
- * @param userId - User's document ID
- * @param avatarUrl - New avatar URL
- * @param avatarFileId - File ID of the uploaded avatar (optional)
- */
-export const updateUserProfile = async (
-  userId: string, 
-  avatarUrl: string, 
-  avatarFileId?: string
-) => {
-  try {
-    const updateData: any = {
-      avatar: avatarUrl,
-    };
-    
-    // Add avatarFileId if provided (for tracking uploaded files)
-    if (avatarFileId) {
-      updateData.avatarFileId = avatarFileId;
-    }
-
-    const updatedUser = await databases.updateDocument(
-      getRequiredConfig('databaseId'),
-      getRequiredConfig('userCollectionId'),
-      userId,
-      updateData
+    const user = await withTimeout(
+      databases.getDocument(
+        getRequiredConfig('databaseId'),
+        getRequiredConfig('userCollectionId'),
+        userId
+      ),
+      6000,
+      'public-getDocument'
     );
 
-    return updatedUser;
+    return user;
   } catch (error) {
-    logger.database.error("Update user profile error:", error);
+    logger.error('AUTH', '[fetchUser] Error fetching user from public databases:', error);
     throw error;
   }
 };

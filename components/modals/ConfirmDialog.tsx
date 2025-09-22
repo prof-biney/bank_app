@@ -11,6 +11,8 @@ export default function ConfirmDialog({
   tone = 'default',
   onConfirm,
   onCancel,
+  disabled = false,
+  leftIcon,
 }: {
   visible: boolean;
   title: string;
@@ -18,8 +20,10 @@ export default function ConfirmDialog({
   confirmText?: string;
   cancelText?: string;
   tone?: 'default' | 'danger' | 'success';
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
   onCancel: () => void;
+  disabled?: boolean;
+  leftIcon?: React.ReactNode;
 }) {
   const { colors, isDark } = useTheme();
 
@@ -35,16 +39,21 @@ export default function ConfirmDialog({
       <View style={styles.overlay}>
         <View style={[styles.container, { backgroundColor: colors.card }] }>
           <View style={[styles.header, { backgroundColor: headerBg }]}>
+            {leftIcon ? <View style={styles.leftIconContainer}>{leftIcon}</View> : null}
             <Text style={[styles.title, { color: headerText }]}>{title}</Text>
           </View>
           <View style={styles.body}>
             <Text style={[styles.message, { color: colors.textSecondary }]}>{message}</Text>
           </View>
           <View style={styles.footer}>
-            <TouchableOpacity style={[styles.btn, { backgroundColor: colors.border }]} onPress={onCancel}>
+            <TouchableOpacity style={[styles.btn, { backgroundColor: colors.border }]} onPress={onCancel} disabled={disabled}>
               <Text style={[styles.btnText, { color: colors.textPrimary }]}>{cancelText}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.btn, { backgroundColor: tone === 'danger' ? colors.negative : tone === 'success' ? colors.positive : colors.tintPrimary }]} onPress={onConfirm}>
+            <TouchableOpacity
+              style={[styles.btn, { backgroundColor: tone === 'danger' ? colors.negative : tone === 'success' ? colors.positive : colors.tintPrimary }]}
+              onPress={async () => { if (!disabled) await onConfirm(); }}
+              disabled={disabled}
+            >
               <Text style={[styles.btnText, { color: 'white' }]}>{confirmText}</Text>
             </TouchableOpacity>
           </View>
@@ -61,7 +70,8 @@ const styles = StyleSheet.create({
   title: { fontSize: 16, fontWeight: '700' },
   body: { paddingHorizontal: 16, paddingVertical: 16 },
   message: { fontSize: 14 },
-  footer: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, paddingHorizontal: 12, paddingVertical: 12 },
+  leftIconContainer: { position: 'absolute', left: 12, top: 12 },
+  footer: { flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 12, paddingVertical: 12 },
   btn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },
   btnText: { fontSize: 14, fontWeight: '600' },
 });

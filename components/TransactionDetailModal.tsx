@@ -7,14 +7,14 @@ import {
   StyleSheet,
   TextInput,
   ScrollView,
-  Alert,
 } from 'react-native';
 import { X, Edit3, Trash2, Check, AlertTriangle } from 'lucide-react-native';
 import { useTheme } from '@/context/ThemeContext';
 import { useApp } from '@/context/AppContext';
-import { Transaction } from '@/types';
+import type { Transaction } from '@/types/index';
 import CustomButton from '@/components/CustomButton';
 import ConfirmDialog from '@/components/modals/ConfirmDialog';
+import { useAlert } from '@/context/AlertContext';
 
 interface TransactionDetailModalProps {
   visible: boolean;
@@ -33,6 +33,7 @@ export function TransactionDetailModal({
 }: TransactionDetailModalProps) {
   const { colors } = useTheme();
   const { updateTransaction, deleteTransaction } = useApp();
+  const { showAlert } = useAlert();
   
   const [isEditing, setIsEditing] = useState(false);
   const [editedDescription, setEditedDescription] = useState('');
@@ -64,7 +65,7 @@ export function TransactionDetailModal({
 
   const handleSaveEdit = async () => {
     if (!editedDescription.trim()) {
-      Alert.alert('Error', 'Description cannot be empty');
+      showAlert('error', 'Description cannot be empty', 'Error');
       return;
     }
 
@@ -78,12 +79,12 @@ export function TransactionDetailModal({
       if (result.success) {
         setIsEditing(false);
         onTransactionUpdated?.();
-        Alert.alert('Success', 'Transaction updated successfully');
+        showAlert('success', 'Transaction updated successfully', 'Success');
       } else {
-        Alert.alert('Error', result.error || 'Failed to update transaction');
+        showAlert('error', result.error || 'Failed to update transaction', 'Error');
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to update transaction');
+  showAlert('error', 'Failed to update transaction', 'Error');
     } finally {
       setIsUpdating(false);
     }
@@ -95,15 +96,15 @@ export function TransactionDetailModal({
       const result = await deleteTransaction(transaction.id);
 
       if (result.success) {
-        setShowDeleteConfirm(false);
-        onTransactionDeleted?.();
-        onClose();
-        Alert.alert('Success', 'Transaction deleted successfully');
+  setShowDeleteConfirm(false);
+  onTransactionDeleted?.();
+  onClose();
+  showAlert('success', 'Transaction deleted successfully', 'Success');
       } else {
-        Alert.alert('Error', result.error || 'Failed to delete transaction');
+  showAlert('error', result.error || 'Failed to delete transaction', 'Error');
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to delete transaction');
+  showAlert('error', 'Failed to delete transaction', 'Error');
     } finally {
       setIsDeleting(false);
     }
