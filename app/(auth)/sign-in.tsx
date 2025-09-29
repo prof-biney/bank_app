@@ -27,15 +27,36 @@ import {
 } from "@/components/form";
 import { useTheme } from "@/context/ThemeContext";
 import { chooseReadableText, withAlpha } from "@/theme/color-utils";
-import { LoadingScreen } from "@/components/LoadingScreen";
+import LoadingAnimation from '@/components/LoadingAnimation';
+import { useLoading, LOADING_CONFIGS } from '@/hooks/useLoading';
+import EnhancedBiometricButton from '@/components/auth/EnhancedBiometricButton';
+import BiometricLoadingIndicator from '@/components/auth/BiometricLoadingIndicator';
+import { useBiometricMessages } from '@/context/BiometricToastContext';
+import { checkBiometricAvailability, BiometricAvailability } from '@/lib/biometric/biometric.service';
 
 
 export default function SignInScreen() {
-  const { login, isAuthenticated } = useAuthStore();
+  const { 
+    login, 
+    isAuthenticated, 
+    biometricEnabled, 
+    biometricType, 
+    authenticateWithBiometric,
+    loadBiometricState 
+  } = useAuthStore();
   const { showAlert } = useAlert();
+  const { loading, withLoading } = useLoading();
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccessAlert, setShowSuccessAlert] = useState(false);
+  const [isScreenStable, setIsScreenStable] = useState(false);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [biometricAvailability, setBiometricAvailability] = useState<BiometricAvailability | null>(null);
+  const [biometricLoading, setBiometricLoading] = useState(false);
+  const [biometricError, setBiometricError] = useState(false);
+  const [biometricStage, setBiometricStage] = useState<'idle' | 'checking' | 'authenticating' | 'processing' | 'success' | 'error'>('idle');
+  const [loadingVisible, setLoadingVisible] = useState(false);
+  
+  const biometricMessages = useBiometricMessages();
   const navigationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [form, setForm] = useState({
@@ -94,14 +115,14 @@ export default function SignInScreen() {
 
   // Monitor authentication state changes for navigation
   useEffect(() => {
-    if (isAuthenticated && showSuccessAlert) {
-      // User is now authenticated and we've shown the success alert
-      // Navigate to the home screen
+    if (isAuthenticated) {
+      // Give a moment for Firebase auth state to fully propagate
       const timer = setTimeout(() => {
-        router.replace("/");
-        setIsSubmitting(false);
-        setShowSuccessAlert(false);
-      }, 1200); // Small delay to ensure smooth transition
+        if (showSuccessAlert) {
+          router.replace("/");
+          setShowSuccessAlert(false);
+        }
+      }, 1500); // Extended delay to ensure auth state is stable
       
       navigationTimeoutRef.current = timer;
       
@@ -110,8 +131,150 @@ export default function SignInScreen() {
           clearTimeout(navigationTimeoutRef.current);
         }
       };
+    } else {
+      // Not authenticated - ensure we stay on sign-in screen
+      setShowSuccessAlert(false);
     }
   }, [isAuthenticated, showSuccessAlert]);
+
+  // Stabilize screen after initial mount to prevent shake
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsScreenStable(true);
+    }, 150); // Small delay to ensure all components are mounted
+    
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Initialize biometric state on mount
+  useEffect(() => {
+    initializeBiometricState();
+  }, []);
+  
+  // Load biometric state and check availability
+  const initializeBiometricState = async () => {
+    try {
+      setBiometricStage('checking');
+      setLoadingVisible(true);
+      
+      // Load stored biometric state
+      await loadBiometricState();
+      
+      // Check current biometric availability
+      const availability = await checkBiometricAvailability();
+      setBiometricAvailability(availability);
+      
+      setBiometricStage('idle');
+      setLoadingVisible(false);
+      
+      // Get the updated biometric state from the store after loading
+      const { biometricEnabled: currentBiometricEnabled, biometricType: currentBiometricType } = useAuthStore.getState();
+      
+      logger.info('SCREEN', '[SignIn] Biometric state after load:', {
+        biometricEnabled: currentBiometricEnabled,
+        biometricType: currentBiometricType,
+        availabilityIsAvailable: availability.isAvailable,
+        availabilityType: availability.biometricType,
+        availabilityReason: availability.reason,
+      });
+      
+      // Show biometric login if enabled and available, otherwise show password form
+      // In development, also check if we should show biometric option for testing
+      const shouldShowBiometric = currentBiometricEnabled && availability.isAvailable;
+      
+      // Development override: Show biometric setup option if device has hardware but no biometrics enrolled
+      const shouldShowBiometricSetupHint = __DEV__ && 
+                                           !currentBiometricEnabled && 
+                                           availability.reason === 'no_biometrics_enrolled';
+      
+      if (shouldShowBiometric) {
+        logger.info('SCREEN', '[SignIn] Showing biometric authentication option');
+        setShowPasswordForm(false);
+      } else {
+        logger.info('SCREEN', '[SignIn] Showing password form', {
+          reason: !currentBiometricEnabled ? 'biometric not enabled' : 'biometric not available',
+          shouldShowBiometricSetupHint,
+        });
+        setShowPasswordForm(true);
+        if (!availability.isAvailable) {
+          if (availability.reason === 'hardware_not_available') {
+            biometricMessages.hardwareNotAvailable();
+          } else if (availability.reason === 'no_biometrics_enrolled') {
+            biometricMessages.noBiometricsEnrolled();
+            if (__DEV__) {
+              // Log development note to console
+              logger.info('SCREEN', '[SignIn] Development Note: Set up fingerprint or Face ID in your device settings to test biometric authentication');
+            }
+          }
+        }
+      }
+    } catch (error) {
+      logger.error('SCREEN', 'Error initializing biometric state:', error);
+      setBiometricStage('error');
+      setLoadingVisible(false);
+      setShowPasswordForm(true);
+      biometricMessages.genericError('initialize biometric authentication');
+    }
+  };
+  
+  // Handle biometric authentication
+  const handleBiometricAuth = async () => {
+    setBiometricLoading(true);
+    setBiometricError(false);
+    setBiometricStage('authenticating');
+    setLoadingVisible(true);
+    
+    try {
+      const result = await authenticateWithBiometric();
+      
+      if (result.success) {
+        setBiometricStage('success');
+        biometricMessages.authSuccess(biometricType);
+        setShowSuccessAlert(true);
+        
+        // Hide loading after success animation
+        setTimeout(() => {
+          setLoadingVisible(false);
+          setBiometricStage('idle');
+        }, 1500);
+      } else {
+        setBiometricError(true);
+        setBiometricStage('error');
+        
+        setTimeout(() => {
+          setLoadingVisible(false);
+          setBiometricStage('idle');
+        }, 1000);
+        
+        if (result.requiresPasswordLogin) {
+          // Force password login
+          setShowPasswordForm(true);
+          biometricMessages.fallbackToPassword(result.error);
+        } else {
+          // Show error but allow retry
+          biometricMessages.authFailed(biometricType, result.error);
+        }
+      }
+    } catch (error) {
+      setBiometricError(true);
+      setBiometricStage('error');
+      logger.error('SCREEN', 'Biometric authentication error:', error);
+      biometricMessages.genericError('authenticate with biometrics');
+      
+      setTimeout(() => {
+        setLoadingVisible(false);
+        setBiometricStage('idle');
+      }, 1000);
+    } finally {
+      setBiometricLoading(false);
+    }
+  };
+  
+  // Handle "Use Password Instead" button
+  const handleUsePassword = () => {
+    setShowPasswordForm(true);
+    setBiometricError(false);
+  };
 
   // Cleanup on unmount
   useEffect(() => {
@@ -161,16 +324,16 @@ export default function SignInScreen() {
       return;
     }
 
-    setIsSubmitting(true);
-
     try {
-      await login(email, password);
+      await withLoading(async () => {
+        await login(email, password);
 
-      // Show success message and set flag for navigation monitoring
-      showAlert("success", "You have successfully signed in.", "Welcome Back");
-      setShowSuccessAlert(true);
-      
-      // Navigation will be handled by the authentication state monitoring effect
+        // Show success message and set flag for navigation monitoring
+        showAlert("success", "You have successfully signed in.", "Welcome Back");
+        setShowSuccessAlert(true);
+        
+        // Navigation will be handled by the authentication state monitoring effect
+      }, LOADING_CONFIGS.LOGIN);
     } catch (error: any) {
       // Handle specific error types with more descriptive messages
       let errorMessage = "Authentication failed. Please try again.";
@@ -196,11 +359,23 @@ export default function SignInScreen() {
         }
       }
 
-      showAlert("error", errorMessage, errorTitle);
+      try {
+        if (typeof showAlert === 'function') {
+          showAlert("error", errorMessage, errorTitle);
+        } else {
+          console.error('showAlert is not a function', typeof showAlert, showAlert);
+        }
+      } catch (alertErr) {
+        console.error('Failed to show alert:', alertErr);
+      }
       logger.info('SCREEN', "Sign in error:", error);
+      try {
+        // Extra diagnostics for runtime environments that strip stacks from structured logs
+        console.error('Sign in full error:', error);
+        console.error('Sign in error stack:', (error as any)?.stack);
+        logger.info('SCREEN', 'Sign in error stack', (error as any)?.stack);
+      } catch {}
       setShowSuccessAlert(false); // Reset success alert state on error
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -208,21 +383,11 @@ export default function SignInScreen() {
   const { colors, transitionStyle } = useTheme();
   const { width } = Dimensions.get('window');
 
-  // Show loading screen during authentication process
-  if (isSubmitting) {
-    return (
-      <LoadingScreen 
-        variant="auth"
-        message="Signing you in"
-        subtitle="Verifying your credentials and preparing your dashboard..."
-        action="sign-in process"
-      />
-    );
-  }
+  // Loading handled by LoadingAnimation component at the bottom
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <Animated.View style={[{ flex: 1 }, transitionStyle]}>
+      <Animated.View style={[{ flex: 1 }, isScreenStable ? transitionStyle : {}]}>
       <LinearGradient
         colors={[
           colors.tintPrimary,
@@ -240,6 +405,7 @@ export default function SignInScreen() {
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
             bounces={false}
+            scrollEnabled={isScreenStable} // Disable scroll until stable
           >
             {/* Hero Section */}
             <View style={styles.heroSection}>
@@ -261,73 +427,130 @@ export default function SignInScreen() {
               </View>
 
               <View style={styles.formContent}>
-                <EmailField
-                  label="Email Address"
-                  value={form.email}
-                  onChangeText={(text) => setForm((prev) => ({ ...prev, email: text }))}
-                  validation={validation.email as ValidationState}
-                  onValidationChange={(newValidation) => 
-                    setValidation(prev => ({
-                      ...prev,
-                      email: newValidation
-                    }))
-                  }
-                  resetField={() => resetField('email')}
-                  placeholder="Enter your email address"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
+                {/* Biometric Authentication Section */}
+                {biometricEnabled && biometricAvailability?.isAvailable && !showPasswordForm && (
+                  <View style={styles.biometricSection}>
+                    <Text style={[styles.biometricTitle, { color: colors.textPrimary }]}>
+                      Quick Sign In
+                    </Text>
+                    <Text style={[styles.biometricSubtitle, { color: colors.textSecondary }]}>
+                      Use your {biometricType === 'faceId' ? 'Face ID' : biometricType === 'touchId' ? 'Touch ID' : 'fingerprint'} to sign in securely
+                    </Text>
+                    
+                    <View style={styles.biometricButtonContainer}>
+                      <EnhancedBiometricButton
+                        biometricType={biometricType}
+                        onPress={handleBiometricAuth}
+                        state={biometricLoading ? 'authenticating' : biometricError ? 'error' : 'idle'}
+                        size="large"
+                        variant="primary"
+                        showLabel
+                      />
+                    </View>
+                    
+                    <TouchableOpacity 
+                      style={styles.usePasswordButton}
+                      onPress={handleUsePassword}
+                    >
+                      <Text style={[styles.usePasswordText, { color: colors.tintPrimary }]}>
+                        Use Password Instead
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                
+                {/* Password Form Section */}
+                {showPasswordForm && (
+                  <>
+                    <EmailField
+                      label="Email Address"
+                      value={form.email}
+                      onChangeText={(text) => setForm((prev) => ({ ...prev, email: text }))}
+                      validation={validation.email as ValidationState}
+                      onValidationChange={(newValidation) => 
+                        setValidation(prev => ({
+                          ...prev,
+                          email: newValidation
+                        }))
+                      }
+                      resetField={() => resetField('email')}
+                      placeholder="Enter your email address"
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                    />
 
-                <PasswordField
-                  label="Password"
-                  value={form.password}
-                  onChangeText={(text) => setForm((prev) => ({ ...prev, password: text }))}
-                  validation={validation.password as ValidationState}
-                  onValidationChange={(newValidation) => 
-                    setValidation(prev => ({
-                      ...prev,
-                      password: newValidation
-                    }))
-                  }
-                  resetField={() => resetField('password')}
-                  placeholder="Enter your password"
-                  enableValidation={false}
-                  showStrengthMeter={false}
-                />
+                    <PasswordField
+                      label="Password"
+                      value={form.password}
+                      onChangeText={(text) => setForm((prev) => ({ ...prev, password: text }))}
+                      validation={validation.password as ValidationState}
+                      onValidationChange={(newValidation) => 
+                        setValidation(prev => ({
+                          ...prev,
+                          password: newValidation
+                        }))
+                      }
+                      resetField={() => resetField('password')}
+                      placeholder="Enter your password"
+                      enableValidation={false}
+                      showStrengthMeter={false}
+                    />
 
-                <TouchableOpacity style={styles.forgotPassword}>
-                  <Text style={[styles.forgotPasswordText, { color: colors.tintPrimary }]}>
-                    Forgot Password?
-                  </Text>
-                </TouchableOpacity>
+                    <TouchableOpacity style={styles.forgotPassword}>
+                      <Text style={[styles.forgotPasswordText, { color: colors.tintPrimary }]}>
+                        Forgot Password?
+                      </Text>
+                    </TouchableOpacity>
 
-                <LinearGradient
-                  colors={[colors.tintPrimary, withAlpha(colors.tintPrimary, 0.8)]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[
-                    styles.gradientButton,
-                    isSubmitting && styles.buttonDisabled
-                  ]}
-                >
-                  <TouchableOpacity
-                    style={styles.buttonInner}
-                    onPress={submit}
-                    disabled={isSubmitting}
-                  >
-                    {isSubmitting ? (
-                      <View style={styles.loadingContainer}>
-                        <MaterialIcons name="hourglass-empty" size={20} color="#FFFFFF" />
-                        <Text style={styles.loadingText}>Signing In...</Text>
-                      </View>
-                    ) : (
-                      <View style={styles.buttonContent}>
-                        <Text style={styles.gradientButtonText}>Sign In</Text>
-                        <MaterialIcons name="arrow-forward" size={20} color="#FFFFFF" />
-                      </View>
+                    <LinearGradient
+                      colors={[colors.tintPrimary, withAlpha(colors.tintPrimary, 0.8)]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={[
+                        styles.gradientButton,
+                        loading.visible && styles.buttonDisabled
+                      ]}
+                    >
+                      <TouchableOpacity
+                        style={styles.buttonInner}
+                        onPress={submit}
+                        disabled={loading.visible}
+                      >
+                        {loading.visible ? (
+                          <View style={styles.loadingContainer}>
+                            <MaterialIcons name="hourglass-empty" size={20} color="#FFFFFF" />
+                            <Text style={styles.loadingText}>Signing In...</Text>
+                          </View>
+                        ) : (
+                          <View style={styles.buttonContent}>
+                            <Text style={styles.gradientButtonText}>Sign In</Text>
+                            <MaterialIcons name="arrow-forward" size={20} color="#FFFFFF" />
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                    </LinearGradient>
+                    
+                    {/* Back to biometric option */}
+                    {biometricEnabled && biometricAvailability?.isAvailable && (
+                      <TouchableOpacity 
+                        style={styles.backToBiometricButton}
+                        onPress={() => {
+                          setShowPasswordForm(false);
+                          setBiometricError(false);
+                        }}
+                      >
+                        <MaterialIcons 
+                          name={biometricType === 'faceId' ? 'face' : 'fingerprint'} 
+                          size={16} 
+                          color={colors.tintPrimary} 
+                        />
+                        <Text style={[styles.backToBiometricText, { color: colors.tintPrimary }]}>
+                          Use {biometricType === 'faceId' ? 'Face ID' : biometricType === 'touchId' ? 'Touch ID' : 'Fingerprint'}
+                        </Text>
+                      </TouchableOpacity>
                     )}
-                  </TouchableOpacity>
-                </LinearGradient>
+                  </>
+                )}
               </View>
             </View>
 
@@ -346,6 +569,23 @@ export default function SignInScreen() {
         </KeyboardAvoidingView>
       </LinearGradient>
       </Animated.View>
+      
+      <LoadingAnimation
+        visible={loading.visible}
+        message={loading.message}
+        subtitle={loading.subtitle}
+        type={loading.type}
+        size={loading.size}
+      />
+      
+      <BiometricLoadingIndicator
+        visible={loadingVisible}
+        biometricType={biometricType}
+        stage={biometricStage}
+        message={biometricStage === 'checking' ? 'Checking biometric availability...' : 
+                biometricStage === 'authenticating' ? `Authenticate with ${biometricType === 'faceId' ? 'Face ID' : biometricType === 'touchId' ? 'Touch ID' : 'fingerprint'}` : 
+                undefined}
+      />
     </SafeAreaView>
   );
 }
@@ -482,6 +722,50 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.7,
+  },
+  
+  // Biometric Authentication Styles
+  biometricSection: {
+    alignItems: 'center',
+    paddingVertical: 24,
+  },
+  biometricTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  biometricSubtitle: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 32,
+    opacity: 0.7,
+    lineHeight: 20,
+    maxWidth: 280,
+  },
+  biometricButtonContainer: {
+    marginBottom: 24,
+  },
+  usePasswordButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  usePasswordText: {
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  backToBiometricButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    marginTop: 16,
+  },
+  backToBiometricText: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
   },
   
   // Footer Styles

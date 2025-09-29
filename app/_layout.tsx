@@ -8,6 +8,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
+import { View } from "react-native";
 import "./global.css";
 // Import URL polyfill for React Native compatibility with Appwrite SDK
 import 'react-native-url-polyfill/auto';
@@ -16,6 +17,7 @@ import { ThemeProvider } from "@/context/ThemeContext";
 import { LoadingProvider } from "@/context/LoadingContext";
 import { initializeErrorSuppression } from "@/config/errorSuppression";
 import { LoadingScreen } from "@/components/LoadingScreen";
+import { BiometricToastProvider } from "@/context/BiometricToastContext";
 
 // Initialize error suppression configuration
 initializeErrorSuppression();
@@ -111,21 +113,23 @@ export default function RootLayout() {
   useFrameworkReady();
 
   return (
-    <>
+    <View style={{ flex: 1 }}>
       <AlertProvider>
         <AuthProvider>
           <ThemeProvider>
-            <LoadingProvider>
-              <AppProvider>
-                <RootLayoutContent />
-                <Alert />
-              </AppProvider>
-            </LoadingProvider>
+            <BiometricToastProvider>
+              <LoadingProvider>
+                <AppProvider>
+                  <RootLayoutContent />
+                  <Alert />
+                </AppProvider>
+              </LoadingProvider>
+            </BiometricToastProvider>
           </ThemeProvider>
         </AuthProvider>
       </AlertProvider>
 
       <StatusBar style="dark" />
-    </>
+    </View>
   );
 }

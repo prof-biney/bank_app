@@ -1,5 +1,6 @@
 import { useAlert } from "@/context/AlertContext";
-import { createUser, fetchUser } from "@/lib/appwrite";
+// Firebase imports removed - using Appwrite auth service
+import { authService } from "@/lib/appwrite/auth";
 import useAuthStore from "@/store/auth.store";
 import { Link, router } from "expo-router";
 import React, { useState, useEffect, useRef } from "react";
@@ -34,8 +35,11 @@ import {
   ConfirmPasswordValidationState
 } from "@/components/form";
 import { withAlpha } from "@/theme/color-utils";
-import { LoadingScreen } from "@/components/LoadingScreen";
+import LoadingAnimation from '@/components/LoadingAnimation';
+import { useLoading, LOADING_CONFIGS } from '@/hooks/useLoading';
 import { logger } from "@/lib/logger";
+import BiometricSetupModal from '@/components/auth/BiometricSetupModal';
+import { useBiometricMessages } from '@/context/BiometricToastContext';
 
 // Get all available countries and create a comprehensive country data array
 // This uses the getCountries function from libphonenumber-js to get all country codes
@@ -86,7 +90,7 @@ const countryData = getCountries()
 
 export default function SignUpScreen() {
   const { colors } = useTheme();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { loading, withLoading } = useLoading();
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -128,10 +132,16 @@ export default function SignUpScreen() {
   // Animated values for smooth transitions
   const animatedWidth = useRef(new Animated.Value(0)).current;
   const phoneAnimatedWidth = useRef(new Animated.Value(0)).current;
-  const { login, isAuthenticated, fetchAuthenticatedUser } = useAuthStore();
+  const { login, isAuthenticated, fetchAuthenticatedUser, setupBiometric } = useAuthStore();
   const { showAlert } = useAlert();
   const [showSuccessAlert, setShowSuccessAlert] = useState(false);
   const navigationTimeoutRef = useRef<NodeJS.Timeout | number | null>(null);
+  
+  // Biometric setup state
+  const [showBiometricSetup, setShowBiometricSetup] = useState(false);
+  const [accountCreated, setAccountCreated] = useState(false);
+  
+  const biometricMessages = useBiometricMessages();
   
   // Function to detect user's country based on IP address
   const detectUserCountry = async () => {
@@ -499,7 +509,6 @@ export default function SignUpScreen() {
       // Navigate to the onboarding screen
       const timer = setTimeout(() => {
         router.replace("/onboarding");
-        setIsSubmitting(false);
         setShowSuccessAlert(false);
       }, 1200); // Small delay to ensure smooth transition
       
@@ -767,23 +776,21 @@ export default function SignUpScreen() {
       return;
     }
 
-    setIsSubmitting(true);
-
     try {
-      logger.debug('AUTH', '[SignUp] Attempting to create user account');
+      await withLoading(async () => {
+        logger.debug('AUTH', '[SignUp] Attempting to create user account');
 
-      // Format phone number with country code
-      const formattedPhoneNumber = `+${getCountryCallingCode(countryCode)}${phoneNumber.replace(/\D/g, '')}`;
+        // Format phone number with country code
+        const formattedPhoneNumber = `+${getCountryCallingCode(countryCode)}${phoneNumber.replace(/\D/g, '')}`;
 
-      // Create user account (this function now ensures session/JWT and persists the profile)
-      const user = await createUser({
-        email,
-        name,
-        password,
-        phoneNumber: formattedPhoneNumber,
-      });
+        // Create user account using Appwrite auth service
+        const user = await authService.register({
+          email,
+          name,
+          password,
+        });
 
-      logger.debug('AUTH', '[SignUp] User account created successfully:', { userId: user.$id });
+        logger.debug('AUTH', '[SignUp] User account created successfully:', { userId: user.$id });
 
       // Confirm the user document exists in the database. Use a small retry helper
       // because writes may take a short moment to be readable.
@@ -791,7 +798,7 @@ export default function SignUpScreen() {
         let lastErr: any = null;
         for (let i = 0; i < attempts; i++) {
           try {
-            const res = await fetchUser(id);
+            const res = await authService.getUserProfile(id);
             return res;
           } catch (e) {
             lastErr = e;
@@ -828,13 +835,14 @@ export default function SignUpScreen() {
         logger.warn('AUTH', '[SignUp] Login after createUser failed (non-fatal):', loginErr);
       }
 
-      // Show success message and navigate
+      // Show success message and offer biometric setup
       showAlert('success', 'Your account has been created successfully!', 'Welcome!');
       setShowSuccessAlert(true);
-
-      // Navigate to onboarding now that auth store should be in sync
-      router.replace('/onboarding');
-
+      setAccountCreated(true);
+      
+      // Show biometric setup modal instead of immediately navigating
+      setShowBiometricSetup(true);
+      }, LOADING_CONFIGS.REGISTER);
     } catch (err: any) {
       setShowSuccessAlert(false);
       // Log full error object for debugging
@@ -866,9 +874,46 @@ If this persists, contact support.` : `${message}
 If this persists, contact support.`;
 
       showAlert('error', alertMessage, title);
-    } finally {
-      setIsSubmitting(false);
     }
+  };
+  
+  // Biometric setup handlers
+  const handleBiometricSetup = async () => {
+    try {
+      const result = await setupBiometric();
+      
+      if (result.success) {
+        biometricMessages.setupSuccess(result.biometricType);
+      } else {
+        biometricMessages.setupFailed(result.error);
+      }
+      
+      return result;
+    } catch (error) {
+      logger.error('AUTH', 'Biometric setup error in sign-up:', error);
+      biometricMessages.setupFailed('An unexpected error occurred during setup');
+      return {
+        success: false,
+        error: 'Failed to set up biometric authentication',
+      };
+    }
+  };
+  
+  const handleBiometricSetupClose = () => {
+    setShowBiometricSetup(false);
+    // Navigate to onboarding after closing the modal
+    if (accountCreated) {
+      router.replace('/onboarding');
+    }
+  };
+  
+  const handleBiometricSkip = () => {
+    // User chose to skip biometric setup
+    logger.info('AUTH', 'User skipped biometric setup during sign-up');
+    biometricMessages.showInfo(
+      'Biometric Setup Skipped',
+      'You can enable biometric authentication later in Settings'
+    );
   };
 
   // Country selection modal component
@@ -924,17 +969,7 @@ If this persists, contact support.`;
 
   // const { width } = Dimensions.get('window');
 
-  // Show loading screen during account creation process
-  if (isSubmitting) {
-    return (
-      <LoadingScreen 
-        variant="auth"
-        message="Creating your account"
-        subtitle="Setting up your banking profile and security features..."
-        action="account creation"
-      />
-    );
-  }
+  // Loading handled by LoadingAnimation component
 
   return (
     <SafeAreaView style={styles.container}>
@@ -1083,15 +1118,15 @@ If this persists, contact support.`;
                   end={{ x: 1, y: 0 }}
                   style={[
                     styles.gradientButton,
-                    isSubmitting && styles.buttonDisabled
+                    loading.visible && styles.buttonDisabled
                   ]}
                 >
                   <TouchableOpacity
                     style={styles.buttonInner}
                     onPress={submit}
-                    disabled={isSubmitting}
+                    disabled={loading.visible}
                   >
-                    {isSubmitting ? (
+                    {loading.visible ? (
                       <View style={styles.loadingContainer}>
                         <MaterialIcons name="hourglass-empty" size={20} color="#FFFFFF" />
                         <Text style={styles.loadingText}>Creating Account...</Text>
@@ -1124,6 +1159,22 @@ If this persists, contact support.`;
       
       {/* Enhanced Country Selection Modal */}
       {renderCountrySelectionModal()}
+      
+      {/* Biometric Setup Modal */}
+      <BiometricSetupModal
+        visible={showBiometricSetup}
+        onClose={handleBiometricSetupClose}
+        onSetup={handleBiometricSetup}
+        onSkip={handleBiometricSkip}
+      />
+      
+      <LoadingAnimation
+        visible={loading.visible}
+        message={loading.message}
+        subtitle={loading.subtitle}
+        type={loading.type}
+        size={loading.size}
+      />
     </SafeAreaView>
   );
 }

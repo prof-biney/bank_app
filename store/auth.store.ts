@@ -8,17 +8,32 @@
  * @module store/auth
  */
 import { 
-  account, 
-  getCurrentUser, 
-  signIn, 
-  signOut,
-  uploadProfilePicture,
-  deleteProfilePicture,
-  updateUserProfile 
-} from "@/lib/appwrite";
+  authService, 
+  login as appwriteLogin,
+  logout as appwriteLogout,
+  register as appwriteRegister,
+  getCurrentUser,
+  getUserProfile,
+  updateUserProfile as updateAppwriteUserProfile,
+  updateProfilePicture,
+  createJWT,
+} from "@/lib/appwrite/auth";
 import { User } from "@/types";
 import { create } from "zustand";
 import { logger } from "@/lib/logger";
+import {
+  BiometricType,
+  BiometricAuthResult,
+  checkBiometricAvailability,
+  authenticateWithBiometrics,
+  setupBiometricAuthentication,
+  disableBiometricAuthentication,
+  isBiometricEnabled,
+  getStoredBiometricType,
+  validateBiometricSetup,
+  clearAllBiometricData,
+  updateLastPasswordLogin,
+} from "@/lib/biometric/biometric.service";
 
 /**
  * Authentication State Interface
@@ -34,6 +49,15 @@ type AuthState = {
   
   /** Flag indicating whether authentication operations are in progress */
   isLoading: boolean;
+  
+  /** Flag indicating whether biometric authentication is enabled for the current user */
+  biometricEnabled: boolean;
+  
+  /** Type of biometric authentication available and configured */
+  biometricType: BiometricType;
+  
+  /** Timestamp of the last password login for security requirements */
+  lastPasswordLogin: Date | null;
   
   /**
    * Sets the authentication state
@@ -61,6 +85,16 @@ type AuthState = {
   fetchAuthenticatedUser: () => Promise<void>;
   
   /**
+   * Registers a new user with email, password, and optional name
+   * @param email - The user's email address
+   * @param password - The user's password
+   * @param name - The user's name (optional)
+   * @returns A promise that resolves when registration completes
+   * @throws Error if registration fails
+   */
+  register: (email: string, password: string, name?: string) => Promise<void>;
+  
+  /**
    * Authenticates a user with email and password
    * @param email - The user's email address
    * @param password - The user's password
@@ -82,17 +116,50 @@ type AuthState = {
    * @throws Error if upload or update fails
    */
   updateProfilePicture: (imageUri: string) => Promise<void>;
+  
+  /**
+   * Checks biometric availability and updates state
+   * @returns A promise that resolves when the check completes
+   */
+  checkBiometricAvailability: () => Promise<void>;
+  
+  /**
+   * Sets up biometric authentication for the current user
+   * @returns A promise that resolves with the setup result
+   */
+  setupBiometric: () => Promise<BiometricAuthResult>;
+  
+  /**
+   * Authenticates user with biometrics
+   * @returns A promise that resolves with the authentication result
+   */
+  authenticateWithBiometric: () => Promise<BiometricAuthResult>;
+  
+  /**
+   * Disables biometric authentication for the current user
+   * @returns A promise that resolves when biometric auth is disabled
+   */
+  disableBiometric: () => Promise<void>;
+  
+  /**
+   * Updates biometric state from stored values
+   * @returns A promise that resolves when state is updated
+   */
+  loadBiometricState: () => Promise<void>;
 };
 
 /**
  * Authentication store implementation using Zustand
  * Provides state management for user authentication
  */
-const useAuthStore = create<AuthState>((set) => ({
+const useAuthStore = create<AuthState>((set, get) => ({
   // Initial state
   isAuthenticated: false,
   user: null,
   isLoading: true,
+  biometricEnabled: false,
+  biometricType: null,
+  lastPasswordLogin: null,
 
   /**
    * Updates the authentication state
@@ -119,27 +186,36 @@ const useAuthStore = create<AuthState>((set) => ({
   fetchAuthenticatedUser: async () => {
     set({ isLoading: true });
     try {
-      //  First check if there is an active session
-      const session = await account.getSession("current");
+      // Check if user session is valid
+      const isValid = await authService.validateSession();
 
-      // If there is an active session, fetch the user
-      if (session) {
+      if (isValid) {
         const user = await getCurrentUser();
+        const userProfile = await getUserProfile();
 
-        if (!user) logger.warn('AUTH', 'No user found');
-
-        if (user) {
+        if (user && userProfile) {
           set({
             isAuthenticated: true,
-            user: user as unknown as User,
+            user: {
+              $id: user.$id,
+              id: user.$id,
+              email: user.email,
+              name: userProfile.name,
+              createdAt: userProfile.createdAt,
+              avatar: userProfile.profilePicture?.url,
+              avatarFileId: userProfile.profilePicture?.id,
+            } as User,
           });
-          // Obtain an Appwrite JWT for server API calls and stash globally
+
+          // Create JWT for server API calls
           try {
-            const jwt = await account.createJWT();
+            const jwt = await createJWT();
             (global as any).__APPWRITE_JWT__ = jwt?.jwt;
+            
             // Seed demo transactions on sign-in (idempotent if transactions exist)
             try {
-              const { getApiBase } = require('@/lib/api');
+              const apiMod = await import('@/lib/api');
+              const { getApiBase } = apiMod;
               const url = `${getApiBase()}/v1/dev/seed-transactions`;
               if (jwt?.jwt) {
                 await fetch(url, {
@@ -149,10 +225,16 @@ const useAuthStore = create<AuthState>((set) => ({
                 }).catch(() => {});
               }
             } catch {}
-          } catch (e) {
+          } catch {
             // Non-fatal if JWT cannot be created
             (global as any).__APPWRITE_JWT__ = undefined;
           }
+        } else {
+          set({
+            isAuthenticated: false,
+            user: null,
+          });
+          (global as any).__APPWRITE_JWT__ = undefined;
         }
       } else {
         set({
@@ -175,6 +257,45 @@ const useAuthStore = create<AuthState>((set) => ({
   },
 
   /**
+   * Registers a new user with email, password, and optional name
+   * @param email - User's email address
+   * @param password - User's password
+   * @param name - User's name (optional)
+   * @throws Error if registration fails
+   */
+  register: async (email: string, password: string, name?: string) => {
+    set({ isLoading: true });
+    try {
+      if (__DEV__) {
+        logger.info('AUTH', 'Starting registration process', { email, name });
+      }
+
+      // Register with Appwrite
+      const authUser = await appwriteRegister({ email, password, name });
+      if (__DEV__) logger.info('AUTH', 'User registered', { userId: authUser.$id });
+
+      logger.info('AUTH', 'Registration completed successfully', { userId: authUser.$id });
+      
+      // Note: User will need to login after registration
+      // We don't automatically log them in for security reasons
+      
+    } catch (error: any) {
+      logger.error('AUTH', 'Registration error', error);
+      
+      // Surface full error to stdout/console for runtime environments
+      try {
+        console.error('Registration error (raw):', error);
+        console.error('Registration error stack (raw):', (error as any)?.stack);
+      } catch {}
+
+      // Re-throw the error (Appwrite auth service already formats errors)
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  /**
    * Authenticates a user with their email and password
    * Updates authentication state and user object on success
    * @param email - User's email address
@@ -186,101 +307,75 @@ const useAuthStore = create<AuthState>((set) => ({
     try {
       if (__DEV__) {
         logger.info('AUTH', 'Starting login process', { email });
-        logger.debug('AUTH', 'SignIn function debug', {
-          signInType: typeof signIn,
-          signInExists: signIn !== undefined,
-          signInFunction: signIn.toString().substring(0, 100)
-        });
-      }
-      
-      const session = await signIn(email, password);
-      
-      if (__DEV__) {
-        logger.info('AUTH', 'Session created', { sessionId: session.$id, userId: session.userId });
       }
 
-      if (session) {
-        // If login is successful, fetch the user using getCurrentUser which handles the database lookup
-        if (__DEV__) {
-          logger.info('AUTH', 'Fetching user data from database');
-        }
-        
-        const user = await getCurrentUser();
+      // Login with Appwrite
+      const { user: authUser } = await appwriteLogin({ email, password });
+      if (__DEV__) logger.info('AUTH', 'User authenticated', { userId: authUser.$id });
 
-        if (!user) {
-          logger.error('AUTH', 'No user found in database for authenticated session');
-          throw new Error('User not found in database. Your account may not be properly configured.');
-        }
+      // Get user profile from database
+      const userProfile = await getUserProfile(authUser.$id);
+      if (__DEV__) logger.info('AUTH', 'User profile retrieved');
 
-        if (__DEV__) {
-          logger.info('AUTH', 'User data retrieved', { userId: user.$id, email: user.email });
-        }
-        
-        set({
-          isAuthenticated: true,
-          user: user as unknown as User,
-        });
-        
-        // Obtain and cache Appwrite JWT for server API calls
+      if (!userProfile) {
+        logger.error('AUTH', 'No user profile found');
+        await appwriteLogout();
+        throw new Error('Could not load user profile. Please try again.');
+      }
+
+      // Set authenticated state
+      set({
+        isAuthenticated: true,
+        user: {
+          $id: authUser.$id,
+          id: authUser.$id,
+          email: authUser.email,
+          name: userProfile.name,
+          createdAt: userProfile.createdAt,
+          avatar: userProfile.profilePicture?.url,
+          avatarFileId: userProfile.profilePicture?.id,
+        } as User,
+        lastPasswordLogin: new Date(),
+      });
+      
+      // Update password login timestamp for biometric security
+      await updateLastPasswordLogin();
+      
+      // Load biometric state after successful login
+      await get().loadBiometricState();
+
+      // Create JWT for server API calls
+      try {
+        if (__DEV__) logger.info('AUTH', 'Creating JWT token for server API calls');
+        const jwt = await createJWT();
+        (global as any).__APPWRITE_JWT__ = jwt?.jwt;
+        if (__DEV__) logger.info('AUTH', 'JWT created successfully', { hasJwt: !!jwt?.jwt });
+
+        // seed demo transactions (fire-and-forget)
         try {
-          if (__DEV__) {
-            logger.info('AUTH', 'Creating JWT token for server API calls');
+          const apiMod = await import('@/lib/api');
+          const { getApiBase } = apiMod;
+          const url = `${getApiBase()}/v1/dev/seed-transactions`;
+          if (jwt?.jwt) {
+            await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt.jwt}` },
+              body: JSON.stringify({ count: 20, skipIfNotEmpty: true })
+            }).catch(() => {});
           }
-          
-          const jwt = await account.createJWT();
-          (global as any).__APPWRITE_JWT__ = jwt?.jwt;
-          
-          if (__DEV__) {
-            logger.info('AUTH', 'JWT created successfully');
-          }
-          
-          // Seed demo transactions on login (idempotent if transactions exist)
-          try {
-            const { getApiBase } = require('@/lib/api');
-            const url = `${getApiBase()}/v1/dev/seed-transactions`;
-            if (jwt?.jwt) {
-              await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt.jwt}` },
-                body: JSON.stringify({ count: 20, skipIfNotEmpty: true })
-              }).catch(() => {});
-            }
-          } catch {}
-        } catch (jwtError) {
-          logger.error('AUTH', 'JWT creation failed', jwtError);
-          
-          // Check if this is a scope error
-          if (jwtError instanceof Error && jwtError.message.includes('missing scope')) {
-            logger.error('AUTH', 'Missing scope error detected - this indicates authentication configuration issues');
-            logger.error('AUTH', 'Please verify Appwrite project settings and user permissions');
-          }
-          
-          (global as any).__APPWRITE_JWT__ = undefined;
-          // Don't throw here - the user is authenticated, just JWT creation failed
-          logger.warn('AUTH', 'Continuing without JWT token');
-        }
-      } else {
-        logger.error('AUTH', 'No session returned from signIn');
-        throw new Error('Failed to create authentication session');
+        } catch {}
+      } catch (jwtError) {
+        console.error('createJWT failed:', jwtError, (jwtError as any)?.stack);
+        logger.error('AUTH', 'JWT creation failed', jwtError);
+        (global as any).__APPWRITE_JWT__ = undefined;
+        logger.warn('AUTH', 'Continuing without JWT token');
+      }
+
+      if (__DEV__) {
+        logger.info('AUTH', 'Login completed successfully');
       }
     } catch (error: any) {
       logger.error('AUTH', 'Login error', error);
-      
-      // Provide more specific error messages
-      let errorMessage = 'Authentication failed';
-      if (error.message) {
-        if (error.message.includes('Invalid credentials')) {
-          errorMessage = 'Invalid email or password. Please check your credentials.';
-        } else if (error.message.includes('User not found')) {
-          errorMessage = 'No account found with this email. Please sign up first.';
-        } else if (error.message.includes('missing scope')) {
-          errorMessage = 'Authentication system error. Please contact support.';
-        } else if (error.message.includes('too many requests')) {
-          errorMessage = 'Too many login attempts. Please wait before trying again.';
-        } else {
-          errorMessage = error.message;
-        }
-      }
       
       set({
         isAuthenticated: false,
@@ -288,9 +383,14 @@ const useAuthStore = create<AuthState>((set) => ({
       });
       (global as any).__APPWRITE_JWT__ = undefined;
       
-      const enhancedError = new Error(errorMessage);
-      enhancedError.stack = error.stack;
-      throw enhancedError;
+      // Surface full error to stdout/console for runtime environments
+      try {
+        console.error('Login error (raw):', error);
+        console.error('Login error stack (raw):', (error as any)?.stack);
+      } catch {}
+
+      // Re-throw the error (Appwrite auth service already formats errors)
+      throw error;
     } finally {
       set({ isLoading: false });
     }
@@ -298,26 +398,32 @@ const useAuthStore = create<AuthState>((set) => ({
 
   /**
    * Logs out the current user
-   * Invalidates the session on Appwrite, expires tokens, and clears local authentication state
+   * Invalidates the session on Appwrite and clears local authentication state
    * Will clear local state even if the remote logout fails
    */
   logout: async () => {
     set({ isLoading: true });
     try {
       if (__DEV__) {
-        logger.info('AUTH', 'Starting logout with token expiration');
+        logger.info('AUTH', 'Starting logout process');
       }
       
-      // signOut now handles complete token cleanup including expiration
-      await signOut();
+      // Logout using Appwrite auth service
+      await appwriteLogout();
       
       if (__DEV__) {
         logger.info('AUTH', 'Appwrite logout completed, clearing local state');
       }
       
+      // Clear all biometric data on logout
+      await clearAllBiometricData();
+      
       set({
         isAuthenticated: false,
         user: null,
+        biometricEnabled: false,
+        biometricType: null,
+        lastPasswordLogin: null,
       });
       
       if (__DEV__) {
@@ -326,33 +432,13 @@ const useAuthStore = create<AuthState>((set) => ({
     } catch (error) {
       logger.error('AUTH', 'Logout error', error);
       
-      // Even if logout fails, perform emergency cleanup
-      try {
-        if (__DEV__) {
-          logger.info('AUTH', 'Performing emergency token cleanup');
-        }
-        
-        // Import and use token manager for emergency cleanup
-        const { expireToken, clearTokenData } = await import('@/lib/tokenManager');
-        expireToken();
-        clearTokenData();
-        
-        if (__DEV__) {
-          logger.info('AUTH', 'Emergency cleanup completed');
-        }
-      } catch (cleanupError) {
-        logger.error('AUTH', 'Emergency cleanup failed', cleanupError);
-        // Force clear the global JWT as last resort
-        (global as any).__APPWRITE_JWT__ = undefined;
-      }
-      
       // Always clear local state, even on error
       set({
         isAuthenticated: false,
         user: null,
       });
     } finally {
-      // Ensure JWT is cleared (redundant but safe)
+      // Ensure JWT is cleared
       (global as any).__APPWRITE_JWT__ = undefined;
       set({ isLoading: false });
     }
@@ -374,28 +460,15 @@ const useAuthStore = create<AuthState>((set) => ({
     set({ isLoading: true });
     
     try {
-      // Delete old profile picture if it exists
-      if (user.avatarFileId) {
-        try {
-          await deleteProfilePicture(user.avatarFileId);
-        } catch (error) {
-          logger.warn('AUTH', 'Failed to delete old profile picture', error);
-          // Don't throw here, continue with upload
-        }
-      }
-
-      // Upload new profile picture
-      const { fileId, fileUrl } = await uploadProfilePicture(imageUri, user.id);
-      
-      // Update user document with new avatar information
-      const updatedUser = await updateUserProfile(user.id, fileUrl, fileId);
+      // Update profile picture using Appwrite auth service
+      const updatedProfile = await updateProfilePicture(imageUri);
       
       // Update local state with new user data
       set({
         user: {
           ...user,
-          avatar: fileUrl,
-          avatarFileId: fileId,
+          avatar: updatedProfile.profilePicture?.url,
+          avatarFileId: updatedProfile.profilePicture?.id,
         } as User,
       });
       
@@ -405,6 +478,144 @@ const useAuthStore = create<AuthState>((set) => ({
       throw error;
     } finally {
       set({ isLoading: false });
+    }
+  },
+  
+  /**
+   * Checks biometric availability and updates state
+   */
+  checkBiometricAvailability: async () => {
+    try {
+      const availability = await checkBiometricAvailability();
+      
+      if (availability.isAvailable) {
+        set({
+          biometricType: availability.biometricType,
+        });
+      } else {
+        set({
+          biometricType: null,
+          biometricEnabled: false,
+        });
+      }
+    } catch (error) {
+      logger.error('AUTH', 'Error checking biometric availability:', error);
+      set({
+        biometricType: null,
+        biometricEnabled: false,
+      });
+    }
+  },
+  
+  /**
+   * Sets up biometric authentication for the current user
+   */
+  setupBiometric: async (): Promise<BiometricAuthResult> => {
+    const { user } = get();
+    
+    if (!user) {
+      return {
+        success: false,
+        error: 'No authenticated user found',
+      };
+    }
+    
+    try {
+      const result = await setupBiometricAuthentication(user.id);
+      
+      if (result.success) {
+        // Update state to reflect biometric setup
+        await get().loadBiometricState();
+        logger.info('AUTH', 'Biometric authentication set up successfully');
+      }
+      
+      return result;
+    } catch (error) {
+      logger.error('AUTH', 'Error setting up biometric authentication:', error);
+      return {
+        success: false,
+        error: 'Failed to set up biometric authentication',
+      };
+    }
+  },
+  
+  /**
+   * Authenticates user with biometrics
+   */
+  authenticateWithBiometric: async (): Promise<BiometricAuthResult> => {
+    try {
+      const result = await authenticateWithBiometrics();
+      
+      if (result.success && result.token) {
+        // Biometric authentication successful
+        // Update authentication state without triggering full login
+        const { user } = get();
+        if (user) {
+          set({
+            isAuthenticated: true,
+            // Don't update lastPasswordLogin for biometric auth
+          });
+          
+          logger.info('AUTH', 'Biometric authentication successful');
+        }
+      }
+      
+      return result;
+    } catch (error) {
+      logger.error('AUTH', 'Biometric authentication error:', error);
+      return {
+        success: false,
+        error: 'Biometric authentication failed',
+      };
+    }
+  },
+  
+  /**
+   * Disables biometric authentication for the current user
+   */
+  disableBiometric: async (): Promise<void> => {
+    try {
+      await disableBiometricAuthentication();
+      
+      set({
+        biometricEnabled: false,
+        biometricType: null,
+      });
+      
+      logger.info('AUTH', 'Biometric authentication disabled');
+    } catch (error) {
+      logger.error('AUTH', 'Error disabling biometric authentication:', error);
+      throw error;
+    }
+  },
+  
+  /**
+   * Loads biometric state from storage
+   */
+  loadBiometricState: async (): Promise<void> => {
+    try {
+      const [isEnabled, biometricType] = await Promise.all([
+        isBiometricEnabled(),
+        getStoredBiometricType(),
+      ]);
+      
+      // Validate that biometric setup is still valid
+      const isValid = await validateBiometricSetup();
+      
+      set({
+        biometricEnabled: isEnabled && isValid,
+        biometricType: isValid ? biometricType : null,
+      });
+      
+      if (isEnabled && !isValid) {
+        logger.warn('AUTH', 'Biometric setup invalid, disabled biometric authentication');
+      }
+    } catch (error) {
+      logger.error('AUTH', 'Error loading biometric state:', error);
+      set({
+        biometricEnabled: false,
+        biometricType: null,
+      });
     }
   },
 }));
