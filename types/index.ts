@@ -1,5 +1,8 @@
 export interface User {
-  id: string;
+  // Appwrite documents use $id; some parts of the app expect `id`.
+  // Include both to ease migration: $id is primary, id is optional alias.
+  $id?: string;
+  id?: string;
   email: string;
   name: string;
   createdAt: string;

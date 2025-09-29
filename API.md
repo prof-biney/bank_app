@@ -13,183 +13,50 @@ This document provides comprehensive documentation for the BankApp API, includin
 
 ## Overview
 
-BankApp uses [Appwrite](https://appwrite.io/) as its backend service for authentication, database operations, and file storage. The application is currently in development mode and uses mock data for testing, with plans to fully integrate with Appwrite for production.
+BankApp uses Firebase as its backend service for authentication, database operations, and file storage. The application supports both development and production environments with proper security rules and data validation.
 
 ## Authentication
 
 ### Configuration
 
-Authentication is configured in `lib/appwrite.ts`:
+Authentication is configured in `lib/firebase.ts`:
 
 ```typescript
-export const appwriteConfig = {
-  endpoint: process.env.EXPO_PUBLIC_APPWRITE_ENDPOINT!,
-  platform: "com.profbiney.vault",
-  projectId: process.env.EXPO_PUBLIC_APPWRITE_PROJECT_ID!,
-  databaseId: "688951e80021396d424f",
-  userCollectionId: "688a76c0003178d28a3e",
+export const firebaseConfig = {
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID
 };
 
-export const client = new Client();
+// Initialize Firebase
+initializeApp(firebaseConfig);
+## Authentication
 
-client
-  .setEndpoint(appwriteConfig.endpoint)
-  .setProject(appwriteConfig.projectId)
-  .setPlatform(appwriteConfig.platform);
+### Configuration
 
-export const account = new Account(client);
-export const databases = new Databases(client);
-```
+Authentication and Firestore access are configured in `lib/firebase.ts`. The Firebase modular SDK (v9+) is used on the client; configuration values are read from environment variables. See the project README for examples and local setup.
 
-### Authentication Methods
+Required environment variables (Expo/public):
 
-#### Create User
+- EXPO_PUBLIC_FIREBASE_API_KEY
+- EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN
+- EXPO_PUBLIC_FIREBASE_PROJECT_ID
+- EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET
+- EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+- EXPO_PUBLIC_FIREBASE_APP_ID
+- EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID (optional)
 
-Creates a new user account and automatically signs them in.
+The typical client flow is:
 
-```typescript
-export const createUser = async ({
-  name,
-  email,
-  password,
-}: {
-  name: string;
-  email: string;
-  password: string;
-}) => {
-  try {
-    const newAccount = await account.create(ID.unique(), email, password, name);
+1. Create an auth user with Email/Password using `createUserWithEmailAndPassword(auth, email, password)`.
+2. Persist user profile data to Firestore with `setDoc(doc(firestore, 'users', uid), { name, email, createdAt, ... })`.
+3. On sign-in use `signInWithEmailAndPassword(auth, email, password)` and then read the user's Firestore document with `getDoc`.
+4. Use `getIdToken()` (from Firebase Auth) when the app needs to call authenticated server endpoints.
 
-    if (!newAccount) {
-      throw new Error("Failed to create account");
-    }
-    await signIn(email, password);
-
-    const avatarUrl = avatars.getInitialsURL(name);
-
-    return await databases.createDocument(
-      appwriteConfig.databaseId,
-      appwriteConfig.userCollectionId,
-      ID.unique(),
-      {
-        accountId: newAccount.$id,
-        name,
-        email,
-        avatar: avatarUrl,
-      }
-    );
-  } catch (error) {
-    throw error;
-  }
-};
-```
-
-**Parameters:**
-- `name`: User's full name
-- `email`: User's email address
-- `password`: User's password
-
-**Returns:**
-- A document containing the user's information
-
-**Errors:**
-- Throws an error if account creation fails
-
-#### Sign In
-
-Creates an email/password session for authentication.
-
-```typescript
-export const signIn = async (email: string, password: string) => {
-  try {
-    const session = await account.createEmailPasswordSession(email, password);
-    return session;
-  } catch (error) {
-    throw error;
-  }
-};
-```
-
-**Parameters:**
-- `email`: User's email address
-- `password`: User's password
-
-**Returns:**
-- A session object
-
-**Errors:**
-- Throws an error if authentication fails
-
-#### Sign Out
-
-Deletes the current session.
-
-```typescript
-export const signOut = async () => {
-  try {
-    await account.deleteSession("current");
-  } catch (error) {
-    throw error;
-  }
-};
-```
-
-**Errors:**
-- Throws an error if sign out fails
-
-#### Get Current User
-
-Retrieves the current user's information.
-
-```typescript
-export const getCurrentUser = async () => {
-  try {
-    // get the current account
-    const currentAccount = await account.get();
-
-    if (!currentAccount) {
-      throw new Error("No user found");
-    }
-
-    // get the user from the database
-    const currentUser = await databases.listDocuments(
-      appwriteConfig.databaseId,
-      appwriteConfig.userCollectionId,
-      [Query.equal("accountId", currentAccount.$id)]
-    );
-
-    if (!currentUser) throw Error;
-
-    // return the user
-    return currentUser.documents[0];
-  } catch (error) {
-    throw new Error(error as string);
-  }
-};
-```
-
-**Returns:**
-- The current user's document
-
-**Errors:**
-- Throws an error if no user is found or if retrieval fails
-
-### Mock Authentication (Development)
-
-For development and testing, the application uses mock authentication implemented in `context/AuthContext.tsx`:
-
-```typescript
-const signIn = async (email: string, password: string): Promise<boolean> => {
-  try {
-    // Mock authentication - replace with Appwrite auth
-    const mockUser: User = {
-      id: "1",
-      email,
-      name: "Andrew Biney",
-      createdAt: new Date().toISOString(),
-    };
-
-    await AsyncStorage.setItem("user", JSON.stringify(mockUser));
+The project's `lib/firebase.ts` exposes helpers such as `createUser`, `signIn`, `signOut`, `getCurrentUser`, and `onAuthChange` which wrap these operations. Refer to that file for concrete implementations used across the app.
     setUser(mockUser);
     return true;
   } catch (error) {

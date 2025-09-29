@@ -2,12 +2,12 @@
 
 ![BankApp Logo](/assets/images/logo.png)
 
-BankApp is a modern, feature-rich mobile banking application built with React Native and Expo. It provides users with a seamless banking experience, allowing them to manage their accounts, cards, and transactions on the go. The application uses Appwrite for backend services and a lightweight server (Bun + Hono) for card storage and payment flows (deployable to Fly.io or run locally).
+BankApp is a modern, feature-rich mobile banking application built with React Native and Expo. It provides users with a seamless banking experience, allowing them to manage their accounts, cards, and transactions on the go. The application uses Firebase for backend services and a lightweight server (Bun + Hono) for card storage and payment flows (deployable to Fly.io or run locally).
 
 ## 📱 Features
 
 - **User Authentication**
-  - Secure sign-in and sign-up functionality
+  - Secure sign-in and sign-up with Firebase Auth
   - Email validation and password strength requirements
   - Persistent sessions with AsyncStorage
   - Comprehensive error handling with user-friendly messages
@@ -15,7 +15,7 @@ BankApp is a modern, feature-rich mobile banking application built with React Na
 - **Dashboard Overview**
   - View account balances and recent transactions at a glance
   - Quick access to frequently used features
-  - Personalized user experience
+  - Real-time data updates with Firestore
 
 - **Card Management**
   - View and manage multiple bank cards
@@ -25,17 +25,17 @@ BankApp is a modern, feature-rich mobile banking application built with React Na
 - **Transaction History**
   - Track and filter transaction history
   - Categorized transactions for better financial management
-  - Detailed transaction information
+  - Real-time transaction updates
 
 - **Money Transfers**
   - Send money to saved recipients
   - Add and manage recipient information
-  - Secure transfer process
+  - Secure transfer process with Firebase security rules
 
 - **Payments and Cards**
   - Add cards and simulate/execute authorization via the server API
   - Server-side tokenization; only last4/brand/expiry are stored
-  - Authenticated via Appwrite JWT
+  - Authenticated via Firebase Auth tokens
 
 - **Alert System**
   - Real-time feedback for user actions
@@ -46,6 +46,7 @@ BankApp is a modern, feature-rich mobile banking application built with React Na
 - **Profile Management**
   - Update user profile and settings
   - Manage security preferences
+  - Profile picture upload with Firebase Storage
   - View account information
 
 ## 🛠️ Technologies Used
@@ -56,7 +57,8 @@ BankApp is a modern, feature-rich mobile banking application built with React Na
 - **NativeWind/TailwindCSS**: Utility-first CSS framework for styling
 - **Expo Router**: File-based routing for navigation
 - **Zustand**: State management library
-- **React Native Appwrite**: Backend integration with Appwrite
+- **Firebase**: Backend services (Auth, Firestore, Storage)
+- **React Native Firebase**: Firebase SDK for React Native
 - **Fly.io**: Hosting for the mock server API (cards/payments)
 - **AsyncStorage**: Local data persistence
 - **React Native Reanimated**: Animation library for smooth UI interactions
@@ -64,37 +66,45 @@ BankApp is a modern, feature-rich mobile banking application built with React Na
 ## 📋 Prerequisites
 
 Before you begin, ensure you have the following installed:
+
 - [Node.js](https://nodejs.org/) (v16 or higher)
 - [npm](https://www.npmjs.com/) or [yarn](https://yarnpkg.com/) or [bun](https://bun.sh/)
 - [Expo CLI](https://docs.expo.dev/get-started/installation/)
 - iOS Simulator or Android Emulator (optional for mobile testing)
-- [Appwrite Account](https://appwrite.io/) (for backend services)
+- [Firebase Project](https://console.firebase.google.com/) (for backend services)
 
 ## 🚀 Getting Started
 
 ### Installation
 
 1. Clone the repository:
-   ```bash
-   git clone https://github.com/CharaD7/bank_app.git
-   cd bank_app
-   ```
+
+```bash
+git clone https://github.com/CharaD7/bank_app.git
+cd bank_app
+```
 
 2. Install dependencies:
+
+```bash
+npm install
+# or
+yarn install
+# or
+bun install
+```
+
+3. Set up Firebase:
+   - Follow the [Firebase Setup Guide](FIREBASE_SETUP.md) to create and configure your project
+   - Once configured, copy `.env.example` to create your `.env` file:
+   
    ```bash
-   npm install
-   # or
-   yarn install
-   # or
-   bun install
+   cp .env.example .env
    ```
 
-3. Set up environment variables:
-   - Copy the `.env.example` file to create your own `.env` file:
-     ```bash
-     cp .env.example .env
-     ```
-   - Edit the `.env` file with your configuration values (see [Configuration](#-configuration) section)
+4. Configure environment variables:
+   - Edit the `.env` file with your Firebase configuration (see [Configuration](#-configuration) section)
+   - Add your Firebase config values obtained from the Firebase Console
 
 4. Start the development server:
    ```bash
@@ -150,17 +160,16 @@ cp .env.example .env
 Then edit the `.env` file and replace the placeholder values with your actual configuration:
 
 ```
-# Appwrite Configuration
-EXPO_PUBLIC_APPWRITE_ENDPOINT=https://cloud.appwrite.io/v1
-EXPO_PUBLIC_APPWRITE_PROJECT_ID=your_actual_project_id
-EXPO_PUBLIC_APPWRITE_PLATFORM=com.user.extension
-EXPO_PUBLIC_APPWRITE_DATABASE_ID=your_database_id
-EXPO_PUBLIC_APPWRITE_USER_COLLECTION_ID=your_user_collection_id
+# Firebase Configuration (add these to your .env)
+EXPO_PUBLIC_FIREBASE_API_KEY=your_api_key
+EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+EXPO_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
+EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
+EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+EXPO_PUBLIC_FIREBASE_APP_ID=your_app_id
 
 # API Base
-# Preferred: set AWS_ENDPOINT_URL_S3 to your Fly.io URL
 AWS_ENDPOINT_URL_S3=https://your-app.fly.dev
-# Alternatively, you can set EXPO_PUBLIC_AWS_ENDPOINT_URL_S3 or EXPO_PUBLIC_FLY_API_URL or EXPO_PUBLIC_API_BASE_URL
 
 # Application Environment
 EXPO_PUBLIC_APP_ENV=development
@@ -168,34 +177,29 @@ EXPO_PUBLIC_APP_ENV=development
 
 > **Important:** Replace all placeholder values with your actual API keys and configuration values.
 
-### Appwrite Setup
+### Firebase Setup
 
-To properly configure Appwrite for this application:
+To configure Firebase for this application:
 
-1. **Create an Appwrite Project**:
-   - Go to your [Appwrite Console](https://cloud.appwrite.io/console)
+1. Create a Firebase project:
+   - Go to the Firebase Console: https://console.firebase.google.com/
    - Create a new project or select an existing one
-   - Copy the Project ID from Project Settings > General
 
-2. **Register the Android Platform**:
-   - Go to Project Settings > Platforms
-   - Click "Add Platform" > Select "Android"
-   - Enter the package name: `com.user.extension`
-   - Save the platform
+2. Add a Web App (to obtain SDK config values used by Expo):
+   - In Project Settings > Your apps, click "Add app" and choose Web
+   - Register the app and copy the Firebase SDK config (apiKey, authDomain, projectId, storageBucket, messagingSenderId, appId)
+   - Add these values to your `.env` file using the EXPO_PUBLIC_FIREBASE_* keys shown above
 
-3. **Create Database and Collections**:
-   - Create a new database or use an existing one
-   - Note the Database ID
-   - Create a user collection or use an existing one
-   - Note the Collection ID
-   - Set up the appropriate attributes and indexes for each collection
+3. Enable Firebase services used by the app:
+   - Authentication > Sign-in method > Enable Email/Password
+   - Firestore > Create a Firestore database (start in test mode for development)
+   - Storage > Create a storage bucket (default is fine)
 
-4. **Update Your .env File**:
-   - Set `EXPO_PUBLIC_APPWRITE_PROJECT_ID` to your actual Project ID
-   - Set `EXPO_PUBLIC_APPWRITE_DATABASE_ID` to your Database ID
-   - Set `EXPO_PUBLIC_APPWRITE_USER_COLLECTION_ID` to your User Collection ID
+4. (Optional) Configure security rules for Firestore and Storage.
+   - Rules are located in the repository as `firestore.rules` and `storage.rules`
+   - To deploy rules locally, install the Firebase CLI and run the provided script: `./scripts/deploy-firebase.sh`
 
-For more detailed information about the Appwrite setup, refer to the [API Documentation](API.md).
+For more detailed information about the app backend and client helpers, refer to the [API Documentation](API.md).
 
 ## Server API (cards/payments)
 
@@ -252,22 +256,21 @@ yarn test-env
 
 This will display all the configured environment variables and help you identify any issues with your setup.
 
-### Testing Appwrite Connection
+### Verifying Firebase Configuration
 
-To verify that your Appwrite configuration is correct and that you can connect to Appwrite:
+This repo includes a small helper script to validate that your Firebase environment variables are populated and alert you to any missing values. Run:
 
 ```bash
-npm run test-appwrite
-# or
-yarn test-appwrite
+node ./scripts/ensure-firebase-prereqs.js
 ```
 
-This test script will:
-- Check your Appwrite configuration
-- Attempt to connect to Appwrite
-- Provide specific troubleshooting tips if there are any issues
+To deploy Firestore / Storage rules after installing the Firebase CLI and logging in, run:
 
-If you see the "Project with the requested ID could not be found" or "Invalid Origin" errors, this test will help you diagnose and fix the problems.
+```bash
+./scripts/deploy-firebase.sh
+```
+
+If you see errors about missing env vars, open the Firebase Console > Project Settings > Your apps and copy the SDK config values into your `.env` file.
 
 
 ## 💡 Usage Examples
