@@ -18,7 +18,7 @@ import { useTheme } from "@/context/ThemeContext";
 import { getApiBase } from '@/lib/api';
 import { logger } from "@/lib/logger";
 import { getValidJWT } from '@/lib/jwt';
-import { cardService, createCard, CreateCardData } from '@/lib/appwrite/cardService';
+import { cardService, createCard, CreateCardData, findCardByNumber } from '@/lib/appwrite/cardService';
 
 import AddCardModal from "@/components/modals/AddCardModal";
 import ConfirmDialog from "@/components/modals/ConfirmDialog";
@@ -114,10 +114,11 @@ function AddCardButton() {
       // Update loading message for JWT acquisition
       updateLoading(loadingId, `Authenticating card request for ${last4}...`);
 
-  // Get JWT token for API calls (keeps compatibility with existing server API)
+  // Get JWT token for API calls (with fallback support)
   logger.info('CARDS', '🔑 Attempting to get JWT token');
-  // getValidJWT imported at module level
       let jwt: string | undefined;
+      let useAppwriteDirectly = false;
+      
       try {
         const jwtPromise = getValidJWT();
         const timeoutPromise = new Promise<never>((_, reject) =>
@@ -125,61 +126,44 @@ function AddCardButton() {
         );
 
         jwt = await Promise.race([jwtPromise, timeoutPromise]);
-        logger.info('CARDS', '✅ JWT token retrieved successfully');
-
-        if (!jwt) {
-          logger.error('CARDS', 'Failed to get valid JWT token');
-          showAlert('error', 'Authentication failed. Please sign in again.', 'Authentication Error');
-          stopLoading(loadingId);
-          return;
+        
+        // Check if this is a fallback token
+        if (jwt && typeof jwt === 'string' && jwt.includes('.fallback')) {
+          logger.info('CARDS', '✅ Fallback token retrieved - using Appwrite directly');
+          useAppwriteDirectly = true;
+        } else if (jwt && typeof jwt === 'string') {
+          logger.info('CARDS', '✅ Real JWT token retrieved successfully');
+        } else {
+          logger.warn('CARDS', 'No JWT token returned - using Appwrite directly');
+          useAppwriteDirectly = true;
         }
       } catch (jwtError) {
-        logger.error('CARDS', 'JWT token acquisition failed', jwtError);
-        showAlert('error', 'Authentication failed. Please sign in again.', 'Authentication Error');
-        stopLoading(loadingId);
-        return;
+        logger.warn('CARDS', 'JWT token acquisition failed - using Appwrite directly', jwtError);
+        useAppwriteDirectly = true;
       }
 
       // Update loading message for duplicate checking
       updateLoading(loadingId, `Verifying card details for ${last4}...`);
 
-      // Optional: Check duplicates on server before creating
+      // Check for duplicates in Appwrite database
       try {
-        const checkUrl = `${cardsUrl}/check-duplicate`;
-        logger.info('CARDS', 'Checking for duplicate cards on server', { checkUrl });
-        const checkRes = await fetch(checkUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${jwt}`,
-          },
-          body: JSON.stringify({ last4, holderName: payload.name.trim() }),
-        });
-
-        logger.info('CARDS', '🗞️ Duplicate check response received', {
-          status: checkRes.status,
-          ok: checkRes.ok,
-          statusText: checkRes.statusText,
-        });
-
-        if (checkRes.ok) {
-          const checkData = await checkRes.json();
-          logger.info('CARDS', '✅ Duplicate check response parsed', { checkData });
-          if (checkData.exists) {
-            logger.warn('CARDS', 'Server confirmed duplicate card exists');
-            showAlert('error', `A card ending in ${last4} for ${payload.name} already exists on the server.`, 'Card Already Exists');
-            stopLoading(loadingId);
-            return;
-          }
-          logger.info('CARDS', 'No duplicate found on server, proceeding with creation');
-        } else {
-          logger.warn('CARDS', 'Duplicate check endpoint not available, proceeding with creation', {
-            status: checkRes.status,
-            statusText: checkRes.statusText,
+        logger.info('CARDS', 'Checking for duplicate cards in Appwrite database');
+        const existingCard = await findCardByNumber(payload.number.replace(/\s+/g, ''), payload.name.trim());
+        
+        if (existingCard) {
+          logger.warn('CARDS', 'Duplicate card found in Appwrite database', {
+            existingCardId: existingCard.id,
+            holderName: existingCard.cardHolderName,
+            last4
           });
+          showAlert('error', `A card ending in ${last4} for ${payload.name} already exists in your account.`, 'Card Already Exists');
+          stopLoading(loadingId);
+          return;
         }
+        
+        logger.info('CARDS', 'No duplicate found in Appwrite, proceeding with creation');
       } catch (duplicateCheckError) {
-        logger.warn('CARDS', 'Duplicate check request failed, proceeding with creation', duplicateCheckError);
+        logger.warn('CARDS', 'Duplicate check in Appwrite failed, proceeding with creation', duplicateCheckError);
       }
 
       logger.info('CARDS', '🔄 Duplicate check completed, continuing to card creation');
@@ -187,71 +171,31 @@ function AddCardButton() {
       // Update loading message for card creation
       updateLoading(loadingId, `Creating card record for ${last4}...`);
 
-      // Create card using Appwrite card service
-      const cardData: CreateCardData = {
-        cardNumber: payload.number, // Full card number for Appwrite service
+      // Prepare card data for creation
+      const cardData = {
+        userId: userId,
+        cardNumber: payload.number, // Full card number
         cardHolderName: payload.name.trim(),
         expiryDate: `${payload.exp_month.padStart(2, '0')}/${payload.exp_year}`,
-        cardType: 'card' as const, // Use 'card' as the default type
+        cardType: 'card' as const,
         cardColor: '#1D4ED8',
-        balance: 0,
-        currency: 'GHS',
+        currency: 'GHS' as const,
         token: `card_token_${last4}_${Date.now()}`,
-        isActive: true,
+        isActive: true, // New cards are active by default
+        // Balance will be set by Appwrite database default and fetched asynchronously
       };
 
-      logger.info('CARDS', '💾 Creating card with Appwrite service', {
+      logger.info('CARDS', '💾 Creating card with AppContext (handles both local and Appwrite)', {
         last4,
         holderName: payload.name,
         userId: userId,
       });
 
-      // Save to database using Appwrite service
-      const createdCard = await createCard(cardData);
-
-      logger.info('CARDS', '✅ Card created successfully in database', {
-        cardId: createdCard.id,
-        last4,
-        holderName: createdCard.cardHolderName,
-      });
-
       // Update loading message for final steps
       updateLoading(loadingId, `Finalizing card setup for ${last4}...`);
 
-      // Add to local state via AppContext helper
-      try {
-        await addCard({
-          userId: createdCard.userId,
-          cardNumber: createdCard.cardNumber,
-          cardHolderName: createdCard.cardHolderName,
-          expiryDate: createdCard.expiryDate,
-          cardType: createdCard.cardType,
-          balance: createdCard.balance,
-          isActive: createdCard.isActive,
-          cardColor: createdCard.cardColor,
-          currency: createdCard.currency,
-          token: createdCard.token,
-        });
-      } catch (e) {
-        // If addCard fails (e.g., duplicate), still set the created card as active
-        logger.warn('CARDS', 'addCard failed, falling back to setting active card directly', e);
-      }
-
-      const localCard = {
-        id: createdCard.id, // Use .id instead of .$id for Appwrite cards
-        userId: createdCard.userId,
-        cardNumber: createdCard.cardNumber,
-        cardHolderName: createdCard.cardHolderName,
-        expiryDate: createdCard.expiryDate,
-        cardType: createdCard.cardType,
-        balance: createdCard.balance,
-        isActive: createdCard.isActive,
-        cardColor: createdCard.cardColor,
-        currency: createdCard.currency,
-        token: createdCard.token,
-      };
-
-      setActiveCard(localCard);
+      // Use addCard which handles both local state and Appwrite persistence
+      await addCard(cardData);
 
       logger.info('CARDS', '✅ Card added to local state successfully');
       showAlert('success', `Card ending in ${last4} has been added successfully.`, 'Card Added');

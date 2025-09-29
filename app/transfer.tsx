@@ -20,7 +20,7 @@ import { useAlert } from "@/context/AlertContext";
 import { transferService, type TransferRequest } from "@/lib/appwrite";
 import LoadingAnimation from '@/components/LoadingAnimation';
 import { useLoading, LOADING_CONFIGS } from '@/hooks/useLoading';
-import { showAlertWithNotification } from "@/lib/notificationService";
+import { showAlertWithNotification } from "@/lib/appwrite/notificationService";
 import { Recipient } from "@/types/index";
 import { useTheme } from "@/context/ThemeContext";
 import { getChipStyles } from "@/theme/variants";

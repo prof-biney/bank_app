@@ -17,7 +17,7 @@ import { BankCard } from "@/components/BankCard";
 import { useApp } from "@/context/AppContext";
 import { useAlert } from "@/context/AlertContext";
 import { useLoading } from "@/context/LoadingContext";
-import { showAlertWithNotification } from "@/lib/notificationService";
+import { showAlertWithNotification } from "@/lib/appwrite/notificationService";
 import { useTheme } from "@/context/ThemeContext";
 import CustomButton from "@/components/CustomButton";
 import Badge from "@/components/ui/Badge";

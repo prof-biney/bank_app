@@ -1,16 +1,17 @@
 import { logger } from '@/lib/logger';
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '@/context/ThemeContext';
 import CustomButton from '@/components/CustomButton';
 import Card from '@/components/ui/Card';
 import { useApp } from '@/context/AppContext';
 import { ClearDataModal } from '@/components/ClearDataModal';
-import { transactionService } from '@/lib/appwrite';
+import { transactionService, withdrawalService, type WithdrawalRequest, type WithdrawalMethod } from '@/lib/appwrite';
 import LoadingAnimation from '@/components/LoadingAnimation';
 import { useLoading, LOADING_CONFIGS } from '@/hooks/useLoading';
 import useAuthStore from '@/store/auth.store';
+import { router } from 'expo-router';
 
 export default function PaymentsScreen() {
   const [amount, setAmount] = useState('');
@@ -19,7 +20,8 @@ export default function PaymentsScreen() {
   const [showClearPayments, setShowClearPayments] = useState(false);
   const [paymentsSuppressed, setPaymentsSuppressed] = useState(false);
   const [isClearingPayments, setIsClearingPayments] = useState(false);
-  const { activeCard } = useApp();
+  const [activeTab, setActiveTab] = useState<'payments' | 'withdrawals'>('payments');
+  const { activeCard, cards, makeTransaction, refreshCardBalances } = useApp();
   const { user } = useAuthStore();
   const { loading, withLoading, showLoading, hideLoading } = useLoading();
 
@@ -202,6 +204,61 @@ export default function PaymentsScreen() {
           {error && <Text style={{ color: colors.negative }}>{error}</Text>}
         </Card>
 
+        {/* Withdrawal Quick Actions */}
+        <Card>
+          <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Withdraw Money</Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary, marginBottom: 16 }]}>Quick withdrawal options for your convenience</Text>
+          
+          <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
+            <TouchableOpacity
+              style={[
+                styles.withdrawalOption,
+                { backgroundColor: colors.background, borderColor: colors.border }
+              ]}
+              onPress={() => router.push('/withdraw')}
+            >
+              <Text style={{ fontSize: 24, marginBottom: 8 }}>📱</Text>
+              <Text style={[styles.optionTitle, { color: colors.textPrimary }]}>Mobile Money</Text>
+              <Text style={[styles.optionSubtitle, { color: colors.textSecondary }]}>MTN • Telecel • AirtelTigo</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[
+                styles.withdrawalOption,
+                { backgroundColor: colors.background, borderColor: colors.border }
+              ]}
+              onPress={() => router.push('/withdraw')}
+            >
+              <Text style={{ fontSize: 24, marginBottom: 8 }}>🏦</Text>
+              <Text style={[styles.optionTitle, { color: colors.textPrimary }]}>Bank Transfer</Text>
+              <Text style={[styles.optionSubtitle, { color: colors.textSecondary }]}>GCB • Ecobank • More</Text>
+            </TouchableOpacity>
+          </View>
+          
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <TouchableOpacity
+              style={[
+                styles.withdrawalOption,
+                { backgroundColor: colors.background, borderColor: colors.border }
+              ]}
+              onPress={() => router.push('/withdraw')}
+            >
+              <Text style={{ fontSize: 24, marginBottom: 8 }}>💰</Text>
+              <Text style={[styles.optionTitle, { color: colors.textPrimary }]}>Cash Pickup</Text>
+              <Text style={[styles.optionSubtitle, { color: colors.textSecondary }]}>Western Union • MoneyGram</Text>
+            </TouchableOpacity>
+            
+            <View style={{ flex: 1 }}>
+              <CustomButton 
+                onPress={() => router.push('/withdraw')} 
+                title="View All Options" 
+                variant="outline" 
+                size="md"
+              />
+            </View>
+          </View>
+        </Card>
+
         <Card>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 0 }]}>Recent Payments</Text>
@@ -291,5 +348,24 @@ const styles = StyleSheet.create({
   buttonSmallDanger: { backgroundColor: '#ef4444', paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8 },
   buttonText: { color: 'white', fontWeight: '700' },
   item: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1 },
+  withdrawalOption: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    minHeight: 100,
+  },
+  optionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  optionSubtitle: {
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 16,
+  },
 });
 
