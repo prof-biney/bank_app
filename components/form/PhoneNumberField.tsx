@@ -16,6 +16,7 @@ import {
   PhoneNumberValidationState
 } from "./types";
 import { useFormStyles } from "./styles";
+import { useTheme } from "@/context/ThemeContext";
 import { 
   parsePhoneNumberFromString, 
   getCountryCallingCode, 
@@ -383,6 +384,7 @@ const PhoneNumberField: React.FC<PhoneNumberFieldProps> = ({
   };
 
   const styles = useFormStyles();
+  const { colors } = useTheme();
   return (
     <View style={styles.inputContainer}>
       <Text style={styles.label}>{label}</Text>
@@ -413,7 +415,7 @@ const PhoneNumberField: React.FC<PhoneNumberFieldProps> = ({
             value={value}
             onChangeText={handleChangeText}
             placeholder={placeholder}
-            placeholderTextColor={undefined}
+            placeholderTextColor={colors.inputPlaceholder}
             keyboardType="phone-pad"
             {...rest}
           />

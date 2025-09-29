@@ -3,6 +3,7 @@ import { Text, TextInput, TouchableOpacity, View } from "react-native";
 import { Feather, MaterialIcons } from "@expo/vector-icons";
 import { FormFieldProps, ValidationState, validateEmail } from "./types";
 import { useFormStyles } from "./styles";
+import { useTheme } from "@/context/ThemeContext";
 
 /**
  * Props for the EmailField component
@@ -50,6 +51,7 @@ const EmailField: React.FC<EmailFieldProps> = ({
   };
 
   const styles = useFormStyles();
+  const { colors } = useTheme();
   return (
     <View style={styles.inputContainer}>
       <Text style={styles.label}>{label}</Text>
@@ -68,7 +70,7 @@ const EmailField: React.FC<EmailFieldProps> = ({
           value={value}
           onChangeText={handleChangeText}
           placeholder={placeholder}
-          placeholderTextColor={undefined}
+          placeholderTextColor={colors.inputPlaceholder}
           keyboardType="email-address"
           autoCapitalize="none"
           {...rest}

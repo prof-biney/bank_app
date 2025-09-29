@@ -3,14 +3,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Card, Transaction } from "@/constants/index";
 import type { Notification } from "@/types";
 import { ActivityEvent } from "@/types/activity";
-import { appwriteConfig, client, logCardEvent, databases } from "@/lib/appwrite";
-import { Query } from 'react-native-appwrite';
+import { appwriteConfig, databases, AppwriteQuery as Query } from "@/lib/appwrite/config";
 import { 
-  fetchUserTransactions, 
-  refreshTransactions, 
-  fetchUserTransactionsWithCache, 
-  forceRefreshTransactions,
-  cacheTransactions 
+  queryAppwriteTransactions
 } from "@/lib/transactionService";
 import { StorageManager } from "@/lib/storageService";
 import { initNotificationService } from "@/lib/notificationService";
@@ -22,17 +17,17 @@ import {
   updateAppwriteTransaction,
   deleteAppwriteTransaction,
   UpdateTransactionData
-} from "@/lib/appwriteTransactionService";
+} from "@/lib/transactionService";
 import {
   createAppwriteCard,
   updateAppwriteCardBalance,
   deleteAppwriteCard,
   getAppwriteActiveCards,
   findAppwriteCardByNumber
-} from "@/lib/appwriteCardService";
+} from "@/lib/cardService";
 import {
   createAppwriteActivityEvent
-} from "@/lib/appwriteActivityService";
+} from "@/lib/activityService";
 import { initConnectionMonitoring, getConnectionStatus } from "@/lib/connectionService";
 import useAuthStore from "@/store/auth.store";
 
@@ -140,8 +135,7 @@ const pushActivity: AppContextType["pushActivity"] = (evt) => {
     const persistDataInBackground = async () => {
       try {
         // Update transaction cache
-        const currentTransactions = [newTransaction, ...transactions];
-        await cacheTransactions(currentTransactions);
+        // Note: cacheTransactions was removed - transactions are now cached via Appwrite
         
         // Update activity cache with the new activity event
         const currentActivity = await StorageManager.getCachedActivityEvents();
@@ -961,10 +955,39 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
     setIsLoadingTransactions(true);
     try {
       logger.info('CONTEXT', '[loadTransactionsWithCache] Attempting to load transactions with cache');
-      const result = await fetchUserTransactionsWithCache({ 
-        limit: 20, 
-        cursor: cursor || undefined 
-      }, useCache);
+      
+      // Use Appwrite transaction service
+      let result = { success: false, data: null, error: null };
+      try {
+        const response = await queryAppwriteTransactions({ limit: 20 });
+        const transactions = response.documents.map((doc: any) => ({
+          id: doc.$id,
+          cardId: doc.cardId,
+          amount: doc.amount,
+          type: doc.type,
+          category: doc.category,
+          description: doc.description,
+          status: doc.status,
+          date: doc.date || doc.$createdAt,
+        }));
+        
+        result = {
+          success: true,
+          data: {
+            transactions,
+            nextCursor: null, // Appwrite doesn't use cursor pagination in this simple implementation
+            fromCache: false
+          },
+          error: null
+        };
+      } catch (error) {
+        logger.error('CONTEXT', 'Failed to fetch transactions from Appwrite:', error);
+        result = {
+          success: false,
+          data: null,
+          error: error instanceof Error ? error.message : 'Failed to fetch transactions'
+        };
+      }
       
       if (result.success && result.data) {
         const transactionCount = result.data.transactions.length;
@@ -1223,7 +1246,11 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
     AsyncStorage.setItem('notifications', JSON.stringify(notifications)).catch(() => {});
   }, [notifications]);
 
-  // Appwrite Realtime subscription
+  // Appwrite Realtime subscription removed
+  // Note: Appwrite realtime was previously used here via client.subscribe().
+  // The project has migrated away from Appwrite; Firebase realtime listeners
+  // or onSnapshot can be implemented per-collection if live updates are required.
+  // For now, keep a no-op effect to avoid runtime errors and preserve app lifecycle.
   useEffect(() => {
     const dbId = appwriteConfig.databaseId;
     const txCol = appwriteConfig.transactionsCollectionId;
@@ -1239,63 +1266,12 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
 
     if (channels.length === 0) return;
 
-    const unsub = client.subscribe(channels, (message: any) => {
-      try {
-        const { events, payload } = message as { events: string[]; payload: any };
-        const eventStr = events?.[0] || '';
-        const ts = new Date().toISOString();
+    // Realtime subscriptions are disabled after removing Appwrite.
+    // Implement per-collection onSnapshot listeners in the future if needed.
+    logger.info('CONTEXT', '[Realtime] Appwrite realtime removed; channels detected:', channels);
 
-        // Notifications: handle separately
-        if (notifCol && eventStr.includes(`collections.${notifCol}.`)) {
-          const n: Notification = {
-            id: payload?.$id || `rt.${Date.now()}`,
-            userId: payload?.userId,
-            title: payload?.title || 'Notification',
-            message: payload?.message || '',
-            type: payload?.type,
-            unread: typeof payload?.unread === 'boolean' ? payload.unread : true,
-            createdAt: payload?.$createdAt || ts,
-          };
-          setNotifications((prev) => [n, ...prev]);
-          return;
-        }
-
-        // Determine category by collection in event string (for activity timeline)
-        let category: ActivityEvent['category'] = 'account';
-        if (txCol && eventStr.includes(`collections.${txCol}.`)) category = 'transaction';
-        else if (cardCol && eventStr.includes(`collections.${cardCol}.`)) category = 'card';
-        else category = 'account';
-
-        // Map to ActivityEvent
-        const evt: ActivityEvent = {
-          id: payload?.$id ? `rt.${payload.$id}` : `rt.${Date.now()}`,
-          category,
-          type: eventStr.split('.documents.')[1] ? `realtime.${eventStr.split('.documents.')[1]}` : 'realtime.update',
-          title:
-            category === 'transaction'
-              ? `Transaction ${payload?.type || ''}`.trim()
-              : category === 'card'
-              ? `Card update`
-              : `Account update`,
-          subtitle: payload?.description || payload?.title || undefined,
-          amount: typeof payload?.amount === 'number' ? payload.amount : undefined,
-          currency: payload?.currency,
-          status: payload?.status,
-          timestamp: payload?.$updatedAt || payload?.$createdAt || ts,
-          accountId: payload?.accountId,
-          cardId: payload?.cardId,
-          transactionId: payload?.transactionId || payload?.$id,
-          tags: payload?.category ? [payload.category] : undefined,
-        };
-        pushActivity(evt);
-      } catch (e) {
-        // Swallow mapping errors
-      }
-    });
-
-    return () => {
-      try { unsub(); } catch {}
-    };
+    // No-op unsubscribe
+    return () => {};
   }, []);
 
   const markNotificationRead: AppContextType['markNotificationRead'] = async (id) => {

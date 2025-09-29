@@ -10,6 +10,7 @@ import {
   PasswordStrength
 } from "./types";
 import { useFormStyles } from "./styles";
+import { useTheme } from "@/context/ThemeContext";
 
 /**
  * Props for the PasswordField component
@@ -122,6 +123,7 @@ const PasswordField: React.FC<PasswordFieldProps> = ({
   };
 
   const styles = useFormStyles();
+  const { colors } = useTheme();
   return (
     <View style={styles.inputContainer}>
       <Text style={styles.label}>{label}</Text>
@@ -140,7 +142,7 @@ const PasswordField: React.FC<PasswordFieldProps> = ({
           value={value}
           onChangeText={handleChangeText}
           placeholder={placeholder}
-          placeholderTextColor={undefined}
+          placeholderTextColor={colors.inputPlaceholder}
           secureTextEntry={!showPassword}
           {...rest}
         />
