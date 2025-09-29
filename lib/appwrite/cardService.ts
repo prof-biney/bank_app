@@ -8,7 +8,7 @@
 import { databaseService, Query, ID, collections } from './database';
 import { authService } from './auth';
 import { logger } from '../logger';
-import { Card } from '@/types';
+import type { Card } from '@/types';
 
 // Card service interfaces
 export interface CreateCardData {
@@ -88,21 +88,41 @@ export class AppwriteCardService {
     const [expMonth, expYear] = cardData.expiryDate.split('/');
     const fullYear = expYear.length === 2 ? 2000 + parseInt(expYear) : parseInt(expYear);
     
-    return {
+    // Map generic card types to specific brands for Appwrite validation
+    const mapCardToBrand = (cardType: string): string => {
+      const type = cardType.toLowerCase();
+      if (type.includes('visa')) return 'visa';
+      if (type.includes('master') || type.includes('mc')) return 'mastercard';
+      if (type.includes('amex') || type.includes('american')) return 'amex';
+      if (type.includes('verve')) return 'verve';
+      if (type.includes('discover')) return 'discover';
+      if (type.includes('unionpay')) return 'unionpay';
+      if (type.includes('jcb')) return 'jcb';
+      // Default to visa for generic 'card' types
+      return 'visa';
+    };
+    
+    const result: any = {
       userId,
       cardNumber: cardData.cardNumber,
       last4: cardData.cardNumber.replace(/[^\d]/g, '').slice(-4),
       holder: cardData.cardHolderName,
-      brand: cardData.cardType,
+      brand: mapCardToBrand(cardData.cardType || 'card'),
       exp_month: parseInt(expMonth),
       exp_year: fullYear,
       color: cardData.cardColor,
-      balance: Math.round((cardData.balance || 0) * 100), // Convert to cents
       currency: cardData.currency || 'GHS',
       token: cardData.token || null,
       status: cardData.isActive !== false ? 'active' : 'inactive',
       type: 'debit', // Default card type
     };
+    
+    // Only set balance if explicitly provided, otherwise let Appwrite use database default
+    if (cardData.balance !== undefined) {
+      result.balance = Math.round(cardData.balance * 100); // Convert to cents
+    }
+    
+    return result;
   }
 
   /**
@@ -408,8 +428,10 @@ export class AppwriteCardService {
 
   /**
    * Find card by card number
+   * @param cardNumber The card number to search for
+   * @param holderName Optional holder name for additional filtering (legacy parameter, ignored)
    */
-  async findCardByNumber(cardNumber: string): Promise<Card | null> {
+  async findCardByNumber(cardNumber: string, holderName?: string): Promise<Card | null> {
     try {
       const userId = await this.getCurrentUserId();
       
@@ -417,7 +439,10 @@ export class AppwriteCardService {
       const cleanCardNumber = cardNumber.replace(/\s/g, '');
       const last4 = cleanCardNumber.slice(-4);
       
-      logger.info('CARD_SERVICE', 'Searching for card by number', { last4 });
+      logger.info('CARD_SERVICE', 'Searching for card by number', { 
+        last4, 
+        holderName: holderName || 'not provided' 
+      });
 
       // Query by last 4 digits (more secure than full number)
       const queries = [
@@ -425,6 +450,11 @@ export class AppwriteCardService {
         Query.equal('last4', last4),
         Query.equal('status', 'active')
       ];
+      
+      // Optionally filter by holder name if provided
+      if (holderName?.trim()) {
+        queries.push(Query.search('holder', holderName.trim()));
+      }
 
       const response = await databaseService.listDocuments(collections.cards.id, queries);
 
@@ -432,18 +462,32 @@ export class AppwriteCardService {
         return null;
       }
 
-      // If multiple cards with same last 4, find exact match by full number
+      // If multiple cards with same last 4, find exact match by full number and/or holder name
       let matchingCard = response.documents[0];
       if (response.documents.length > 1) {
+        // First try to match by full card number
         matchingCard = response.documents.find(doc => 
           doc.cardNumber === cleanCardNumber || 
           doc.cardNumber === cardNumber
-        ) || response.documents[0];
+        );
+        
+        // If no exact card number match and holder name provided, try holder name match
+        if (!matchingCard && holderName?.trim()) {
+          matchingCard = response.documents.find(doc => 
+            (doc.holder || '').toLowerCase().includes(holderName.toLowerCase())
+          );
+        }
+        
+        // Fallback to first result
+        matchingCard = matchingCard || response.documents[0];
       }
 
       const card = this.transformAppwriteToCard(matchingCard);
       
-      logger.info('CARD_SERVICE', 'Card found by number', { cardId: card.id });
+      logger.info('CARD_SERVICE', 'Card found by number', { 
+        cardId: card.id, 
+        holderMatch: holderName ? (card.cardHolderName === holderName) : 'N/A' 
+      });
       return card;
     } catch (error) {
       logger.error('CARD_SERVICE', 'Failed to find card by number', error);
@@ -657,21 +701,19 @@ export class AppwriteCardService {
 // Create and export card service instance
 export const cardService = new AppwriteCardService();
 
-// Export commonly used functions
-export const {
-  createCard,
-  updateCard,
-  deleteCard,
-  permanentlyDeleteCard,
-  getCard,
-  queryCards,
-  getActiveCards,
-  updateCardBalance,
-  findCardByNumber,
-  subscribeToCards,
-  subscribeToCard,
-  unsubscribeAll,
-} = cardService;
+// Export commonly used functions with proper binding
+export const createCard = cardService.createCard.bind(cardService);
+export const updateCard = cardService.updateCard.bind(cardService);
+export const deleteCard = cardService.deleteCard.bind(cardService);
+export const permanentlyDeleteCard = cardService.permanentlyDeleteCard.bind(cardService);
+export const getCard = cardService.getCard.bind(cardService);
+export const queryCards = cardService.queryCards.bind(cardService);
+export const getActiveCards = cardService.getActiveCards.bind(cardService);
+export const updateCardBalance = cardService.updateCardBalance.bind(cardService);
+export const findCardByNumber = cardService.findCardByNumber.bind(cardService);
+export const subscribeToCards = cardService.subscribeToCards.bind(cardService);
+export const subscribeToCard = cardService.subscribeToCard.bind(cardService);
+export const unsubscribeAll = cardService.unsubscribeAll.bind(cardService);
 
 // Export default service
 export default cardService;

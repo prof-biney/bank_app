@@ -26,11 +26,11 @@ export async function refreshAppwriteJWT(): Promise<string | undefined> {
     }
     
     // Create JWT with proper error handling for scope issues
-    const token = await authService.createJWT();
-    if (token) {
-      global.__APPWRITE_JWT__ = token;
+    const result = await authService.createJWT();
+    if (result && result.jwt) {
+      global.__APPWRITE_JWT__ = result.jwt;
       logger.info('JWT', 'JWT created successfully');
-      return token;
+      return result.jwt;
     }
     
     logger.warn('JWT', 'JWT creation returned no token');

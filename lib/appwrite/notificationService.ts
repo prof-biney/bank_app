@@ -706,5 +706,140 @@ export const {
   unsubscribeAll,
 } = notificationService;
 
+// Backward compatibility functions
+
+/**
+ * Enhanced alert function that shows an alert and pushes it to notifications
+ * This maintains compatibility with the old notification service API
+ */
+export function showAlertWithNotification(
+  showAlert: (type: 'success' | 'error' | 'warning' | 'info', message: string, title?: string) => void,
+  type: 'success' | 'error' | 'warning' | 'info',
+  message: string,
+  title?: string
+) {
+  // Show the immediate alert
+  showAlert(type, message, title);
+  
+  // Map alert types to notification types
+  const notificationType: 'payment' | 'transaction' | 'statement' | 'system' = 
+    type === 'success' ? 'system' :
+    type === 'error' ? 'system' :
+    type === 'warning' ? 'system' :
+    'system';
+  
+  // Push to notification system (fire and forget)
+  const payload: CreateNotificationData = {
+    type: notificationType,
+    title: title || 'Alert',
+    message,
+  };
+  
+  // Create notification in background (don't await or block UI)
+  notificationService.createNotification(payload).catch((error) => {
+    logger.warn('NOTIFICATION_SERVICE', 'Failed to create notification for alert', error);
+  });
+}
+
+/**
+ * Pushes a transaction-related notification
+ */
+export function pushTransactionNotification(
+  type: 'success' | 'failed',
+  title: string,
+  message: string,
+  amount?: number
+) {
+  const payload: CreateNotificationData = {
+    type: 'transaction',
+    title,
+    message: amount ? `${message} - Amount: GHS ${Math.abs(amount).toFixed(2)}` : message,
+  };
+  
+  // Create notification in background (don't await or block UI)
+  notificationService.createNotification(payload).catch((error) => {
+    logger.warn('NOTIFICATION_SERVICE', 'Failed to create transaction notification', error);
+  });
+}
+
+/**
+ * Pushes a payment-related notification
+ */
+export function pushPaymentNotification(
+  type: 'success' | 'failed',
+  title: string,
+  message: string,
+  amount?: number
+) {
+  const payload: CreateNotificationData = {
+    type: 'payment',
+    title,
+    message: amount ? `${message} - Amount: GHS ${Math.abs(amount).toFixed(2)}` : message,
+  };
+  
+  // Create notification in background (don't await or block UI)
+  notificationService.createNotification(payload).catch((error) => {
+    logger.warn('NOTIFICATION_SERVICE', 'Failed to create payment notification', error);
+  });
+}
+
+/**
+ * Pushes a transfer-related notification
+ */
+export function pushTransferNotification(
+  type: 'sent' | 'received',
+  amount: number,
+  counterpartyName: string,
+  newBalance?: number
+) {
+  const title = type === 'sent' ? 'Money Sent' : 'Money Received';
+  let message = `${type === 'sent' ? 'You sent' : 'You received'} GHS ${amount.toFixed(2)}`;
+  message += ` ${type === 'sent' ? 'to' : 'from'} ${counterpartyName}.`;
+  if (typeof newBalance === 'number') {
+    message += ` Your new balance is GHS ${newBalance.toFixed(2)}.`;
+  }
+  
+  const payload: CreateNotificationData = {
+    type: 'transaction',
+    title,
+    message,
+  };
+  
+  // Create notification in background (don't await or block UI)
+  notificationService.createNotification(payload).catch((error) => {
+    logger.warn('NOTIFICATION_SERVICE', 'Failed to create transfer notification', error);
+  });
+}
+
+/**
+ * Pushes a system notification
+ */
+export function pushSystemNotification(
+  title: string,
+  message: string
+) {
+  const payload: CreateNotificationData = {
+    type: 'system',
+    title,
+    message,
+  };
+  
+  // Create notification in background (don't await or block UI)
+  notificationService.createNotification(payload).catch((error) => {
+    logger.warn('NOTIFICATION_SERVICE', 'Failed to create system notification', error);
+  });
+}
+
+/**
+ * Initialize the notification service
+ * This is a no-op function for backward compatibility
+ * The Appwrite service doesn't need initialization with context functions
+ */
+export function initNotificationService(appContextFunctions?: any) {
+  logger.info('NOTIFICATION_SERVICE', 'Notification service initialized (Appwrite-based)');
+  // No-op - the Appwrite service doesn't need these context functions
+  // Notifications are managed through the Appwrite database instead
+}
+
 // Export default service
 export default notificationService;

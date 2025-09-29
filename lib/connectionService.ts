@@ -6,7 +6,7 @@ import { logger } from '@/lib/logger';
  * user-friendly notifications instead of console errors.
  */
 
-import { pushSystemNotification } from './notificationService';
+import { pushSystemNotification } from './appwrite/notificationService';
 
 export type ConnectionStatus = 'connected' | 'disconnected' | 'connecting' | 'reconnecting';
 
