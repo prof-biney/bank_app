@@ -28,6 +28,7 @@ import { TransactionItem } from "@/components/TransactionItem";
 import { ProfilePicture } from "@/components/ProfilePicture";
 import { ClearDataModal } from "@/components/ClearDataModal";
 import { TransactionAnalytics } from "@/components/TransactionAnalytics";
+import AnalyticsReportsModal from "@/components/AnalyticsReportsModal";
 import { useApp } from "@/context/AppContext";
 
 import { useTheme } from "@/context/ThemeContext";
@@ -39,6 +40,7 @@ export default function HomeScreen() {
   const [dateFilter, setDateFilter] = React.useState("all");
   const [showClearTransactions, setShowClearTransactions] = React.useState(false);
   const [isClearingTransactions, setIsClearingTransactions] = React.useState(false);
+  const [showAnalyticsReports, setShowAnalyticsReports] = React.useState(false);
 
   const { user } = useAuthStore();
   const unreadCount = React.useMemo(() => {
@@ -193,12 +195,12 @@ export default function HomeScreen() {
             <QuickAction
               icon={<CreditCard color={colors.tintPrimary} size={24} />}
               label="Withdraw"
-              onPress={() => {}}
+              onPress={() => router.push("/withdraw")}
             />
             <QuickAction
               icon={<MoreHorizontal color={colors.tintPrimary} size={24} />}
               label="More"
-              onPress={() => {}}
+              onPress={() => setShowAnalyticsReports(true)}
             />
           </View>
 
@@ -277,6 +279,11 @@ export default function HomeScreen() {
           dataType="transactions"
           count={transactions.length}
           isLoading={isClearingTransactions}
+        />
+
+        <AnalyticsReportsModal
+          visible={showAnalyticsReports}
+          onClose={() => setShowAnalyticsReports(false)}
         />
       </KeyboardAvoidingView>
       </Animated.View>

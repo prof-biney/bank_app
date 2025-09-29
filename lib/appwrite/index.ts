@@ -17,6 +17,8 @@ import transactionService from './transactionService';
 import activityService from './activityService';
 import notificationService from './notificationService';
 import transferService from './transferService';
+import withdrawalService from './withdrawalService';
+import analyticsService from './analyticsService';
 
 // Authentication service
 export * from './auth';
@@ -45,6 +47,14 @@ export { default as notificationService } from './notificationService';
 // Transfer service
 export * from './transferService';
 export { default as transferService } from './transferService';
+
+// Withdrawal service
+export * from './withdrawalService';
+export { default as withdrawalService } from './withdrawalService';
+
+// Analytics service
+export * from './analyticsService';
+export { default as analyticsService } from './analyticsService';
 
 // Re-export commonly used types and utilities
 export type { 
@@ -100,6 +110,28 @@ export type {
   CardLookupResult
 } from './transferService';
 
+export type {
+  WithdrawalRequest,
+  WithdrawalResult,
+  WithdrawalMethod,
+  MobileMoneyWithdrawal,
+  BankTransferWithdrawal,
+  CashPickupWithdrawal,
+  WithdrawalInstructions
+} from './withdrawalService';
+
+export type {
+  AnalyticsData,
+  DailyTransaction,
+  MonthlyTrend,
+  CategoryBreakdown,
+  TransactionTypeBreakdown,
+  AnalyticsInsight,
+  ReportFormat,
+  ReportPeriod,
+  ReportOptions
+} from './analyticsService';
+
 // Default export with all services
 export default {
   auth: authService,
@@ -109,4 +141,6 @@ export default {
   activities: activityService,
   notifications: notificationService,
   transfers: transferService,
+  withdrawals: withdrawalService,
+  analytics: analyticsService,
 };
