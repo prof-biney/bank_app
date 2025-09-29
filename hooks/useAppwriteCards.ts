@@ -8,10 +8,10 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { 
   cardService, 
-  Card, 
   CardRealtimeOptions,
   getActiveCards 
 } from '@/lib/appwrite/cardService';
+import type { Card } from '@/constants';
 import { logger } from '@/lib/logger';
 
 export interface UseAppwriteCardsOptions {
