@@ -39,6 +39,21 @@ function createDb() {
   return { client, databases };
 }
 
+// Safe getDocument helper for server: tries getDocument and falls back to listDocuments by $id
+async function safeGetDocument(databases: Databases, databaseId: string, collectionId: string, documentId: string) {
+  try {
+    const doc = await databases.getDocument(databaseId, collectionId, documentId).catch(() => null as any);
+    if (doc && doc.$id) return doc;
+  } catch (err) {}
+
+  try {
+    const list = await databases.listDocuments(databaseId, collectionId, [Query.equal('$id', documentId), Query.limit(1)]).catch(() => null as any);
+    if (list && list.documents && list.documents.length > 0) return list.documents[0];
+  } catch (err) {}
+
+  return null;
+}
+
 // Idempotency cache (in-memory, dev)
 const idem = new Map<string, { status: number; body: any; expiresAt: number }>();
 const IDEM_TTL_MS = 5 * 60 * 1000;
@@ -220,7 +235,7 @@ v1.delete('/cards/:id', appwriteAuth, async (c) => {
   const databaseId = process.env.APPWRITE_DATABASE_ID!;
   const cardsCollectionId = process.env.APPWRITE_CARDS_COLLECTION_ID!;
 
-  const res = await databases.getDocument(databaseId, cardsCollectionId, id).catch(() => null as any);
+  const res = await safeGetDocument(databases, databaseId, cardsCollectionId, id);
   if (!res) return c.json({ error: 'not_found' }, 404);
   if (res.userId !== user.$id) return c.json({ error: 'forbidden' }, 403);
   await databases.deleteDocument(databaseId, cardsCollectionId, id);
@@ -281,7 +296,7 @@ v1.get('/transactions', appwriteAuth, async (c) => {
         let cardQuery = [];
         if (d.cardId) {
           cardQuery = [Query.equal('userId', user.$id)];
-          const card = await databases.getDocument(databaseId, cardsCol, d.cardId).catch(() => null);
+          const card = await safeGetDocument(databases, databaseId, cardsCol, d.cardId);
           if (card && card.userId === user.$id) cardInfo = card;
         } else if (d.source) {
           // Find card by token for older payment transactions
@@ -399,7 +414,7 @@ v1.post('/payments/:id/capture', appwriteAuth, async (c) => {
   const databaseId = process.env.APPWRITE_DATABASE_ID!;
   const txCol = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID!;
   const cardsCol = process.env.APPWRITE_CARDS_COLLECTION_ID!;
-  const doc: any = await databases.getDocument(databaseId, txCol, id).catch(() => null);
+  const doc: any = await safeGetDocument(databases, databaseId, txCol, id);
   if (!doc) return c.json({ error: 'not_found' }, 404);
   if (doc.userId !== user.$id) return c.json({ error: 'forbidden' }, 403);
   if (doc.status === 'captured') return c.json({ id: doc.$id, status: 'captured' });
@@ -432,7 +447,7 @@ v1.post('/payments/:id/refund', appwriteAuth, async (c) => {
   const databaseId = process.env.APPWRITE_DATABASE_ID!;
   const txCol = process.env.APPWRITE_TRANSACTIONS_COLLECTION_ID!;
   const cardsCol = process.env.APPWRITE_CARDS_COLLECTION_ID!;
-  const doc: any = await databases.getDocument(databaseId, txCol, id).catch(() => null);
+  const doc: any = await safeGetDocument(databases, databaseId, txCol, id);
   if (!doc) return c.json({ error: 'not_found' }, 404);
   if (doc.userId !== user.$id) return c.json({ error: 'forbidden' }, 403);
   if (doc.status === 'refunded') return c.json({ id: doc.$id, status: 'refunded' });
@@ -487,9 +502,9 @@ v1.post('/transfers', appwriteAuth, async (c) => {
   
   try {
     // Step 1: Get and validate sender card
-    const senderCard: any = await databases.getDocument(databaseId, cardsCol, cardId).catch(() => null);
-    if (!senderCard) return c.json({ error: 'card_not_found' }, 404);
-    if (senderCard.userId !== user.$id) return c.json({ error: 'forbidden' }, 403);
+  const senderCard: any = await safeGetDocument(databases, databaseId, cardsCol, cardId);
+  if (!senderCard) return c.json({ error: 'card_not_found' }, 404);
+  if (senderCard.userId !== user.$id) return c.json({ error: 'forbidden' }, 403);
     
     const currentBalance = typeof senderCard.balance === 'number' ? senderCard.balance : (typeof senderCard.startingBalance === 'number' ? senderCard.startingBalance : DEFAULT_CARD_BALANCE);
     if (amount > currentBalance) return c.json({ error: 'insufficient_funds', available: currentBalance }, 400);
@@ -704,10 +719,10 @@ v1.post('/deposits', appwriteAuth, async (c) => {
   if (!txCol || !cardsCol) return c.json({ error: 'server_missing_collections' }, 500);
   
   try {
-    // Step 1: Validate card belongs to user
-    const card: any = await databases.getDocument(databaseId, cardsCol, cardId).catch(() => null);
-    if (!card) return c.json({ error: 'card_not_found' }, 404);
-    if (card.userId !== user.$id) return c.json({ error: 'forbidden' }, 403);
+  // Step 1: Validate card belongs to user
+  const card: any = await safeGetDocument(databases, databaseId, cardsCol, cardId);
+  if (!card) return c.json({ error: 'card_not_found' }, 404);
+  if (card.userId !== user.$id) return c.json({ error: 'forbidden' }, 403);
     
     // Step 2: Create pending deposit transaction (escrow phase)
     const depositDoc = await databases.createDocument(databaseId, txCol, ID.unique(), {
@@ -827,7 +842,7 @@ v1.post('/deposits/:id/confirm', appwriteAuth, async (c) => {
   
   try {
     // Step 1: Get and validate deposit transaction
-    const depositDoc: any = await databases.getDocument(databaseId, txCol, id).catch(() => null);
+  const depositDoc: any = await safeGetDocument(databases, databaseId, txCol, id);
     if (!depositDoc) return c.json({ error: 'not_found' }, 404);
     if (depositDoc.userId !== user.$id) return c.json({ error: 'forbidden' }, 403);
     if (depositDoc.type !== 'deposit') return c.json({ error: 'invalid_transaction_type' }, 400);
@@ -855,7 +870,7 @@ v1.post('/deposits/:id/confirm', appwriteAuth, async (c) => {
     }
     
     // Step 4: Get card and update balance
-    const card: any = await databases.getDocument(databaseId, cardsCol, depositDoc.cardId);
+    const card: any = await safeGetDocument(databases, databaseId, cardsCol, depositDoc.cardId);
     if (!card) {
       await databases.updateDocument(databaseId, txCol, id, { status: 'failed', failureReason: 'card_not_found' });
       return c.json({ error: 'card_not_found' }, 404);
@@ -1263,7 +1278,7 @@ v1.patch('/notifications/:id', appwriteAuth, async (c) => {
   const parsed = z.object({ unread: z.boolean() }).safeParse(body);
   if (!parsed.success) return c.json({ error: 'validation_error', details: parsed.error.flatten() }, 400);
 
-  const doc: any = await databases.getDocument(databaseId, notifCol, id).catch(() => null);
+  const doc: any = await safeGetDocument(databases, databaseId, notifCol, id);
   if (!doc) return c.json({ error: 'not_found' }, 404);
   if (doc.userId !== user.$id) return c.json({ error: 'forbidden' }, 403);
   const updated = await databases.updateDocument(databaseId, notifCol, id, { unread: parsed.data.unread });
@@ -1279,7 +1294,7 @@ v1.delete('/notifications/:id', appwriteAuth, async (c) => {
   const notifCol = process.env.APPWRITE_NOTIFICATIONS_COLLECTION_ID;
   if (!notifCol) return c.json({ error: 'server_missing_notifications_collection' }, 500);
 
-  const doc: any = await databases.getDocument(databaseId, notifCol, id).catch(() => null);
+  const doc: any = await safeGetDocument(databases, databaseId, notifCol, id);
   if (!doc) return c.json({ error: 'not_found' }, 404);
   if (doc.userId !== user.$id) return c.json({ error: 'forbidden' }, 403);
   await databases.deleteDocument(databaseId, notifCol, id);

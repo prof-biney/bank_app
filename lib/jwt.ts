@@ -1,4 +1,4 @@
-import { account } from './appwrite';
+import { authService } from './appwrite/auth';
 import { logger } from '@/lib/logger';
 
 declare const global: any;
@@ -18,7 +18,7 @@ export async function ensureAppwriteJWT(getJwt: (() => Promise<string>) | null) 
 export async function refreshAppwriteJWT(): Promise<string | undefined> {
   try {
     // First, ensure we have an active session
-    const session = await account.getSession('current');
+    const session = await authService.getCurrentSession();
     if (!session) {
       logger.warn('JWT', 'No active session found');
       global.__APPWRITE_JWT__ = undefined;
@@ -26,8 +26,7 @@ export async function refreshAppwriteJWT(): Promise<string | undefined> {
     }
     
     // Create JWT with proper error handling for scope issues
-    const jwt = await account.createJWT();
-    const token = jwt?.jwt;
+    const token = await authService.createJWT();
     if (token) {
       global.__APPWRITE_JWT__ = token;
       logger.info('JWT', 'JWT created successfully');

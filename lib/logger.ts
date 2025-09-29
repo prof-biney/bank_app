@@ -15,10 +15,11 @@ export type LogCategory =
   | 'NETWORK' 
   | 'UI' 
   | 'STORAGE' 
-  | 'APPWRITE' 
+  | 'FIREBASE' 
   | 'CONFIG' 
   | 'TRANSACTION'
   | 'CARD'
+  | 'CARDS'
   | 'NOTIFICATION'
   | 'ACTIVITY'
   | 'JWT'
@@ -146,11 +147,11 @@ class Logger {
     error: (message: string, ...data: any[]) => this.error('DATABASE', message, ...data),
   };
 
-  appwrite = {
-    debug: (message: string, ...data: any[]) => this.debug('APPWRITE', message, ...data),
-    info: (message: string, ...data: any[]) => this.info('APPWRITE', message, ...data),
-    warn: (message: string, ...data: any[]) => this.warn('APPWRITE', message, ...data),
-    error: (message: string, ...data: any[]) => this.error('APPWRITE', message, ...data),
+  firebase = {
+    debug: (message: string, ...data: any[]) => this.debug('FIREBASE', message, ...data),
+    info: (message: string, ...data: any[]) => this.info('FIREBASE', message, ...data),
+    warn: (message: string, ...data: any[]) => this.warn('FIREBASE', message, ...data),
+    error: (message: string, ...data: any[]) => this.error('FIREBASE', message, ...data),
   };
 
   network = {
@@ -188,11 +189,11 @@ class Logger {
       error: (message: string, ...data: any[]) => this.error('DATABASE', message, ...data),
     };
 
-    this.appwrite = {
-      debug: (message: string, ...data: any[]) => this.debug('APPWRITE', message, ...data),
-      info: (message: string, ...data: any[]) => this.info('APPWRITE', message, ...data),
-      warn: (message: string, ...data: any[]) => this.warn('APPWRITE', message, ...data),
-      error: (message: string, ...data: any[]) => this.error('APPWRITE', message, ...data),
+    this.firebase = {
+      debug: (message: string, ...data: any[]) => this.debug('FIREBASE', message, ...data),
+      info: (message: string, ...data: any[]) => this.info('FIREBASE', message, ...data),
+      warn: (message: string, ...data: any[]) => this.warn('FIREBASE', message, ...data),
+      error: (message: string, ...data: any[]) => this.error('FIREBASE', message, ...data),
     };
 
     this.network = {
@@ -283,7 +284,7 @@ export const loggerConfigs = {
   networkOnly: {
     enabled: true,
     minLevel: 'DEBUG' as LogLevel,
-    enabledCategories: ['NETWORK', 'APPWRITE', 'CONNECTION'] as LogCategory[],
+    enabledCategories: ['NETWORK', 'FIREBASE', 'CONNECTION'] as LogCategory[],
     showTimestamp: true,
     showCategory: true,
     colorEnabled: true,

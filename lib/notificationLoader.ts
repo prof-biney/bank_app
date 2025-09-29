@@ -7,8 +7,7 @@ import { logger } from '@/lib/logger';
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Query } from 'react-native-appwrite';
-import { databases, appwriteConfig } from '@/lib/appwrite';
+import { AppwriteQuery as Query, databases, appwriteConfig } from './appwrite/config';
 import { Notification } from '@/types';
 import { trackDatabaseOperation } from '@/lib/notificationAnalytics';
 
