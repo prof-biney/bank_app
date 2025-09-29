@@ -7,44 +7,60 @@ import CustomButton from '@/components/CustomButton';
 import Card from '@/components/ui/Card';
 import { useApp } from '@/context/AppContext';
 import { ClearDataModal } from '@/components/ClearDataModal';
+import { transactionService } from '@/lib/appwrite';
+import LoadingAnimation from '@/components/LoadingAnimation';
+import { useLoading, LOADING_CONFIGS } from '@/hooks/useLoading';
+import useAuthStore from '@/store/auth.store';
 
 export default function PaymentsScreen() {
   const [amount, setAmount] = useState('');
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<any[]>([]);
   const [showClearPayments, setShowClearPayments] = useState(false);
-  const [isClearingPayments, setIsClearingPayments] = useState(false);
   const [paymentsSuppressed, setPaymentsSuppressed] = useState(false);
+  const [isClearingPayments, setIsClearingPayments] = useState(false);
   const { activeCard } = useApp();
+  const { user } = useAuthStore();
+  const { loading, withLoading, showLoading, hideLoading } = useLoading();
 
   useEffect(() => {
-    (async () => {
-      try {
-        // Check if payments were manually cleared
-        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-        const suppressedFlag = await AsyncStorage.getItem('payments_manually_cleared');
-        
-        if (suppressedFlag) {
-          logger.info('UI', 'Payments are suppressed, skipping fetch');
-          setPaymentsSuppressed(true);
-          setItems([]);
-          return;
-        }
-        
-        const { getApiBase } = require('@/lib/api');
-        const apiBase = getApiBase();
-        const url = `${apiBase}/v1/payments`;
-        const jwt = (global as any).__APPWRITE_JWT__ || undefined;
-        const res = await fetch(url, { headers: { ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) } });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-        setItems(Array.isArray(data?.data) ? data.data : []);
-      } catch (e: any) {
-        setError(e?.message || 'Failed to load payments');
-      }
-    })();
+    loadTransactions();
   }, []);
+
+  const loadTransactions = async () => {
+    try {
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      const suppressedFlag = await AsyncStorage.getItem('payments_manually_cleared');
+      
+      if (suppressedFlag) {
+        logger.info('UI', 'Payments are suppressed, skipping fetch');
+        setPaymentsSuppressed(true);
+        setItems([]);
+        return;
+      }
+
+      await withLoading(async () => {
+        const userId = user?.id || user?.$id;
+        if (!userId) return;
+        const result = await transactionService.queryTransactions({ 
+          filters: { type: 'payment' },
+          limit: 20,
+          orderBy: '$createdAt',
+          orderDirection: 'desc'
+        });
+        setItems(result.transactions || []);
+      }, LOADING_CONFIGS.LOAD_TRANSACTIONS);
+    } catch (e: any) {
+      // Only show error if it's not just due to empty data
+      if (!e?.message?.includes('No transactions found') && !e?.message?.includes('empty')) {
+        setError(e?.message || 'Failed to load payments');
+        logger.error('UI', 'Failed to load payments:', e);
+      } else {
+        logger.info('UI', 'No payments found, showing empty state');
+        setItems([]);
+      }
+    }
+  };
 
   const onCreate = async () => {
     setError(null);
@@ -53,29 +69,32 @@ export default function PaymentsScreen() {
       setError('Enter a valid amount');
       return;
     }
-    if (!activeCard || !activeCard.token) {
-      setError('Select a card with a valid token before creating a payment.');
+    if (!activeCard?.id) {
+      setError('Please select a card first.');
       return;
     }
-    setSubmitting(true);
+    const userId = user?.id || user?.$id;
+    if (!userId) {
+      setError('User not authenticated.');
+      return;
+    }
+
     try {
-      const { getApiBase } = require('@/lib/api');
-      const apiBase = getApiBase();
-      const url = `${apiBase}/v1/payments`;
-      const jwt = (global as any).__APPWRITE_JWT__ || undefined;
-      const headers: any = { 'Content-Type': 'application/json' };
-      if (jwt) headers['Authorization'] = `Bearer ${jwt}`;
-      headers['Idempotency-Key'] = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const body = { amount: value, currency: 'GHS', source: activeCard.token, description: 'Payment from app' };
-      const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-      setItems((prev) => [{ id: data.id, status: data.status, amount: data.amount, currency: data.currency, created: data.created }, ...prev]);
-      setAmount('');
+      await withLoading(async () => {
+        const transaction = await transactionService.createTransaction({
+          cardId: activeCard.id,
+          type: 'payment',
+          amount: value,
+          description: 'Payment from app',
+          category: 'general',
+          status: 'completed'
+        });
+        setItems((prev) => [transaction, ...prev]);
+        setAmount('');
+      }, LOADING_CONFIGS.PROCESS_TRANSACTION);
     } catch (e: any) {
       setError(e?.message || 'Failed to create payment');
-    } finally {
-      setSubmitting(false);
+      logger.error('UI', 'Failed to create payment:', e);
     }
   };
 
@@ -148,8 +167,14 @@ export default function PaymentsScreen() {
       
       logger.info('UI', 'Payments restored successfully');
     } catch (e: any) {
-      setError(e?.message || 'Failed to restore payments');
-      logger.error('UI', 'Failed to restore payments:', e);
+      // Only show error if it's not just due to empty data
+      if (!e?.message?.includes('No payments found') && !e?.message?.includes('empty')) {
+        setError(e?.message || 'Failed to restore payments');
+        logger.error('UI', 'Failed to restore payments:', e);
+      } else {
+        logger.info('UI', 'No payments found during restore, showing empty state');
+        setItems([]);
+      }
     }
   };
 
@@ -172,7 +197,7 @@ export default function PaymentsScreen() {
               onChangeText={setAmount}
               placeholderTextColor={colors.textSecondary}
             />
-            <CustomButton onPress={onCreate} isLoading={submitting} title={submitting ? 'Creating...' : 'Create'} variant="primary" size="md" />
+            <CustomButton onPress={onCreate} isLoading={loading.visible} title={loading.visible ? 'Creating...' : 'Create'} variant="primary" size="md" />
           </View>
           {error && <Text style={{ color: colors.negative }}>{error}</Text>}
         </Card>
@@ -241,6 +266,14 @@ export default function PaymentsScreen() {
         dataType="payments"
         count={items.length}
         isLoading={isClearingPayments}
+      />
+      
+      <LoadingAnimation
+        visible={loading.visible}
+        message={loading.message}
+        subtitle={loading.subtitle}
+        type={loading.type}
+        size={loading.size}
       />
     </SafeAreaView>
   );

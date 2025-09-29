@@ -17,7 +17,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { BankCard } from "@/components/BankCard";
 import { useApp } from "@/context/AppContext";
 import { useAlert } from "@/context/AlertContext";
-import { useLoading } from "@/context/LoadingContext";
+import { transferService, type TransferRequest } from "@/lib/appwrite";
+import LoadingAnimation from '@/components/LoadingAnimation';
+import { useLoading, LOADING_CONFIGS } from '@/hooks/useLoading';
 import { showAlertWithNotification } from "@/lib/notificationService";
 import { Recipient } from "@/types/index";
 import { useTheme } from "@/context/ThemeContext";
@@ -28,12 +30,18 @@ import Badge from "@/components/ui/Badge";
 import { getBadgeVisuals } from "@/theme/badge-utils";
 
 export default function TransferScreen() {
-  const { cards, activeCard, setActiveCard, makeTransfer } = useApp();
+  const { cards, activeCard, setActiveCard } = useApp();
   const { showAlert } = useAlert();
-  const { startLoading, stopLoading } = useLoading();
+  const { loading, withLoading } = useLoading();
   const [recipientCardNumber, setRecipientCardNumber] = useState("");
   const [recipientName, setRecipientName] = useState("");
   const [amount, setAmount] = useState("");
+  const [validatingCard, setValidatingCard] = useState(false);
+  const [cardValidationResult, setCardValidationResult] = useState<{
+    isValid: boolean;
+    cardHolderName?: string;
+    error?: string;
+  } | null>(null);
   const [step, setStep] = useState<
     "select-card" | "select-recipient" | "enter-amount" | "confirm-transfer"
   >("select-card");
@@ -50,11 +58,62 @@ export default function TransferScreen() {
     return digits.replace(/(\d{4})(?=\d)/g, '$1 ');
   };
 
-  const handleCardNumberChange = (input: string) => {
+  const handleCardNumberChange = async (input: string) => {
     const formatted = formatCardNumber(input);
     // Limit to 19 characters (16 digits + 3 spaces)
     if (formatted.length <= 19) {
       setRecipientCardNumber(formatted);
+      
+      // Clear previous validation result
+      setCardValidationResult(null);
+      
+      // Validate card if we have a complete number
+      if (validateCardNumber(formatted)) {
+        await validateRecipientCard(formatted);
+      }
+    }
+  };
+  
+  const validateRecipientCard = async (cardNumber: string) => {
+    if (!validateCardNumber(cardNumber)) {
+      setCardValidationResult({
+        isValid: false,
+        error: 'Invalid card number format'
+      });
+      return;
+    }
+    
+    setValidatingCard(true);
+    try {
+      const cardLookup = await transferService.findCardByNumber(cardNumber);
+      
+      if (cardLookup.exists && cardLookup.card) {
+        // Check if it's the same as the source card
+        if (activeCard && cardLookup.card.id === activeCard.id) {
+          setCardValidationResult({
+            isValid: false,
+            error: 'Cannot transfer to the same card'
+          });
+        } else {
+          setCardValidationResult({
+            isValid: true,
+            cardHolderName: cardLookup.card.cardHolderName
+          });
+        }
+      } else {
+        setCardValidationResult({
+          isValid: false,
+          error: 'Card not registered on the system'
+        });
+      }
+    } catch (error) {
+      logger.error('TRANSFER', 'Card validation error:', error);
+      setCardValidationResult({
+        isValid: false,
+        error: 'Unable to validate card. Please try again.'
+      });
+    } finally {
+      setValidatingCard(false);
     }
   };
 
@@ -87,12 +146,6 @@ export default function TransferScreen() {
       return;
     }
 
-    // Validate card number format
-    if (!validateCardNumber(recipientCardNumber)) {
-      showAlertWithNotification(showAlert, 'error', 'Please enter a valid card number (minimum 12 digits).', 'Invalid Card Number');
-      return;
-    }
-
     const transferAmount = parseFloat(amount);
     
     if (isNaN(transferAmount) || transferAmount <= 0) {
@@ -100,63 +153,82 @@ export default function TransferScreen() {
       showAlertWithNotification(showAlert, 'error', 'Please enter a valid amount.', 'Transfer Error');
       return;
     }
-    
-    if (transferAmount > activeCard.balance) {
-      logger.info('SCREEN', '[TransferScreen] Insufficient funds:', { transferAmount, balance: activeCard.balance });
-      showAlertWithNotification(showAlert, 'error', 'Insufficient funds for this transfer.', 'Transfer Error');
+
+    // Check card validation result
+    if (!cardValidationResult?.isValid) {
+      showAlertWithNotification(
+        showAlert, 
+        'error', 
+        cardValidationResult?.error || 'Please enter a valid recipient card number.', 
+        'Invalid Recipient Card'
+      );
       return;
     }
 
-    // Check if transferring to the same card
-    const sourceCardDigits = activeCard.cardNumber.replace(/[^\d]/g, '');
-    const recipientCardDigits = recipientCardNumber.replace(/\s/g, '');
-    
-    if (sourceCardDigits === recipientCardDigits) {
-      showAlertWithNotification(showAlert, 'error', 'Cannot transfer to the same card. Please select a different recipient card.', 'Transfer Error');
-      return;
-    }
-
-    logger.info('SCREEN', '[TransferScreen] Starting transfer:', {
+    logger.info('SCREEN', '[TransferScreen] Starting enhanced transfer:', {
       cardId: activeCard.id,
       amount: transferAmount,
       recipientCardNumber
     });
     
-    const loadingId = startLoading('transfer', `Transferring GHS ${transferAmount.toFixed(2)}...`);
-    
     try {
-      const result = await makeTransfer(
-        activeCard.id,
-        transferAmount,
-        recipientCardNumber,
-        `Transfer To: ${recipientCardNumber}`
+      const transferRequest: TransferRequest = {
+        sourceCardId: activeCard.id,
+        recipientCardNumber: recipientCardNumber,
+        amount: transferAmount,
+        currency: 'GHS',
+        description: `Transfer to ${cardValidationResult.cardHolderName || recipientName}`,
+        recipientName: cardValidationResult.cardHolderName || recipientName
+      };
+      
+      const result = await withLoading(
+        async () => await transferService.executeTransfer(transferRequest),
+        {
+          ...LOADING_CONFIGS.PROCESS_TRANSACTION,
+          message: `Transferring GHS ${transferAmount.toFixed(2)}...`,
+          subtitle: `To ${cardValidationResult.cardHolderName || 'recipient'}`
+        }
       );
       
       if (result.success) {
-        const recipientCard = findCardByNumber(recipientCardNumber);
-        const recipientDisplay = recipientCard ? 
-          `${recipientCard.cardHolderName} (${recipientCardNumber})` : 
-          recipientName ? `${recipientName} (${recipientCardNumber})` : recipientCardNumber;
+        const recipientDisplay = cardValidationResult.cardHolderName 
+          ? `${cardValidationResult.cardHolderName} (${recipientCardNumber})`
+          : recipientCardNumber;
+        
+        const successMessage = [
+          `GHS ${transferAmount.toFixed(2)} has been successfully transferred to ${recipientDisplay}.`,
+          result.recipientNewBalance ? ` Recipient balance: GHS ${result.recipientNewBalance.toFixed(2)}.` : '',
+          ` Your balance: GHS ${result.sourceNewBalance?.toFixed(2) || 'N/A'}`
+        ].join('');
         
         showAlertWithNotification(
           showAlert,
-          'success', 
-          `GHS ${transferAmount.toFixed(2)} has been successfully transferred to ${recipientDisplay}.${result.recipientNewBalance ? ` Recipient balance: GHS ${result.recipientNewBalance.toFixed(2)}.` : ''} Your balance: GHS ${result.newBalance?.toFixed(2) || 'N/A'}`,
+          'success',
+          successMessage,
           'Transfer Successful'
         );
         
-        // Navigate back after a short delay to allow the user to see the alert
+        // Navigate back after showing success
         setTimeout(() => {
           router.back();
         }, 2000);
+        
       } else {
-        showAlertWithNotification(showAlert, 'error', result.error || 'An error occurred while processing your transfer.', 'Transfer Failed');
+        showAlertWithNotification(
+          showAlert, 
+          'error', 
+          result.error || 'An error occurred while processing your transfer.', 
+          'Transfer Failed'
+        );
       }
     } catch (error) {
-      showAlertWithNotification(showAlert, 'error', 'An unexpected error occurred. Please try again.', 'Transfer Failed');
-      logger.error('SCREEN', 'Transfer error:', error);
-    } finally {
-      stopLoading(loadingId);
+      showAlertWithNotification(
+        showAlert, 
+        'error', 
+        'An unexpected error occurred. Please try again.', 
+        'Transfer Failed'
+      );
+      logger.error('SCREEN', 'Enhanced transfer error:', error);
     }
   };
 
@@ -258,24 +330,32 @@ export default function TransferScreen() {
                   keyboardType="numeric"
                 />
                 
-                {/* Show matched card holder name if found */}
+                {/* Show card validation status */}
                 {recipientCardNumber && validateCardNumber(recipientCardNumber) && (
                   <View style={styles.cardHolderInfo}>
-                    {(() => {
-                      const matchedCard = findCardByNumber(recipientCardNumber);
-                      if (matchedCard) {
-                        return (
-                          <Text style={[styles.cardHolderName, { color: colors.positive }]}>
-                            ✓ {matchedCard.cardHolderName} (Your Card)
-                          </Text>
-                        );
-                      }
-                      return (
-                        <Text style={[styles.cardHolderName, { color: colors.textSecondary }]}>
-                          External Card
-                        </Text>
-                      );
-                    })()}
+                    {validatingCard && (
+                      <Text style={[styles.cardHolderName, { color: colors.textSecondary }]}>
+                        🔍 Validating card...
+                      </Text>
+                    )}
+                    {!validatingCard && cardValidationResult && (
+                      <Text 
+                        style={[
+                          styles.cardHolderName, 
+                          { color: cardValidationResult.isValid ? colors.positive : colors.negative }
+                        ]}
+                      >
+                        {cardValidationResult.isValid 
+                          ? `✓ ${cardValidationResult.cardHolderName}` 
+                          : `✗ ${cardValidationResult.error}`
+                        }
+                      </Text>
+                    )}
+                    {!validatingCard && !cardValidationResult && recipientCardNumber && validateCardNumber(recipientCardNumber) && (
+                      <Text style={[styles.cardHolderName, { color: colors.textSecondary }]}>
+                        Checking card...
+                      </Text>
+                    )}
                   </View>
                 )}
               </View>
@@ -285,7 +365,12 @@ export default function TransferScreen() {
               <CustomButton
                 title="Continue"
                 variant="primary"
-                disabled={!validateCardNumber(recipientCardNumber) || !recipientName.trim()}
+                disabled={
+                  !validateCardNumber(recipientCardNumber) || 
+                  !recipientName.trim() || 
+                  validatingCard ||
+                  !cardValidationResult?.isValid
+                }
                 onPress={() => handleRecipientSelect(recipientCardNumber.trim())}
               />
             </View>
@@ -364,30 +449,22 @@ export default function TransferScreen() {
                 <View style={styles.summaryRow}>
                   <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>To</Text>
                   <View style={styles.summaryCardInfo}>
-                    {(() => {
-                      const recipientCard = findCardByNumber(recipientCardNumber);
-                      if (recipientCard) {
-                        return (
-                          <>
-                            <Text style={[styles.summaryValue, { color: colors.textPrimary }]}>{recipientCard.cardHolderName}</Text>
-                            <Text style={[styles.summarySecondary, { color: colors.positive }]}>{recipientCardNumber} (Your Card)</Text>
-                          </>
-                        );
-                      }
-                      return (
-                        <>
-                          <Text style={[styles.summaryValue, { color: colors.textPrimary }]}>{recipientName || 'External Card'}</Text>
-                          <Text style={[styles.summarySecondary, { color: colors.textSecondary }]}>{recipientCardNumber}</Text>
-                        </>
-                      );
-                    })()}
+                    <Text style={[styles.summaryValue, { color: colors.textPrimary }]}>
+                      {cardValidationResult?.cardHolderName || recipientName || 'External Card'}
+                    </Text>
+                    <Text style={[styles.summarySecondary, { 
+                      color: cardValidationResult?.isValid ? colors.positive : colors.textSecondary 
+                    }]}>
+                      {recipientCardNumber}
+                      {cardValidationResult?.isValid && ' ✓ Verified'}
+                    </Text>
                   </View>
                 </View>
                 
                 <View style={styles.summaryRow}>
                   <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Transfer Type</Text>
                   <Text style={[styles.summaryValue, { color: colors.textPrimary }]}>
-                    {findCardByNumber(recipientCardNumber) ? 'Internal Transfer' : 'External Transfer'}
+                    {cardValidationResult?.isValid ? 'Verified Transfer' : 'External Transfer'}
                   </Text>
                 </View>
                 
@@ -417,6 +494,14 @@ export default function TransferScreen() {
           </View>
         )}
       </KeyboardAvoidingView>
+      
+      <LoadingAnimation
+        visible={loading.visible}
+        message={loading.message}
+        subtitle={loading.subtitle}
+        type={loading.type}
+        size={loading.size}
+      />
     </SafeAreaView>
   );
 }

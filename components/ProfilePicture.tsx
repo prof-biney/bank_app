@@ -1,5 +1,7 @@
 import { useTheme } from '@/context/ThemeContext';
 import { getInitials } from '@/lib/imageUtils';
+// TODO: Replace with Appwrite storage helpers when available
+// import { getImage } from '@/lib/appwrite/storage';
 import { Camera, Edit3, User as UserIcon } from 'lucide-react-native';
 import React from 'react';
 import {
@@ -69,14 +71,28 @@ export function ProfilePicture({
   imageUrl,
   size = 'medium',
   editable = false,
-  loading = false,
-  hasError = false,
+  loading: initialLoading = false,
+  hasError: initialError = false,
   onPress,
   style,
 }: ProfilePictureProps) {
   const { colors } = useTheme();
   const config = SIZE_CONFIG[size];
   const initials = getInitials(name);
+  
+  const [localImageUrl, setLocalImageUrl] = React.useState<string | null>(null);
+  const [isLoading, setIsLoading] = React.useState(initialLoading);
+  const [hasError, setHasError] = React.useState(initialError);
+
+  React.useEffect(() => {
+    if (imageUrl?.startsWith('rtdb://')) {
+      // TODO: Implement Appwrite storage image loading
+      setHasError(true);
+      setIsLoading(false);
+    } else {
+      setLocalImageUrl(imageUrl || null);
+    }
+  }, [imageUrl]);
 
   const containerStyle = [
     styles.container,
@@ -91,7 +107,7 @@ export function ProfilePicture({
   ];
 
   const renderContent = () => {
-    if (loading) {
+    if (isLoading) {
       return (
         <ActivityIndicator 
           size="small" 
@@ -109,10 +125,10 @@ export function ProfilePicture({
       );
     }
 
-    if (imageUrl) {
+    if (localImageUrl) {
       return (
         <Image
-          source={{ uri: imageUrl }}
+          source={{ uri: localImageUrl }}
           style={[
             styles.image,
             {
@@ -154,7 +170,7 @@ export function ProfilePicture({
   };
 
   const renderEditOverlay = () => {
-    if (!editable || loading) return null;
+    if (!editable || isLoading) return null;
 
     return (
       <View
@@ -169,7 +185,7 @@ export function ProfilePicture({
           },
         ]}
       >
-        {imageUrl ? (
+        {localImageUrl ? (
           <Edit3 
             color="white" 
             size={config.editIcon} 
@@ -190,7 +206,7 @@ export function ProfilePicture({
         style={containerStyle}
         onPress={onPress}
         activeOpacity={0.8}
-        disabled={loading}
+        disabled={isLoading}
       >
         {renderContent()}
         {renderEditOverlay()}

@@ -150,19 +150,5 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     marginHorizontal: 4,
   },
-  paginationDotActive: {
-    backgroundColor: "#0F766E",
-    width: 24,
-  },
-  nextButton: {
-    borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 48,
-    minWidth: width - 48,
-    alignItems: "center",
-  },
-  nextButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-  },
+  // Unused styles removed - CustomButton handles styling
 });

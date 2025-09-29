@@ -22,6 +22,10 @@ import { getBadgeVisuals } from "@/theme/badge-utils";
 import { TransactionItem } from "@/components/TransactionItem";
 import { useApp } from "@/context/AppContext";
 import { ActivityEvent } from "@/types/activity";
+import { activityService } from '@/lib/appwrite';
+import LoadingAnimation from '@/components/LoadingAnimation';
+import { useLoading, LOADING_CONFIGS } from '@/hooks/useLoading';
+import useAuthStore from '@/store/auth.store';
 import { getApiBase } from '@/lib/api';
 
 type Payment = { id: string; status: string; amount?: number; currency?: string; created?: string };
@@ -29,10 +33,11 @@ type Payment = { id: string; status: string; amount?: number; currency?: string;
 export default function ActivityScreen() {
 
 	const { transactions, activity, clearAllActivity } = useApp();
+	const { user } = useAuthStore();
+	const { loading, withLoading, showLoading, hideLoading } = useLoading();
 	const [suppressAllLogs, setSuppressAllLogs] = useState(false);
 	const [activitySuppressed, setActivitySuppressed] = useState(false);
 	const [payments, setPayments] = React.useState<Payment[]>([]);
-	const [loading, setLoading] = React.useState(false);
 	const [loadingMore, setLoadingMore] = React.useState(false);
 	const [error, setError] = React.useState<string | null>(null);
 	const [showClearActivity, setShowClearActivity] = React.useState(false);
@@ -138,18 +143,17 @@ export default function ActivityScreen() {
 	const setAllOn = () => setFilters({ income: true, expense: true, account: true, card: true });
 
 	const handleClearActivity = async () => {
-		setIsClearingActivity(true);
 		try {
-			await clearAllActivity();
-			// Also suppress any locally loaded logs (payments/transactions) for this session
-			setPayments([]);
-			setSuppressAllLogs(true);
-			setActivitySuppressed(true);
 			setShowClearActivity(false);
+			await withLoading(async () => {
+				await clearAllActivity();
+				// Also suppress any locally loaded logs (payments/transactions) for this session
+				setPayments([]);
+				setSuppressAllLogs(true);
+				setActivitySuppressed(true);
+			}, LOADING_CONFIGS.SYNC_DATA);
 		} catch (error) {
 			logger.error('ACTIVITY', 'Failed to clear activity:', error);
-		} finally {
-			setIsClearingActivity(false);
 		}
 	};
 
@@ -192,22 +196,45 @@ export default function ActivityScreen() {
 	const fetchPayments = async (reset: boolean) => {
 		try {
 			if (reset) {
-				setLoading(true);
+				showLoading();
 				setPayments([]);
 				setNextPaymentsCursor(null);
 			}
 			const jwt = (global as any).__APPWRITE_JWT__ || undefined;
 			const url = buildPaymentsQuery(PAY_PAGE_SIZE);
 			const res = await fetch(url, { headers: { ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) } });
+			
+			// Handle authentication errors gracefully
+			if (res.status === 401) {
+				logger.warn('ACTIVITY', 'Authentication failed, clearing payment data');
+				setPayments([]);
+				return; // Don't throw error for auth issues, just show empty state
+			}
+			
 			const data = await res.json();
-			if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+			if (!res.ok) {
+				// Handle 404 or API not available gracefully
+				if (res.status === 404) {
+					logger.info('ACTIVITY', 'Payments API not available, showing empty state');
+					setPayments([]);
+					return;
+				}
+				throw new Error(data?.error || `HTTP ${res.status}`);
+			}
 			const list: Payment[] = Array.isArray(data?.data) ? data.data : [];
 			setPayments(list);
 			setNextPaymentsCursor(data?.nextCursor ?? null);
 		} catch (e: any) {
-			setError(e?.message || "Failed to load payments");
+			// Only log as warning instead of error for common cases
+			if (e?.message?.includes('Failed to fetch') || e?.message?.includes('Network')) {
+				logger.warn('ACTIVITY', 'Network error loading payments:', e.message);
+			} else {
+				logger.error('ACTIVITY', 'Error loading payments:', e.message);
+			}
+			// Don't set error state for auth/network issues - just show empty state
+			setPayments([]);
 		} finally {
-			if (reset) setLoading(false);
+			if (reset) hideLoading();
 		}
 	};
 
@@ -218,8 +245,21 @@ export default function ActivityScreen() {
 			const jwt = (global as any).__APPWRITE_JWT__ || undefined;
 			const url = buildPaymentsQuery(PAY_PAGE_SIZE, nextPaymentsCursor);
 			const res = await fetch(url, { headers: { ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) } });
+			
+			// Handle authentication errors gracefully
+			if (res.status === 401) {
+				logger.warn('ACTIVITY', 'Authentication failed while loading more payments');
+				return; // Stop loading more if auth fails
+			}
+			
 			const data = await res.json();
-			if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+			if (!res.ok) {
+				if (res.status === 404) {
+					logger.info('ACTIVITY', 'No more payments available');
+					return;
+				}
+				throw new Error(data?.error || `HTTP ${res.status}`);
+			}
 			const list: Payment[] = Array.isArray(data?.data) ? data.data : [];
 			setPayments(prev => {
 				const seen = new Set(prev.map(p => p.id));
@@ -228,8 +268,9 @@ export default function ActivityScreen() {
 				return merged;
 			});
 			setNextPaymentsCursor(data?.nextCursor ?? null);
-		} catch {
-			setError("Failed to load more payments");
+		} catch (e: any) {
+			logger.warn('ACTIVITY', 'Failed to load more payments:', e.message);
+			// Don't show error message to user for load more failures
 		} finally {
 			setLoadingMore(false);
 		}
@@ -726,7 +767,15 @@ export default function ActivityScreen() {
 					onConfirm={handleClearActivity}
 					dataType="activity"
 					count={activity.length}
-					isLoading={isClearingActivity}
+					isLoading={false}
+				/>
+				
+				<LoadingAnimation
+					visible={loading.visible}
+					message={loading.message}
+					subtitle={loading.subtitle}
+					type={loading.type}
+					size={loading.size}
 				/>
 			</KeyboardAvoidingView>
 		</SafeAreaView>

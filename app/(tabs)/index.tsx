@@ -27,6 +27,7 @@ import { QuickAction } from "@/components/QuickAction";
 import { TransactionItem } from "@/components/TransactionItem";
 import { ProfilePicture } from "@/components/ProfilePicture";
 import { ClearDataModal } from "@/components/ClearDataModal";
+import { TransactionAnalytics } from "@/components/TransactionAnalytics";
 import { useApp } from "@/context/AppContext";
 
 import { useTheme } from "@/context/ThemeContext";
@@ -200,6 +201,9 @@ export default function HomeScreen() {
               onPress={() => {}}
             />
           </View>
+
+          {/* Transaction Analytics */}
+          <TransactionAnalytics />
 
           <View style={[styles.transactionsSection, { backgroundColor: colors.card }]}>
             {/* Sticky Header */}
