@@ -45,7 +45,6 @@ export function CustomSwitch({
 }: CustomSwitchProps) {
   const { colors } = useTheme();
   const animatedValue = useRef(new Animated.Value(value ? 1 : 0)).current;
-  const scaleAnim = useRef(new Animated.Value(1)).current;
 
   // Get size dimensions based on platform standards and size prop
   const getSizeDimensions = () => {
@@ -94,22 +93,6 @@ export function CustomSwitch({
   // Handle press with haptic feedback and animations
   const handlePress = () => {
     if (disabled) return;
-
-    // Press animation
-    Animated.sequence([
-      Animated.spring(scaleAnim, {
-        toValue: 0.95,
-        useNativeDriver: true,
-        tension: 300,
-        friction: 20,
-      }),
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        useNativeDriver: true,
-        tension: 300,
-        friction: 20,
-      }),
-    ]).start();
 
     // Haptic feedback on iOS
     if (Platform.OS === 'ios') {
@@ -225,7 +208,6 @@ export function CustomSwitch({
             backgroundColor: trackColor,
             borderWidth: Platform.OS === 'android' ? 1 : 0,
             borderColor: trackBorderColor,
-            transform: [{ scale: scaleAnim }],
           },
         ]}
       >

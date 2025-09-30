@@ -19,14 +19,18 @@ interface AnalyticsData {
   categoryBreakdown: { name: string; amount: number; color: string }[];
 }
 
-export function TransactionAnalytics() {
+interface TransactionAnalyticsProps {
+  cardId?: string; // Optional card ID to filter transactions
+}
+
+export function TransactionAnalytics({ cardId }: TransactionAnalyticsProps = {}) {
   const { colors } = useTheme();
-  const { transactions } = useApp();
+  const { transactions, activeCard } = useApp();
   const [selectedPeriod, setSelectedPeriod] = useState<Period>('month');
   
   const screenWidth = Dimensions.get('window').width;
 
-  // Filter and process transactions based on selected period
+  // Filter and process transactions based on selected period and card
   const analyticsData = useMemo((): AnalyticsData => {
     if (!transactions || transactions.length === 0) {
       return {
@@ -40,15 +44,24 @@ export function TransactionAnalytics() {
       };
     }
 
+    // Determine which card to filter by
+    const targetCardId = cardId || activeCard?.id;
+    
+    // Filter transactions by card if a card is selected
+    let allTransactions = transactions;
+    if (targetCardId) {
+      allTransactions = transactions.filter(t => t.cardId === targetCardId);
+    }
+
     const now = new Date();
     let filteredTransactions: Transaction[] = [];
     let labels: string[] = [];
 
-    // Filter transactions based on period
+    // Filter transactions based on period (from card-filtered transactions)
     switch (selectedPeriod) {
       case 'week': {
         const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        filteredTransactions = transactions.filter(t => new Date(t.date) >= weekAgo);
+        filteredTransactions = allTransactions.filter(t => new Date(t.date) >= weekAgo);
         // Generate labels for last 7 days
         for (let i = 6; i >= 0; i--) {
           const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
@@ -58,14 +71,14 @@ export function TransactionAnalytics() {
       }
       case 'month': {
         const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        filteredTransactions = transactions.filter(t => new Date(t.date) >= monthAgo);
+        filteredTransactions = allTransactions.filter(t => new Date(t.date) >= monthAgo);
         // Generate labels for last 4 weeks
         labels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
         break;
       }
       case 'year': {
         const yearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-        filteredTransactions = transactions.filter(t => new Date(t.date) >= yearAgo);
+        filteredTransactions = allTransactions.filter(t => new Date(t.date) >= yearAgo);
         // Generate labels for last 12 months
         for (let i = 11; i >= 0; i--) {
           const date = new Date();
@@ -160,7 +173,7 @@ export function TransactionAnalytics() {
       netAmount: totalIncome - totalExpenses,
       categoryBreakdown,
     };
-  }, [transactions, selectedPeriod, colors]);
+  }, [transactions, selectedPeriod, colors, cardId, activeCard?.id]);
 
   // Chart configuration
   const chartConfig = {

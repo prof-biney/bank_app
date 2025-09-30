@@ -437,35 +437,57 @@ export default function AnalyticsReportsModal({ visible, onClose }: AnalyticsRep
           </View>
         </View>
 
-        {/* Format Selection */}
+        {/* Format Selection (Enhanced Visibility) */}
         <View style={[styles.sectionContainer, { backgroundColor: colors.card }]}>
           <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
-            Report Format
+            📊 Report Format
           </Text>
-          {FORMAT_OPTIONS.map(format => (
-            <TouchableOpacity
-              key={format.value}
-              style={[
-                styles.formatOption,
-                { backgroundColor: colors.background }
-              ]}
-              onPress={() => setSelectedFormat(format.value)}
-            >
-              <View style={styles.formatContent}>
-                <Ionicons name={format.icon as any} size={24} color={colors.textSecondary} />
-                <View style={styles.formatText}>
-                  <Text style={[styles.formatLabel, { color: colors.textPrimary }]}>
+          <Text style={[styles.sectionHelper, { color: colors.textSecondary }]}>
+            Choose your preferred file format for the generated report
+          </Text>
+
+          <View style={styles.formatChips}>
+            {FORMAT_OPTIONS.map(format => {
+              const selected = selectedFormat === format.value;
+              return (
+                <TouchableOpacity
+                  key={format.value}
+                  style={[styles.formatChip, {
+                    backgroundColor: selected ? colors.tintPrimary : colors.background,
+                    borderColor: selected ? colors.tintPrimary : colors.border,
+                    shadowColor: selected ? colors.tintPrimary : 'transparent',
+                    shadowOpacity: selected ? 0.3 : 0,
+                    shadowRadius: selected ? 4 : 0,
+                    elevation: selected ? 2 : 0,
+                  }]}
+                  onPress={() => setSelectedFormat(format.value)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={`Select ${format.label} format`}
+                >
+                  <Ionicons
+                    name={format.icon as any}
+                    size={20}
+                    color={selected ? '#fff' : colors.textSecondary}
+                  />
+                  <Text style={[styles.formatChipText, { 
+                    color: selected ? '#fff' : colors.textPrimary,
+                    fontWeight: selected ? '700' : '500'
+                  }]}>
                     {format.label}
                   </Text>
-                </View>
-                <Ionicons
-                  name={selectedFormat === format.value ? 'radio-button-on' : 'radio-button-off'}
-                  size={24}
-                  color={selectedFormat === format.value ? colors.tintPrimary : colors.textSecondary}
-                />
-              </View>
-            </TouchableOpacity>
-          ))}
+                  {selected && (
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={16}
+                      color="#fff"
+                      style={{ marginLeft: 4 }}
+                    />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </View>
 
         {/* Options */}
@@ -721,6 +743,10 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
+    marginBottom: 8,
+  },
+  sectionHelper: {
+    fontSize: 13,
     marginBottom: 16,
   },
   insightCard: {
@@ -741,6 +767,24 @@ const styles = StyleSheet.create({
   insightDescription: {
     fontSize: 13,
     lineHeight: 18,
+  },
+  formatChips: {
+    flexDirection: 'column',
+    gap: 12,
+  },
+  formatChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 16,
+    borderWidth: 2,
+    gap: 12,
+  },
+  formatChipText: {
+    fontSize: 16,
+    flex: 1,
   },
   tableContainer: {
     padding: 16,
