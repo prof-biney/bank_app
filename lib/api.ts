@@ -2,11 +2,10 @@
 // Uses Appwrite Functions instead of external servers like fly.io
 
 import { Functions } from 'appwrite';
-import { appwriteConfig } from './appwrite/config';
+import { appwriteConfig, client } from './appwrite/config';
 
 // Get Appwrite Functions client
 export function getFunctionsClient(): Functions {
-  const { client } = appwriteConfig;
   return new Functions(client);
 }
 

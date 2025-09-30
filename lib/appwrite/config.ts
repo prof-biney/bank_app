@@ -132,6 +132,7 @@ export const AppwriteQuery = {
   lessThanEqual: (field: string, value: any) => Query.lessThanEqual(field, value),
   greaterThan: (field: string, value: any) => Query.greaterThan(field, value),
   greaterThanEqual: (field: string, value: any) => Query.greaterThanEqual(field, value),
+  in: (field: string, values: any[]) => Query.equal(field, values), // Use equal for single values or contains for arrays
   search: (field: string, value: string) => Query.search(field, value),
   orderAsc: (field: string) => Query.orderAsc(field),
   orderDesc: (field: string) => Query.orderDesc(field),

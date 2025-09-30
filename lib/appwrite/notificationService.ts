@@ -99,7 +99,8 @@ export class AppwriteNotificationService {
       type: notificationData.type || 'system',
       unread: true,
       archived: false,
-      metadata: notificationData.metadata || {},
+      // Note: metadata field removed as it's not in the Appwrite schema
+      // Store metadata info in the message if needed
       createdAt: new Date().toISOString(),
     };
   }

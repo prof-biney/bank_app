@@ -5,8 +5,8 @@
       "barStyle": "dark-content"
     },
     "androidStatusBar": {
-      "backgroundColor": "#ffffff",
-      "barStyle": "dark-content"
+      "backgroundColor": "#0F766E",
+      "barStyle": "light-content"
     },
     "name": "bank_app",
     "slug": "bank_app",

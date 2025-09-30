@@ -5,7 +5,7 @@
  * Generates insights, trends, and downloadable reports for cards and transactions.
  */
 
-import { databases, appwriteConfig, Query } from './config';
+import { databases, appwriteConfig, Query, AppwriteQuery } from './config';
 import { databaseService } from './database';
 import { Card, Transaction } from '@/constants/index';
 import { logger } from '@/lib/logger';
@@ -206,9 +206,9 @@ class AnalyticsService {
   private async fetchTransactions(cardIds?: string[], startDate?: Date, endDate?: Date): Promise<Transaction[]> {
     const queries = [Query.orderDesc('$createdAt')];
     
-    if (cardIds && cardIds.length > 0) {
-      queries.push(Query.in('cardId', cardIds));
-    }
+    // Note: Query.in might not be available in current Appwrite SDK
+    // For now, if specific cards are requested, we'll filter after fetching
+    // This can be optimized later with proper query support
     
     if (startDate) {
       queries.push(Query.greaterThanEqual('$createdAt', startDate.toISOString()));
@@ -224,7 +224,7 @@ class AnalyticsService {
       queries
     );
 
-    return response.documents.map(doc => ({
+    let transactions = response.documents.map(doc => ({
       id: doc.$id,
       userId: doc.userId,
       cardId: doc.cardId,
@@ -236,18 +236,24 @@ class AnalyticsService {
       date: doc.date || doc.$createdAt,
       fee: doc.fee || 0
     }));
+
+    // Filter by cardIds if specified (since Query.in might not be available)
+    if (cardIds && cardIds.length > 0) {
+      transactions = transactions.filter(t => cardIds.includes(t.cardId));
+    }
+
+    return transactions;
   }
 
   private async fetchCards(cardIds: string[]): Promise<Card[]> {
-    const queries = [Query.in('$id', cardIds)];
-    
+    // Fetch all cards first, then filter by IDs (since Query.in might not be available)
     const response = await databases.listDocuments(
       appwriteConfig.databaseId,
       this.cardsCollectionId,
-      queries
+      [Query.equal('isActive', true)]
     );
 
-    return response.documents.map(doc => ({
+    const allCards = response.documents.map(doc => ({
       id: doc.$id,
       userId: doc.userId,
       cardNumber: doc.cardNumber,
@@ -260,6 +266,9 @@ class AnalyticsService {
       token: doc.token,
       currency: doc.currency || 'GHS'
     }));
+
+    // Filter by cardIds
+    return allCards.filter(card => cardIds.includes(card.id));
   }
 
   private async fetchAllCards(): Promise<Card[]> {
