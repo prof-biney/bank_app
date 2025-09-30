@@ -32,12 +32,14 @@
       }
     },
     "ios": {
+      "bundleIdentifier": "com.charatech.bankapp",
       "supportsTablet": true,
       "infoPlist": {
         "NSFaceIDUsageDescription": "This app uses Face ID for secure and convenient authentication."
       }
     },
     "android": {
+      "package": "com.charatech.bankapp",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
