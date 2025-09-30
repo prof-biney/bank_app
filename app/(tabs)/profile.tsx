@@ -7,7 +7,7 @@ import {
   LogOut,
   Settings,
 } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -33,15 +33,14 @@ export default function ProfileScreen() {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const { loading, withLoading } = useLoading();
 
-  const handleSignOut = () => {
-    // Immediate UI response
-    requestAnimationFrame(() => {
-      setShowLogoutModal(true);
-    });
-  };
+  const handleSignOut = useCallback(() => {
+    logger.debug('SCREEN', 'Sign out button pressed');
+    setShowLogoutModal(true);
+  }, []);
 
-  const handleConfirmLogout = async () => {
+  const handleConfirmLogout = useCallback(async () => {
     try {
+      logger.debug('SCREEN', 'Confirming logout');
       // Close modal immediately for better UX
       setShowLogoutModal(false);
       
@@ -54,28 +53,26 @@ export default function ProfileScreen() {
       logger.error('SCREEN', 'Logout error:', error);
       showAlert('error', 'Failed to sign out. Please try again.', 'Error');
     }
-  };
+  }, [logout, showAlert, withLoading]);
 
-  const handleSettings = () => {
-    // Immediate navigation with animation frame
-    requestAnimationFrame(() => {
-      router.push("/settings");
-    });
-  };
+  const handleSettings = useCallback(() => {
+    logger.debug('SCREEN', 'Settings button pressed');
+    router.push("/settings");
+  }, []);
 
-  const handleHelpSupport = () => {
-    // Immediate navigation with animation frame
-    requestAnimationFrame(() => {
-      router.push("/help-support");
-    });
-  };
+  const handleHelpSupport = useCallback(() => {
+    logger.debug('SCREEN', 'Help & Support button pressed');
+    router.push("/help-support");
+  }, []);
 
-  const handleProfilePicturePress = () => {
+  const handleProfilePicturePress = useCallback(() => {
+    logger.debug('SCREEN', 'Profile picture pressed');
     setShowImagePicker(true);
-  };
+  }, []);
 
-  const handleImageSelected = async (imageUri: string) => {
+  const handleImageSelected = useCallback(async (imageUri: string) => {
     try {
+      logger.debug('SCREEN', 'Image selected for profile picture');
       await withLoading(async () => {
         await updateProfilePicture(imageUri);
         showAlert('success', 'Profile picture updated successfully!', 'Success');
@@ -84,7 +81,7 @@ export default function ProfileScreen() {
       logger.error('SCREEN', 'Profile picture update error:', error);
       showAlert('error', error instanceof Error ? error.message : 'Failed to update profile picture', 'Error');
     }
-  };
+  }, [updateProfilePicture, showAlert, withLoading]);
 
   const { colors } = useTheme();
 
@@ -116,8 +113,9 @@ export default function ProfileScreen() {
           <TouchableOpacity 
             style={[styles.menuItem, { borderBottomColor: colors.border }]} 
             onPress={handleSettings}
-            activeOpacity={0.7}
-            delayPressIn={0}
+            activeOpacity={0.6}
+            delayPressIn={50}
+            delayPressOut={50}
           >
             <View style={styles.menuItemLeft}>
               <Settings color={colors.textSecondary} size={20} />
@@ -128,8 +126,9 @@ export default function ProfileScreen() {
           <TouchableOpacity 
             style={[styles.menuItem, { borderBottomColor: colors.border }]} 
             onPress={handleHelpSupport}
-            activeOpacity={0.7}
-            delayPressIn={0}
+            activeOpacity={0.6}
+            delayPressIn={50}
+            delayPressOut={50}
           >
             <View style={styles.menuItemLeft}>
               <HelpCircle color={colors.textSecondary} size={20} />
@@ -140,8 +139,9 @@ export default function ProfileScreen() {
           <TouchableOpacity 
             style={[styles.menuItem, { borderBottomColor: colors.border }]} 
             onPress={handleSignOut}
-            activeOpacity={0.7}
-            delayPressIn={0}
+            activeOpacity={0.6}
+            delayPressIn={50}
+            delayPressOut={50}
           >
             <View style={styles.menuItemLeft}>
               <LogOut color={colors.negative} size={20} />

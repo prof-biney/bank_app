@@ -227,16 +227,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   // Create transition style for smooth theme changes
   // Disable animations on initial load to prevent shake
+  // Avoid scale transform on auth screens to prevent shaking
   const transitionStyle: ViewStyle = isInitialLoad ? {} : {
     opacity: fadeAnim,
-    transform: [
-      {
-        scale: fadeAnim.interpolate({
-          inputRange: [0.95, 1],
-          outputRange: [0.9995, 1], // Further reduced scale change to minimize shake
-        }),
-      },
-    ],
+    // Only use minimal opacity changes for smoother transitions
+    // Scale transform was causing visible shaking on login screen
   };
 
   const value: Theme = {

@@ -1,9 +1,10 @@
 import { router } from "expo-router";
-import { ArrowLeft, Bell, Globe, Shield, BarChart3 } from "lucide-react-native";
+import { ArrowLeft, Bell, Globe, Shield, BarChart3, ChevronRight } from "lucide-react-native";
 import React, { useState, useEffect } from "react";
 import { useTheme } from "@/context/ThemeContext";
-import { StyleSheet, Text, TouchableOpacity, View, Animated, Alert, ScrollView } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View, Animated, Alert, ScrollView, Modal } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { CustomSwitch } from "@/components/ui/CustomSwitch";
 import useAuthStore from "@/store/auth.store";
@@ -30,6 +31,64 @@ export default function SettingsScreen() {
   const [biometricAvailability, setBiometricAvailability] = useState<BiometricAvailability | null>(null);
   const [isSettingUpBiometric, setIsSettingUpBiometric] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
+  const [showLanguageSelector, setShowLanguageSelector] = useState(false);
+  const [selectedLanguage, setSelectedLanguage] = useState('English');
+  
+  const availableLanguages = [
+    { code: 'en', name: 'English' },
+    { code: 'es', name: 'Español' },
+    { code: 'fr', name: 'Français' },
+    { code: 'de', name: 'Deutsch' },
+    { code: 'it', name: 'Italiano' },
+    { code: 'pt', name: 'Português' },
+    { code: 'zh', name: '中文' },
+    { code: 'ja', name: '日本語' },
+    { code: 'ko', name: '한국어' },
+    { code: 'ar', name: 'العربية' }
+  ];
+  
+  // Handle navigation back with fallback
+  const handleGoBack = () => {
+    try {
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        // Fallback to profile screen if we can't go back
+        router.push('/(tabs)/profile');
+      }
+    } catch (error) {
+      console.error('Navigation error:', error);
+      // Last resort fallback to profile
+      router.replace('/(tabs)/profile');
+    }
+  };
+  
+  // Load settings from storage on mount
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const [notificationsValue, analyticsValue, languageValue] = await Promise.all([
+          AsyncStorage.getItem('settings_notifications'),
+          AsyncStorage.getItem('settings_analytics'),
+          AsyncStorage.getItem('settings_language')
+        ]);
+        
+        if (notificationsValue !== null) {
+          setNotificationsEnabled(JSON.parse(notificationsValue));
+        }
+        if (analyticsValue !== null) {
+          setAnalyticsEnabled(JSON.parse(analyticsValue));
+        }
+        if (languageValue !== null) {
+          setSelectedLanguage(languageValue);
+        }
+      } catch (error) {
+        console.error('Error loading settings:', error);
+      }
+    };
+    
+    loadSettings();
+  }, []);
   
   // Initialize biometric state on mount (non-blocking)
   useEffect(() => {
@@ -139,7 +198,7 @@ export default function SettingsScreen() {
       <Animated.View style={[{ flex: 1 }, transitionStyle]}>
         <View style={styles.header}>
           <TouchableOpacity
-            onPress={() => router.back()}
+            onPress={handleGoBack}
             style={[styles.backButton, { backgroundColor: colors.card }]}
           >
             <ArrowLeft color={colors.textSecondary} size={24} />
@@ -201,8 +260,15 @@ export default function SettingsScreen() {
               onValueChange={(value) => {
                 // Immediate visual feedback
                 setNotificationsEnabled(value);
-                // Add haptic feedback for better UX
-                // HapticFeedback.impact(HapticFeedback.ImpactFeedbackStyle.Light);
+                // Persist to storage
+                AsyncStorage.setItem('settings_notifications', JSON.stringify(value));
+                // Show confirmation
+                showAlert(
+                  'success',
+                  value ? 'You will now receive push notifications about account activity.' 
+                        : 'You will no longer receive push notifications.',
+                  'Notifications ' + (value ? 'Enabled' : 'Disabled')
+                );
               }}
               accessibilityLabel="Toggle push notifications"
               accessibilityHint="Enables or disables push notifications for account activity"
@@ -284,8 +350,15 @@ export default function SettingsScreen() {
               onValueChange={(value) => {
                 // Immediate visual feedback
                 setAnalyticsEnabled(value);
-                // Add haptic feedback for better UX
-                // HapticFeedback.impact(HapticFeedback.ImpactFeedbackStyle.Light);
+                // Persist to storage
+                AsyncStorage.setItem('settings_analytics', JSON.stringify(value));
+                // Show confirmation with more details
+                showAlert(
+                  'success',
+                  value ? 'Anonymous usage data will be collected to help improve the app. No personal information is shared.' 
+                        : 'No usage data will be collected.',
+                  'Analytics ' + (value ? 'Enabled' : 'Disabled')
+                );
               }}
               accessibilityLabel="Toggle analytics data sharing"
               accessibilityHint="Enables or disables sharing of anonymous usage analytics"
@@ -295,7 +368,10 @@ export default function SettingsScreen() {
 
         <View style={[styles.section, { backgroundColor: colors.card }]}>
           <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>General</Text>
-          <TouchableOpacity style={styles.settingItem}>
+          <TouchableOpacity 
+            style={styles.settingItem}
+            onPress={() => setShowLanguageSelector(true)}
+          >
             <View style={styles.settingLeft}>
               <Globe color={colors.textSecondary} size={20} />
               <View style={styles.settingTextContainer}>
@@ -309,12 +385,73 @@ export default function SettingsScreen() {
                 <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>Choose your preferred language</Text>
               </View>
             </View>
-            <Text style={[styles.settingValue, { color: colors.textSecondary }]}>English</Text>
+            <View style={styles.settingRight}>
+              <Text style={[styles.settingValue, { color: colors.textSecondary }]}>{selectedLanguage}</Text>
+              <ChevronRight color={colors.textSecondary} size={20} style={{ marginLeft: 8 }} />
+            </View>
           </TouchableOpacity>
         </View>
           </View>
         </ScrollView>
       </Animated.View>
+      
+      {/* Language Selector Modal */}
+      <Modal
+        visible={showLanguageSelector}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowLanguageSelector(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.languageModal, { backgroundColor: colors.card }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Select Language</Text>
+              <TouchableOpacity 
+                onPress={() => setShowLanguageSelector(false)}
+                style={styles.modalCloseButton}
+              >
+                <Text style={[styles.modalCloseText, { color: colors.textSecondary }]}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.languageList}>
+              {availableLanguages.map((language) => (
+                <TouchableOpacity
+                  key={language.code}
+                  style={[
+                    styles.languageOption,
+                    selectedLanguage === language.name && {
+                      backgroundColor: colors.tintPrimary + '20'
+                    }
+                  ]}
+                  onPress={() => {
+                    setSelectedLanguage(language.name);
+                    AsyncStorage.setItem('settings_language', language.name);
+                    setShowLanguageSelector(false);
+                    showAlert(
+                      'success',
+                      `Language has been set to ${language.name}. Please restart the app for changes to take full effect.`,
+                      'Language Updated'
+                    );
+                  }}
+                >
+                  <Text style={[
+                    styles.languageText,
+                    { 
+                      color: selectedLanguage === language.name ? colors.tintPrimary : colors.textPrimary,
+                      fontWeight: selectedLanguage === language.name ? '600' : '400'
+                    }
+                  ]}>
+                    {language.name}
+                  </Text>
+                  {selectedLanguage === language.name && (
+                    <View style={[styles.selectedIndicator, { backgroundColor: colors.tintPrimary }]} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -407,6 +544,10 @@ const styles = StyleSheet.create({
   settingValue: {
     fontSize: 16,
   },
+  settingRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   themeToggleContainer: {
     marginRight: 4, // Align with other icons
     marginTop: -2, // Center vertically with text
@@ -425,5 +566,66 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     opacity: 0.8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  languageModal: {
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '80%',
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 10,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  modalCloseButton: {
+    padding: 4,
+  },
+  modalCloseText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  languageList: {
+    maxHeight: 300,
+  },
+  languageOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  languageText: {
+    fontSize: 16,
+    flex: 1,
+  },
+  selectedIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
 });

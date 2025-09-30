@@ -1,5 +1,6 @@
 import { logger } from '@/lib/logger';
 import { Filter, ArrowDownLeft, ArrowUpRight, User, CreditCard as CardIcon, CreditCard } from "lucide-react-native";
+import { MaterialIcons } from '@expo/vector-icons';
 import React, { useMemo, useState } from "react";
 import { 
 	KeyboardAvoidingView,
@@ -22,10 +23,10 @@ import { getBadgeVisuals } from "@/theme/badge-utils";
 import { TransactionItem } from "@/components/TransactionItem";
 import { useApp } from "@/context/AppContext";
 import { ActivityEvent } from "@/types/activity";
+import { Transaction } from "@/constants/index";
 import { activityService } from '@/lib/appwrite';
 import LoadingAnimation from '@/components/LoadingAnimation';
 import { useLoading, LOADING_CONFIGS } from '@/hooks/useLoading';
-import useAuthStore from '@/store/auth.store';
 import { getApiBase } from '@/lib/api';
 
 type Payment = { id: string; status: string; amount?: number; currency?: string; created?: string };
@@ -33,8 +34,11 @@ type Payment = { id: string; status: string; amount?: number; currency?: string;
 export default function ActivityScreen() {
 
 	const { transactions, activity, clearAllActivity } = useApp();
-	const { user } = useAuthStore();
 	const { loading, withLoading, showLoading, hideLoading } = useLoading();
+	
+	// No mock data - use real data only
+	
+	// No mock activity data - use real data only
 	const [suppressAllLogs, setSuppressAllLogs] = useState(false);
 	const [activitySuppressed, setActivitySuppressed] = useState(false);
 	const [payments, setPayments] = React.useState<Payment[]>([]);
@@ -200,9 +204,8 @@ export default function ActivityScreen() {
 				setPayments([]);
 				setNextPaymentsCursor(null);
 			}
-			const jwt = (global as any).__APPWRITE_JWT__ || undefined;
 			const url = buildPaymentsQuery(PAY_PAGE_SIZE);
-			const res = await fetch(url, { headers: { ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) } });
+			const res = await fetch(url, { headers: {} });
 			
 			// Handle authentication errors gracefully
 			if (res.status === 401) {
@@ -242,9 +245,8 @@ export default function ActivityScreen() {
 		if (!nextPaymentsCursor || loadingMore) return;
 		try {
 			setLoadingMore(true);
-			const jwt = (global as any).__APPWRITE_JWT__ || undefined;
 			const url = buildPaymentsQuery(PAY_PAGE_SIZE, nextPaymentsCursor);
-			const res = await fetch(url, { headers: { ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) } });
+			const res = await fetch(url, { headers: {} });
 			
 			// Handle authentication errors gracefully
 			if (res.status === 401) {
@@ -278,12 +280,9 @@ export default function ActivityScreen() {
 
 	const handleCapture = async (id: string) => {
 		try {
-			const apiBase = getApiBase();
-			const url = `${apiBase.replace(/\/$/, "")}/v1/payments/${id}/capture`;
-			const jwt = (global as any).__APPWRITE_JWT__ || undefined;
-			const headers: any = {};
-			if (jwt) headers['Authorization'] = `Bearer ${jwt}`;
-			const res = await fetch(url, { method: 'POST', headers });
+		const apiBase = getApiBase();
+		const url = `${apiBase.replace(/\/$/, "")}/v1/payments/${id}/capture`;
+		const res = await fetch(url, { method: 'POST', headers: {} });
 			const data = await res.json();
 			if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
 			setPayments((prev) => prev.map((p) => (p.id === id ? { ...p, status: 'captured' } : p)));
@@ -294,12 +293,9 @@ export default function ActivityScreen() {
 
 	const handleRefund = async (id: string) => {
 		try {
-			const apiBase = getApiBase();
-			const url = `${apiBase.replace(/\/$/, "")}/v1/payments/${id}/refund`;
-			const jwt = (global as any).__APPWRITE_JWT__ || undefined;
-			const headers: any = {};
-			if (jwt) headers['Authorization'] = `Bearer ${jwt}`;
-			const res = await fetch(url, { method: 'POST', headers });
+		const apiBase = getApiBase();
+		const url = `${apiBase.replace(/\/$/, "")}/v1/payments/${id}/refund`;
+		const res = await fetch(url, { method: 'POST', headers: {} });
 			const data = await res.json();
 			if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
 			setPayments((prev) => prev.map((p) => (p.id === id ? { ...p, status: 'refunded' } : p)));
@@ -313,9 +309,11 @@ export default function ActivityScreen() {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [typeFilter, statusFilter]);
 	const getFilteredTransactions = () => {
-		if (!Array.isArray(transactions)) return [];
+		// Use only real transaction data, no mock fallback
+		const sourceTransactions = Array.isArray(transactions) ? transactions : [];
+		if (!Array.isArray(sourceTransactions)) return [];
 
-		let filtered = [...transactions];
+		let filtered = [...sourceTransactions];
 
 		// Apply date filter first
 		const now = new Date();
@@ -357,7 +355,9 @@ export default function ActivityScreen() {
 	};
 
 	const activityCards = useMemo(() => {
-		const events: ActivityEvent[] = activity.filter((evt) => {
+		// Use only real activity data, no mock fallback
+		const sourceActivity = Array.isArray(activity) ? activity : [];
+		const events: ActivityEvent[] = sourceActivity.filter((evt) => {
 			// Apply category filters
 			if (evt.category === 'transaction') {
 				const amt = typeof evt.amount === 'number' ? evt.amount : 0;
@@ -424,7 +424,7 @@ export default function ActivityScreen() {
 			});
 		});
 
-		// Add filtered transactions (only if not already represented in activity)
+		// Add filtered transactions from real data only (only if not already represented in activity)
 		filteredTransactions.forEach(tx => {
 			// Check if this transaction is already represented in activity
 			const hasActivity = activityCards.some(evt => 
@@ -639,7 +639,7 @@ export default function ActivityScreen() {
 						<View style={[styles.horizontalBar, { backgroundColor: colors.border }]} />
 						
 					{/* Clear All Button */}
-					{allActivities.length > 0 && (
+					{(allActivities.length > 0 || activity.length > 0 || payments.length > 0) && (
 						<View style={styles.clearAllContainer}>
 								<TouchableOpacity onPress={() => setShowClearActivity(true)}>
 									<Text style={[styles.clearAllText, { color: colors.negative }]}>Clear All</Text>
@@ -658,15 +658,16 @@ export default function ActivityScreen() {
 						indicatorStyle="default"
 					>
 						{/* Empty state when there are no activities */}
-						{!loading && !error && allActivities.length === 0 && (
+						{!loading.visible && !error && allActivities.length === 0 && (
 							<View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 48 }}>
+								<MaterialIcons name="timeline" size={64} color={colors.textSecondary} style={{ marginBottom: 16 }} />
 								<Text style={{ fontSize: 18, fontWeight: '700', color: colors.textPrimary }}>
 									{activitySuppressed ? 'Activity cleared' : 'No activities yet'}
 								</Text>
 								<Text style={{ marginTop: 8, color: colors.textSecondary, textAlign: 'center', paddingHorizontal: 32 }}>
 									{activitySuppressed 
 										? 'Your activity history has been cleared from this session.'
-										: 'Once you add cards, make payments, or perform transfers, your activity will appear here.'
+										: 'Start using your cards to see transactions, transfers and other activities here.'
 									}
 								</Text>
 								{activitySuppressed && (
@@ -687,8 +688,11 @@ export default function ActivityScreen() {
 						)}
 
 						{/* Loading and Error states */}
-						{loading && (
-							<Text style={{ padding: 16, color: colors.textSecondary }}>Loading activities…</Text>
+						{loading.visible && (
+							<View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 32 }}>
+								<MaterialIcons name="hourglass-empty" size={32} color={colors.textSecondary} />
+								<Text style={{ padding: 16, color: colors.textSecondary, textAlign: 'center' }}>Loading activities…</Text>
+							</View>
 						)}
 						{error && (
 							<Text style={{ padding: 16, color: colors.negative }}>{error}</Text>

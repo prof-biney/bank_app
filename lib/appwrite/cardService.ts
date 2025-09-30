@@ -119,7 +119,7 @@ export class AppwriteCardService {
     
     // Only set balance if explicitly provided, otherwise let Appwrite use database default
     if (cardData.balance !== undefined) {
-      result.balance = Math.round(cardData.balance * 100); // Convert to cents
+      result.balance = cardData.balance; // Store balance as regular number (not cents)
     }
     
     return result;
@@ -129,6 +129,21 @@ export class AppwriteCardService {
    * Transform Appwrite document to Card type
    */
   private transformAppwriteToCard(doc: any): Card {
+    // Smart balance logic:
+    // 1. If balance field exists and is not 0, use it
+    // 2. If balance is 0 or doesn't exist, we'll calculate it later in getCard method or when requested
+    // 3. Fallback to initialBalance -> startingBalance -> default 40000
+    let cardBalance = 0;
+    if (typeof doc.balance === 'number' && doc.balance !== 0) {
+      cardBalance = doc.balance;
+    } else if (typeof doc.initialBalance === 'number') {
+      cardBalance = doc.initialBalance;
+    } else if (typeof doc.startingBalance === 'number') {
+      cardBalance = doc.startingBalance;
+    } else {
+      cardBalance = 40000; // Default balance if no field is available
+    }
+    
     return {
       id: doc.$id,
       userId: doc.userId,
@@ -139,7 +154,7 @@ export class AppwriteCardService {
         : doc.expiryDate,
       cardType: doc.brand || doc.cardType || 'card',
       cardColor: doc.color || doc.cardColor || '#1e40af',
-      balance: doc.balance ? (doc.balance / 100) : 0, // Convert from cents
+      balance: cardBalance, // Use balance as regular number (not cents)
       currency: doc.currency || 'GHS',
       token: doc.token,
       isActive: doc.status ? (doc.status !== 'inactive') : (doc.isActive !== false),
@@ -193,9 +208,9 @@ export class AppwriteCardService {
 
       logger.info('CARD_SERVICE', 'Updating card', { cardId, userId, updateData });
 
-      // First verify the card belongs to the current user
-      const existingCard = await this.getCard(cardId);
-      if (existingCard.userId !== userId) {
+      // First verify the card belongs to the current user (get directly to avoid circular call)
+      const existingDocument = await databaseService.getDocument(collections.cards.id, cardId);
+      if (existingDocument.userId !== userId) {
         throw new Error('Unauthorized: Card does not belong to current user');
       }
 
@@ -203,7 +218,7 @@ export class AppwriteCardService {
       const appwriteUpdateData: any = {};
       
       if (updateData.balance !== undefined) {
-        appwriteUpdateData.balance = Math.round(updateData.balance * 100); // Convert to cents
+        appwriteUpdateData.balance = updateData.balance; // Store balance as regular number (not cents)
       }
       if (updateData.cardHolderName !== undefined) {
         appwriteUpdateData.holder = updateData.cardHolderName;
@@ -304,7 +319,7 @@ export class AppwriteCardService {
   }
 
   /**
-   * Get a single card by ID
+   * Get a single card by ID with smart balance calculation
    */
   async getCard(cardId: string): Promise<Card> {
     try {
@@ -316,9 +331,34 @@ export class AppwriteCardService {
         throw new Error('Unauthorized: Card does not belong to current user');
       }
 
-      const card = this.transformAppwriteToCard(document);
+      let card = this.transformAppwriteToCard(document);
       
-      logger.info('CARD_SERVICE', 'Card retrieved', { cardId });
+      // If balance is 0 or missing, calculate smart balance
+      if (card.balance === 0 || !document.balance) {
+        try {
+          const calculatedBalance = await this.calculateCardBalance(cardId);
+          
+          // If calculated balance is different from current balance, update it
+          if (calculatedBalance !== card.balance) {
+            // Update the balance in Appwrite database
+            await this.updateCard(cardId, { balance: calculatedBalance });
+            card.balance = calculatedBalance;
+            
+            logger.info('CARD_SERVICE', 'Card balance updated with smart calculation', {
+              cardId,
+              oldBalance: document.balance || 0,
+              newBalance: calculatedBalance
+            });
+          }
+        } catch (balanceError) {
+          logger.warn('CARD_SERVICE', 'Failed to calculate smart balance, using existing balance', {
+            cardId,
+            error: balanceError
+          });
+        }
+      }
+      
+      logger.info('CARD_SERVICE', 'Card retrieved', { cardId, balance: card.balance });
       return card;
     } catch (error) {
       logger.error('CARD_SERVICE', 'Failed to get card', error);
@@ -423,6 +463,104 @@ export class AppwriteCardService {
     } catch (error) {
       logger.error('CARD_SERVICE', 'Failed to update card balance', error);
       throw error;
+    }
+  }
+
+  /**
+   * Calculate card balance from initial balance and transactions
+   */
+  async calculateCardBalance(cardId: string): Promise<number> {
+    try {
+      logger.info('CARD_SERVICE', 'Calculating smart balance for card', { cardId });
+      
+      // Get the card document to access initialBalance or set default
+      const document = await databaseService.getDocument(collections.cards.id, cardId);
+      const initialBalance = typeof document.initialBalance === 'number' ? document.initialBalance : 40000;
+      
+      // Import transaction service to get transactions
+      const { transactionService } = await import('./transactionService');
+      
+      // Get all transactions for this card
+      const transactions = await transactionService.getCardTransactions(cardId);
+      
+      // If no transactions exist, return the initial balance
+      if (transactions.length === 0) {
+        logger.info('CARD_SERVICE', 'No transactions found, using initial balance', { 
+          cardId, 
+          initialBalance 
+        });
+        return initialBalance;
+      }
+      
+      // Calculate balance: initial balance + sum of all transaction amounts
+      // Transactions with positive amounts add to balance, negative amounts subtract
+      let calculatedBalance = initialBalance;
+      
+      transactions.forEach(transaction => {
+        // For different transaction types:
+        // - deposit/credit: positive amount adds to balance
+        // - withdraw/debit/payment: negative amount or positive amount that should subtract
+        // - transfer: depends on whether it's incoming (+) or outgoing (-)
+        
+        let transactionEffect = transaction.amount;
+        
+        // Handle transaction types that should always subtract from balance
+        if (transaction.type === 'withdraw' || transaction.type === 'payment') {
+          transactionEffect = -Math.abs(transaction.amount);
+        }
+        // Transfer and deposit amounts should be used as-is (can be + or -)
+        
+        calculatedBalance += transactionEffect;
+        
+        logger.info('CARD_SERVICE', 'Processing transaction', {
+          transactionId: transaction.id,
+          type: transaction.type,
+          amount: transaction.amount,
+          effect: transactionEffect,
+          runningBalance: calculatedBalance
+        });
+      });
+      
+      // Ensure balance doesn't go below 0
+      calculatedBalance = Math.max(calculatedBalance, 0);
+      
+      logger.info('CARD_SERVICE', 'Smart balance calculated', {
+        cardId,
+        initialBalance,
+        transactionCount: transactions.length,
+        calculatedBalance
+      });
+      
+      return calculatedBalance;
+    } catch (error) {
+      logger.error('CARD_SERVICE', 'Failed to calculate card balance', { cardId, error });
+      // Fallback to default balance if calculation fails
+      return 40000;
+    }
+  }
+  
+  /**
+   * Update card balance in database using smart calculation
+   */
+  async recalculateAndUpdateCardBalance(cardId: string): Promise<Card> {
+    try {
+      logger.info('CARD_SERVICE', 'Recalculating and updating card balance', { cardId });
+      
+      // Calculate the smart balance
+      const calculatedBalance = await this.calculateCardBalance(cardId);
+      
+      // Update the card's balance in Appwrite
+      const updatedCard = await this.updateCard(cardId, { balance: calculatedBalance });
+      
+      logger.info('CARD_SERVICE', 'Card balance recalculated and updated', {
+        cardId,
+        newBalance: calculatedBalance
+      });
+      
+      return updatedCard;
+    } catch (error) {
+      logger.error('CARD_SERVICE', 'Failed to recalculate and update card balance', { cardId, error });
+      throw this.handleCardError(error, 'Failed to update card balance');
     }
   }
 
@@ -591,7 +729,7 @@ export class AppwriteCardService {
                 options.onBalanceChanged?.(
                   card.id,
                   card.balance,
-                  response.oldPayload?.balance / 100 || 0
+                  response.oldPayload?.balance || 0
                 );
               }
               break;
@@ -710,6 +848,8 @@ export const getCard = cardService.getCard.bind(cardService);
 export const queryCards = cardService.queryCards.bind(cardService);
 export const getActiveCards = cardService.getActiveCards.bind(cardService);
 export const updateCardBalance = cardService.updateCardBalance.bind(cardService);
+export const calculateCardBalance = cardService.calculateCardBalance.bind(cardService);
+export const recalculateAndUpdateCardBalance = cardService.recalculateAndUpdateCardBalance.bind(cardService);
 export const findCardByNumber = cardService.findCardByNumber.bind(cardService);
 export const subscribeToCards = cardService.subscribeToCards.bind(cardService);
 export const subscribeToCard = cardService.subscribeToCard.bind(cardService);

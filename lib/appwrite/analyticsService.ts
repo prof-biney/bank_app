@@ -5,8 +5,8 @@
  * Generates insights, trends, and downloadable reports for cards and transactions.
  */
 
-import { Query } from 'appwrite';
-import { databases, appwriteConfig } from './config';
+import { databases, appwriteConfig, Query } from './config';
+import { databaseService } from './database';
 import { Card, Transaction } from '@/constants/index';
 import { logger } from '@/lib/logger';
 import * as FileSystem from 'expo-file-system';

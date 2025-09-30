@@ -788,6 +788,7 @@ export default function SignUpScreen() {
           email,
           name,
           password,
+          phoneNumber: formattedPhoneNumber,
         });
 
         logger.debug('AUTH', '[SignUp] User account created successfully:', { userId: user.$id });

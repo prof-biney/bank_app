@@ -16,6 +16,11 @@
     "scheme": "bankapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F766E"
+    },
     "extra": {
       "firebaseConfig": {
         "apiKey": "EXPO_PUBLIC_FIREBASE_API_KEY",
@@ -54,10 +59,10 @@
       [
         "expo-splash-screen",
         {
+          "backgroundColor": "#0F766E",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "hideAsync": false
         }
       ],
       "expo-web-browser"

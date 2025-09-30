@@ -137,6 +137,12 @@ export default function HomeScreen() {
         style={styles.keyboardContainer}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
+        <ScrollView 
+          style={styles.mainScrollView}
+          contentContainerStyle={styles.scrollViewContent}
+          showsVerticalScrollIndicator={false}
+          bounces={true}
+        >
         <View style={styles.content}>
           <View style={styles.header}>
             <View style={styles.headerLeft}>
@@ -259,6 +265,7 @@ export default function HomeScreen() {
             </ScrollView>
           </View>
         </View>
+        </ScrollView>
 
         <NotificationModal
           visible={showNotifications}
@@ -297,6 +304,13 @@ const styles = StyleSheet.create({
   },
   keyboardContainer: {
     flex: 1,
+  },
+  mainScrollView: {
+    flex: 1,
+  },
+  scrollViewContent: {
+    flexGrow: 1,
+    paddingBottom: 100, // Add padding to account for tab bar
   },
   content: {
     flex: 1,

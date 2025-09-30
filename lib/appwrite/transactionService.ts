@@ -117,6 +117,7 @@ export class AppwriteTransactionService {
       recipient: transactionData.recipient || null,
       category: transactionData.category,
       status: transactionData.status || 'completed',
+      currency: 'GHS', // Add default currency
       date: new Date().toISOString(),
       metadata: transactionData.metadata || {},
       createdAt: new Date().toISOString(),
@@ -174,6 +175,9 @@ export class AppwriteTransactionService {
         'created', 
         `${transactionData.type} transaction of ${transactionData.amount} created`
       );
+      
+      // Recalculate and update card balance (fire-and-forget)
+      this.recalculateCardBalanceAfterTransaction(transactionData.cardId);
 
       logger.info('TRANSACTION_SERVICE', 'Transaction created successfully', { 
         transactionId: transaction.id 
@@ -241,6 +245,11 @@ export class AppwriteTransactionService {
           `Transaction status changed from ${existingTransaction.status} to ${updateData.status}`
         );
       }
+      
+      // Recalculate and update card balance if amount changed (fire-and-forget)
+      if (updateData.amount !== undefined && updateData.amount !== existingTransaction.amount) {
+        this.recalculateCardBalanceAfterTransaction(existingTransaction.cardId);
+      }
 
       logger.info('TRANSACTION_SERVICE', 'Transaction updated successfully', { transactionId });
       return transaction;
@@ -274,6 +283,9 @@ export class AppwriteTransactionService {
         'deleted', 
         `${existingTransaction.type} transaction deleted`
       );
+      
+      // Recalculate and update card balance (fire-and-forget)
+      this.recalculateCardBalanceAfterTransaction(existingTransaction.cardId);
 
       logger.info('TRANSACTION_SERVICE', 'Transaction deleted successfully', { transactionId });
     } catch (error) {
@@ -775,6 +787,29 @@ export class AppwriteTransactionService {
   }
 
   /**
+   * Recalculate and update card balance after transaction changes (fire-and-forget)
+   */
+  private async recalculateCardBalanceAfterTransaction(cardId: string): Promise<void> {
+    try {
+      logger.info('TRANSACTION_SERVICE', 'Recalculating card balance after transaction change', { cardId });
+      
+      // Import card service to avoid circular dependencies
+      const { cardService } = await import('./cardService');
+      
+      // Recalculate and update the card balance
+      await cardService.recalculateAndUpdateCardBalance(cardId);
+      
+      logger.info('TRANSACTION_SERVICE', 'Card balance recalculated successfully', { cardId });
+    } catch (error) {
+      // Don't throw - this is a fire-and-forget operation
+      logger.warn('TRANSACTION_SERVICE', 'Failed to recalculate card balance after transaction', { 
+        cardId, 
+        error 
+      });
+    }
+  }
+
+  /**
    * Log transaction activity (fire-and-forget)
    */
   private async logTransactionActivity(
@@ -839,21 +874,19 @@ export class AppwriteTransactionService {
 // Create and export transaction service instance
 export const transactionService = new AppwriteTransactionService();
 
-// Export commonly used functions
-export const {
-  createTransaction,
-  updateTransaction,
-  deleteTransaction,
-  getTransaction,
-  queryTransactions,
-  getCardTransactions,
-  getRecentTransactions,
-  getTransactionStats,
-  subscribeToTransactions,
-  subscribeToTransaction,
-  subscribeToCardTransactions,
-  unsubscribeAll,
-} = transactionService;
+// Export commonly used functions with proper binding
+export const createTransaction = transactionService.createTransaction.bind(transactionService);
+export const updateTransaction = transactionService.updateTransaction.bind(transactionService);
+export const deleteTransaction = transactionService.deleteTransaction.bind(transactionService);
+export const getTransaction = transactionService.getTransaction.bind(transactionService);
+export const queryTransactions = transactionService.queryTransactions.bind(transactionService);
+export const getCardTransactions = transactionService.getCardTransactions.bind(transactionService);
+export const getRecentTransactions = transactionService.getRecentTransactions.bind(transactionService);
+export const getTransactionStats = transactionService.getTransactionStats.bind(transactionService);
+export const subscribeToTransactions = transactionService.subscribeToTransactions.bind(transactionService);
+export const subscribeToTransaction = transactionService.subscribeToTransaction.bind(transactionService);
+export const subscribeToCardTransactions = transactionService.subscribeToCardTransactions.bind(transactionService);
+export const unsubscribeAll = transactionService.unsubscribeAll.bind(transactionService);
 
 // Export default service
 export default transactionService;

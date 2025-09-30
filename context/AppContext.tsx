@@ -70,6 +70,10 @@ interface AppContextType {
   unarchiveNotification: (id: string) => Promise<void>;
   toggleNotificationArchive: (id: string) => Promise<void>;
   archiveAllReadNotifications: () => Promise<void>;
+  // Transaction approvals
+  handleApprovalStatusChange: (approvalId: string, approved: boolean, transactionId?: string) => Promise<void>;
+  refreshPendingApprovals: () => Promise<void>;
+  pendingApprovalsCount: number;
   // Test function - remove in production
   addTestNotifications?: () => void;
 }
@@ -85,11 +89,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isLoadingTransactions, setIsLoadingTransactions] = useState<boolean>(true);
   const [transactionsCursor, setTransactionsCursor] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [pendingApprovalsCount, setPendingApprovalsCount] = useState<number>(0);
   
   // Get auth state reactively
   const { isAuthenticated, isLoading: authLoading, user } = useAuthStore();
   
-  // Function to refresh card balances from database
+  // Function to refresh card balances from database with smart balance calculation
   const refreshCardBalances = async () => {
     try {
       if (!isAuthenticated || !user) {
@@ -97,45 +102,103 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return;
       }
       
-      logger.info('CONTEXT', '[refreshCardBalances] Refreshing card balances from database');
+      logger.info('CONTEXT', '[refreshCardBalances] Refreshing card balances from database with smart calculation');
+      
+      // Get fresh cards from database - this will trigger smart balance calculation
       const freshCards = await getAppwriteActiveCards();
       
+      // If we have fresh cards, trigger smart balance recalculation for each
       if (freshCards.length > 0) {
-        // Update cards with fresh balances from database
-        setCards(prevCards => {
-          const updatedCards = prevCards.map(prevCard => {
-            const freshCard = freshCards.find(f => f.id === prevCard.id);
-            if (freshCard) {
-              // Update balance and any other fields that might have changed
-              return {
-                ...prevCard,
-                balance: freshCard.balance, // Fresh balance from database
-                isActive: freshCard.isActive,
-                // Keep other fields but update from fresh data if needed
-              };
-            }
-            return prevCard;
+        logger.info('CONTEXT', '[refreshCardBalances] Triggering smart balance recalculation for all cards');
+        
+        // Import card service to recalculate balances
+        try {
+          const { recalculateAndUpdateCardBalance } = await import('@/lib/appwrite/cardService');
+          
+          // Recalculate balance for each card in parallel
+          const updatedCards = await Promise.all(
+            freshCards.map(async (card) => {
+              try {
+                const updatedCard = await recalculateAndUpdateCardBalance(card.id);
+                logger.info('CONTEXT', `[refreshCardBalances] Smart balance calculated for card ${card.id}`, {
+                  oldBalance: card.balance,
+                  newBalance: updatedCard.balance
+                });
+                return updatedCard;
+              } catch (error) {
+                logger.warn('CONTEXT', `[refreshCardBalances] Failed to recalculate balance for card ${card.id}`, error);
+                // Fall back to original card data if recalculation fails
+                return card;
+              }
+            })
+          );
+          
+          // Update cards with smart balance calculated values
+          setCards(prevCards => {
+            const updatedCardsMap = updatedCards.map(updatedCard => {
+              const prevCard = prevCards.find(p => p.id === updatedCard.id);
+              if (prevCard) {
+                // Update balance and any other fields that might have changed
+                return {
+                  ...prevCard,
+                  balance: updatedCard.balance, // Smart calculated balance
+                  isActive: updatedCard.isActive,
+                };
+              }
+              return updatedCard;
+            });
+            
+            // Add any new cards that might have been created elsewhere
+            const existingIds = new Set(prevCards.map(c => c.id));
+            const newCards = updatedCards.filter(c => !existingIds.has(c.id));
+            
+            return [...updatedCardsMap, ...newCards];
           });
           
-          // Add any new cards that might have been created elsewhere
-          const existingIds = new Set(prevCards.map(c => c.id));
-          const newCards = freshCards.filter(f => !existingIds.has(f.id));
+          // Update active card if it's in the refreshed list
+          setActiveCard(prevActive => {
+            if (prevActive) {
+              const freshActiveCard = updatedCards.find(c => c.id === prevActive.id);
+              return freshActiveCard ? { ...prevActive, balance: freshActiveCard.balance } : prevActive;
+            }
+            return prevActive;
+          });
           
-          return [...updatedCards, ...newCards];
-        });
-        
-        // Update active card if it's in the refreshed list
-        setActiveCard(prevActive => {
-          if (prevActive) {
-            const freshActiveCard = freshCards.find(f => f.id === prevActive.id);
-            return freshActiveCard ? { ...prevActive, balance: freshActiveCard.balance } : prevActive;
-          }
-          return prevActive;
-        });
-        
-        logger.info('CONTEXT', '[refreshCardBalances] Card balances refreshed successfully', 
-          freshCards.map(c => ({ id: c.id, balance: c.balance }))
-        );
+          logger.info('CONTEXT', '[refreshCardBalances] Card balances refreshed successfully with smart calculation', 
+            updatedCards.map(c => ({ id: c.id, balance: c.balance }))
+          );
+          
+        } catch (importError) {
+          logger.warn('CONTEXT', '[refreshCardBalances] Failed to import card service, using fresh cards without smart calculation', importError);
+          
+          // Fallback to original logic if smart balance calculation fails
+          setCards(prevCards => {
+            const updatedCards = prevCards.map(prevCard => {
+              const freshCard = freshCards.find(f => f.id === prevCard.id);
+              if (freshCard) {
+                return {
+                  ...prevCard,
+                  balance: freshCard.balance,
+                  isActive: freshCard.isActive,
+                };
+              }
+              return prevCard;
+            });
+            
+            const existingIds = new Set(prevCards.map(c => c.id));
+            const newCards = freshCards.filter(f => !existingIds.has(f.id));
+            
+            return [...updatedCards, ...newCards];
+          });
+          
+          setActiveCard(prevActive => {
+            if (prevActive) {
+              const freshActiveCard = freshCards.find(f => f.id === prevActive.id);
+              return freshActiveCard ? { ...prevActive, balance: freshActiveCard.balance } : prevActive;
+            }
+            return prevActive;
+          });
+        }
       }
     } catch (error) {
       logger.warn('CONTEXT', '[refreshCardBalances] Failed to refresh card balances:', error);
@@ -226,6 +289,10 @@ const pushActivity: AppContextType["pushActivity"] = (evt) => {
             id: `tx.${appwriteTransaction.id}`,
             transactionId: appwriteTransaction.id,
           });
+          
+          // Track analytics for this transaction
+          const { trackTransactionAnalytics } = await import('@/lib/analyticsHelpers');
+          trackTransactionAnalytics(newTransaction, user.$id || user.id || '');
           
         } catch (appwriteError) {
           logger.database.warn('[addTransaction] Failed to persist to Appwrite:', appwriteError);
@@ -595,34 +662,13 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
       };
     }
     
-    // Try server-based transfer first, fall back to local simulation
+    // Try Appwrite function first, fall back to local simulation
     try {
-      const { getApiBase } = require('../lib/api');
-      const { getValidJWTWithAutoRefresh, refreshAppwriteJWTWithRetry } = require('../lib/jwt');
+      const { executeFunction } = require('../lib/api');
       
-      const apiBase = getApiBase();
-      if (!apiBase || apiBase.includes('undefined') || apiBase === 'undefined') {
-        logger.warn('TRANSFERS', 'API base URL not configured, using local simulation');
-        throw new Error('Server not configured');
-      }
+      logger.info('TRANSFERS', 'Using Appwrite function for external transfer');
       
-      const url = `${apiBase}/v1/transfers`;
-      
-      logger.info('TRANSFERS', 'API Base', { apiBase });
-      
-      // Use improved JWT handling with auto-refresh
-      let jwt = await getValidJWTWithAutoRefresh();
-      if (!jwt) {
-        logger.warn('TRANSFERS', 'No JWT available, attempting refresh with retry');
-        jwt = await refreshAppwriteJWTWithRetry();
-        if (!jwt) {
-          logger.warn('TRANSFERS', 'Could not obtain JWT after retries, using local simulation');
-          throw new Error('Authentication failed');
-        }
-      }
-      logger.info('TRANSFERS', 'JWT obtained', { hasJwt: !!jwt });
-      
-      const requestBody = {
+      const requestData = {
         cardId,
         amount,
         currency: 'GHS',
@@ -632,55 +678,31 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
       };
       
       logger.info('TRANSFERS', 'Request details', {
-        url,
         cardId,
         amount,
-        recipient: recipientCardNumber,
-        hasJWT: !!jwt
+        recipient: recipientCardNumber
       });
       
-      const makeRequest = async (token: string | undefined) => {
-        const headers: any = { 'Content-Type': 'application/json' };
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-        return await fetch(url, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(requestBody)
-        });
-      };
+      // Execute Appwrite function for transfer
+      const result = await executeFunction('transfers', requestData);
       
-      let res = await makeRequest(jwt);
+      logger.info('TRANSFERS', 'Function result:', result);
       
-      logger.info('TRANSFERS', 'Response status', { status: res.status });
-      
-      // If we get a 401, try refreshing the token once
-      if (res.status === 401 && jwt) {
-        logger.warn('TRANSFERS', 'Got 401, refreshing JWT and retrying...');
-        jwt = await refreshAppwriteJWT();
-        if (jwt) {
-          res = await makeRequest(jwt);
-          logger.info('TRANSFERS', 'Retry response status', { status: res.status });
-        } else {
-          logger.error('TRANSFERS', 'Failed to refresh JWT after 401');
-          return {
-            success: false,
-            error: 'Authentication failed. Please sign in again.'
-          };
-        }
-      }
-      
-      if (res.ok) {
+      if (result.success) {
         // Server transfer successful
-        const data = await res.json();
+        const data = result.data;
         const newBalance = data.newBalance;
         
         logger.info('TRANSFERS', 'Server transfer successful', { newBalance });
         
-        // Update local card balance
-        updateCardBalance(cardId, newBalance);
+        // Create approval request for external transfers
+        const { createApprovalRequest, autoApprove } = await import('@/lib/appwrite/transactionApprovalService');
         
-        // Add the transaction locally
-        addTransaction({
+        // For large external transfers, require approval; for smaller amounts, auto-approve
+        const requiresApproval = amount > 1000; // Amounts over 1000 GHS require approval
+        
+        // Add pending transaction locally to show in history
+        const newTransaction = {
           userId: user.$id || user.id || '',
           cardId,
           amount: -amount, // Negative for outgoing transfer
@@ -688,24 +710,65 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
           category: 'transfer',
           description: description || `Transfer To: ${recipientCardNumber}`,
           recipient: recipientCardNumber,
-          status: 'completed'
-        });
+          status: requiresApproval ? 'pending_approval' : 'completed'
+        };
+        
+        addTransaction(newTransaction);
+        
+        let approvalData = null;
+        
+        if (requiresApproval) {
+          // Create approval request for large external transfers
+          try {
+            const approvalResponse = await createApprovalRequest({
+              transactionId: data.transferId || `transfer_${Date.now()}`,
+              approvalType: 'pin', // Require PIN for transfers
+              expiryMinutes: 20, // 20 minutes to approve
+              metadata: {
+                amount: amount,
+                currency: 'GHS',
+                recipient: recipientCardNumber,
+                description: description
+              }
+            });
+            
+            approvalData = approvalResponse;
+            
+            logger.info('TRANSFERS', 'Approval request created for external transfer', {
+              transferId: data.transferId,
+              approvalId: approvalResponse.approvalId
+            });
+          } catch (approvalError) {
+            logger.warn('TRANSFERS', 'Failed to create approval request, proceeding without approval', approvalError);
+          }
+        } else {
+          // Auto-approve small transfers and update balance
+          try {
+            await autoApprove(data.transferId || `transfer_${Date.now()}`, `Small transfer amount (${amount} GHS)`);
+            
+            // Update local card balance for auto-approved transfers
+            updateCardBalance(cardId, newBalance);
+            
+            logger.info('TRANSFERS', 'Small external transfer auto-approved', { transferId: data.transferId });
+          } catch (approvalError) {
+            logger.warn('TRANSFERS', 'Failed to auto-approve transfer', approvalError);
+            // Still update balance for small transfers
+            updateCardBalance(cardId, newBalance);
+          }
+        }
         
         // Refresh card balances from database after successful transfer
         setTimeout(() => refreshCardBalances(), 1000);
         
         return {
           success: true,
-          newBalance
+          newBalance,
+          requiresApproval,
+          approval: approvalData
         };
       } else {
         // Server transfer failed, fall back to local simulation
-        const responseText = await res.text().catch(() => 'Unknown error');
-        logger.warn('TRANSFERS', 'Server transfer failed, falling back to local simulation', {
-          status: res.status,
-          statusText: res.statusText,
-          responseText
-        });
+        logger.warn('TRANSFERS', 'Server transfer failed, falling back to local simulation', result.error);
         
         // Fall through to local simulation below
       }
@@ -768,67 +831,24 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
     // Handle deposit confirmation
     if (params.depositId && params.action === 'confirm') {
       try {
-        const { getApiBase } = require('../lib/api');
-        const { getValidJWTWithAutoRefresh, refreshAppwriteJWTWithRetry } = require('../lib/jwt');
+        const { executeFunction } = require('../lib/api');
         
-        const apiBase = getApiBase();
-        if (!apiBase || apiBase.includes('undefined') || apiBase === 'undefined') {
-          logger.warn('DEPOSITS', 'API base URL not configured');
-          return {
-            success: false,
-            error: 'Server not configured. Please try again later.'
-          };
-        }
+        logger.info('DEPOSITS', '[MakeDeposit] Using Appwrite function for deposit confirmation');
         
-        const url = `${apiBase}/v1/deposits/${params.depositId}/confirm`;
-        
-        // Use improved JWT handling with auto-refresh
-        let jwt = await getValidJWTWithAutoRefresh();
-        if (!jwt) {
-          logger.warn('DEPOSITS', 'No JWT available, attempting refresh with retry');
-          jwt = await refreshAppwriteJWTWithRetry();
-          if (!jwt) {
-            logger.warn('DEPOSITS', 'Could not obtain JWT after retries');
-            return {
-              success: false,
-              error: 'Authentication failed. Please sign in again.'
-            };
-          }
-        }
+        const requestData = {
+          action: 'confirm',
+          depositId: params.depositId
+        };
         
         logger.info('DEPOSITS', 'Confirming deposit', { depositId: params.depositId });
         
-        const makeRequest = async (token: string | undefined) => {
-          const headers: any = { 'Content-Type': 'application/json' };
-          if (token) headers['Authorization'] = `Bearer ${token}`;
-          return await fetch(url, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({})
-          });
-        };
+        // Execute Appwrite function for deposit confirmation
+        const result = await executeFunction('deposits', requestData);
         
-        let res = await makeRequest(jwt);
+        logger.info('CONTEXT', '[MakeDeposit] Confirmation result:', result);
         
-        // Handle 401 by refreshing token once
-        if (res.status === 401 && jwt) {
-          logger.warn('DEPOSITS', 'Got 401, refreshing JWT and retrying...');
-          const { refreshAppwriteJWT } = require('../lib/jwt');
-          jwt = await refreshAppwriteJWT();
-          if (jwt) {
-            res = await makeRequest(jwt);
-            logger.info('CONTEXT', '[MakeDeposit] Retry response status:', res.status);
-          } else {
-            logger.error('CONTEXT', '[MakeDeposit] Failed to refresh JWT after 401');
-            return {
-              success: false,
-              error: 'Authentication failed. Please sign in again.'
-            };
-          }
-        }
-        
-        if (res.ok) {
-          const data = await res.json();
+        if (result.success) {
+          const data = result.data;
           logger.info('CONTEXT', '[MakeDeposit] Deposit confirmed successfully:', data);
           
           // Update local card balance
@@ -857,11 +877,10 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
             data
           };
         } else {
-          const errorData = await res.json().catch(() => ({ error: 'Unknown server error' }));
-          logger.error('CONTEXT', '[MakeDeposit] Server confirmation failed:', errorData);
+          logger.error('CONTEXT', '[MakeDeposit] Function confirmation failed:', result.error);
           return {
             success: false,
-            error: errorData.message || errorData.error || 'Deposit confirmation failed'
+            error: result.error || 'Deposit confirmation failed'
           };
         }
       } catch (error) {
@@ -907,38 +926,11 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
     }
     
     try {
-      const { getApiBase } = require('../lib/api');
-      const { getValidJWTWithAutoRefresh, refreshAppwriteJWTWithRetry } = require('../lib/jwt');
+      const { executeFunction } = require('../lib/api');
       
-      const apiBase = getApiBase();
-      if (!apiBase || apiBase.includes('undefined') || apiBase === 'undefined') {
-        logger.info('CONTEXT', '[MakeDeposit] API base URL not configured');
-        return {
-          success: false,
-          error: 'Server not configured. Please try again later.'
-        };
-      }
+      logger.info('CONTEXT', '[MakeDeposit] Using Appwrite function for deposit creation');
       
-      const url = `${apiBase}/v1/deposits`;
-      
-      logger.info('CONTEXT', '[MakeDeposit] API Base:', apiBase);
-      
-      // Use improved JWT handling with auto-refresh
-      let jwt = await getValidJWTWithAutoRefresh();
-      if (!jwt) {
-        logger.info('CONTEXT', '[MakeDeposit] No JWT available, attempting refresh with retry');
-        jwt = await refreshAppwriteJWTWithRetry();
-        if (!jwt) {
-          logger.warn('CONTEXT', '[MakeDeposit] Could not obtain JWT after retries');
-          return {
-            success: false,
-            error: 'Authentication failed. Please sign in again.'
-          };
-        }
-      }
-      logger.info('CONTEXT', '[MakeDeposit] JWT obtained:', !!jwt);
-      
-      const requestBody = {
+      const requestData = {
         cardId: params.cardId,
         amount: params.amount,
         currency: params.currency || 'GHS',
@@ -950,71 +942,97 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
       };
       
       logger.info('CONTEXT', '[MakeDeposit] Request details:', {
-        url,
         cardId: params.cardId,
         amount: params.amount,
-        escrowMethod: params.escrowMethod,
-        hasJWT: !!jwt
+        escrowMethod: params.escrowMethod
       });
       
-      const makeRequest = async (token: string | undefined) => {
-        const headers: any = { 'Content-Type': 'application/json' };
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-        return await fetch(url, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(requestBody)
-        });
-      };
+      // Execute Appwrite function for deposit creation
+      const result = await executeFunction('deposits', requestData);
       
-      let res = await makeRequest(jwt);
+      logger.info('CONTEXT', '[MakeDeposit] Function result:', result);
       
-      logger.info('CONTEXT', '[MakeDeposit] Response status:', res.status);
-      
-      // If we get a 401, try refreshing the token once
-      if (res.status === 401 && jwt) {
-        logger.info('CONTEXT', '[MakeDeposit] Got 401, refreshing JWT and retrying...');
-        const { refreshAppwriteJWT } = require('../lib/jwt');
-        jwt = await refreshAppwriteJWT();
-        if (jwt) {
-          res = await makeRequest(jwt);
-          logger.info('CONTEXT', '[MakeDeposit] Retry response status:', res.status);
-        } else {
-          logger.error('CONTEXT', '[MakeDeposit] Failed to refresh JWT after 401');
-          return {
-            success: false,
-            error: 'Authentication failed. Please sign in again.'
-          };
-        }
-      }
-      
-      if (res.ok) {
-        // Server deposit creation successful
-        const data = await res.json();
-        logger.info('CONTEXT', '[MakeDeposit] Server deposit creation successful:', data);
+      if (result.success) {
+        // Create approval request for deposit
+        const { createApprovalRequest, autoApprove } = await import('@/lib/appwrite/transactionApprovalService');
+        
+        // For small amounts, auto-approve; for larger amounts, require manual approval
+        const requiresApproval = params.amount > 1000; // Amounts over 1000 GHS require approval
         
         // Add pending transaction locally to show in history
-        addTransaction({
+        const newTransaction = {
           userId: user.$id || user.id || '',
           cardId: params.cardId,
           amount: params.amount, // Positive for deposit
           type: 'deposit',
           category: 'deposit',
           description: params.description || `${(params.escrowMethod || 'mobile_money').replace('_', ' ')} deposit`,
-          status: 'pending'
-        });
+          status: requiresApproval ? 'pending_approval' : 'pending'
+        };
+        
+        addTransaction(newTransaction);
+        
+        let approvalData = null;
+        
+        if (requiresApproval) {
+          // Create approval request for large deposits
+          try {
+            const approvalResponse = await createApprovalRequest({
+              transactionId: result.data.depositId,
+              approvalType: 'pin', // Require PIN for deposits
+              expiryMinutes: 30, // 30 minutes to approve
+              metadata: {
+                amount: params.amount,
+                currency: params.currency || 'GHS',
+                depositMethod: params.escrowMethod
+              }
+            });
+            
+            approvalData = approvalResponse;
+            
+            logger.info('DEPOSITS', 'Approval request created for deposit', {
+              depositId: result.data.depositId,
+              approvalId: approvalResponse.approvalId
+            });
+          } catch (approvalError) {
+            logger.warn('DEPOSITS', 'Failed to create approval request, proceeding without approval', approvalError);
+          }
+        } else {
+          // Auto-approve small deposits
+          try {
+            await autoApprove(result.data.depositId, `Small deposit amount (${params.amount} GHS)`);
+            logger.info('DEPOSITS', 'Small deposit auto-approved', { depositId: result.data.depositId });
+          } catch (approvalError) {
+            logger.warn('DEPOSITS', 'Failed to auto-approve deposit', approvalError);
+          }
+        }
+        
+        // Push notification for pending deposit
+        const { pushTransactionNotification } = require('../lib/appwrite/notificationService');
+        const notificationMessage = requiresApproval 
+          ? `Your deposit request has been created and requires approval. Check your pending approvals to complete the transaction.`
+          : `Your deposit request has been created. Follow the payment instructions to complete your deposit.`;
+          
+        pushTransactionNotification(
+          'success',
+          'Deposit Initiated',
+          notificationMessage,
+          params.amount
+        );
         
         return {
           success: true,
-          data
+          data: {
+            ...result.data,
+            requiresApproval,
+            approval: approvalData
+          }
         };
       } else {
-        // Server deposit creation failed
-        const errorData = await res.json().catch(() => ({ error: 'Unknown server error' }));
-        logger.error('CONTEXT', '[MakeDeposit] Server deposit creation failed:', errorData);
+        logger.error('CONTEXT', '[MakeDeposit] Function failed:', result.error);
         return {
           success: false,
-          error: errorData.message || errorData.error || 'Deposit creation failed'
+          error: result.error || 'Deposit creation failed'
         };
       }
     } catch (error) {
@@ -1036,7 +1054,8 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
       let result = { success: false, data: null, error: null };
       try {
         const response = await queryAppwriteTransactions({ limit: 20 });
-        const transactions = response.documents.map((doc: any) => ({
+        const documents = response?.documents || [];
+        const transactions = documents.map((doc: any) => ({
           id: doc.$id,
           userId: doc.userId || user.$id || user.id || '',
           cardId: doc.cardId,
@@ -1247,10 +1266,24 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
     loadCards();
   }, [authLoading, isAuthenticated, user]);
   
-  // Load transactions on initial mount with cache-first strategy
+  // Load transactions only after authentication is ready
   useEffect(() => {
+    // Don't load transactions if authentication is still loading
+    if (authLoading) {
+      logger.info('CONTEXT', '[loadTransactionsWithCache] Waiting for authentication to complete...');
+      return;
+    }
+    
+    // Don't load transactions if user is not authenticated
+    if (!isAuthenticated || !user) {
+      logger.info('CONTEXT', '[loadTransactionsWithCache] Skipping transaction load - user not authenticated');
+      return;
+    }
+    
+    // Load transactions with cache-first strategy
+    logger.info('CONTEXT', '[loadTransactionsWithCache] Authentication ready, loading transactions');
     loadTransactionsWithCache();
-  }, []);
+  }, [authLoading, isAuthenticated, user]);
 
   // Load notifications from storage first, then fetch from Appwrite
   useEffect(() => {
@@ -2019,13 +2052,132 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
         ...(fee && fee > 0 && { fee })
       };
 
-      // For withdrawals, update the source card balance
+      // For withdrawals, use Appwrite function with approval system
       if (type === 'withdrawal' && fromCardId) {
-        const totalDeducted = amount + (fee || 0);
-        updateCardBalance(fromCardId, cards.find(c => c.id === fromCardId)!.balance - totalDeducted);
+        try {
+          const { executeFunction } = require('../lib/api');
+          
+          logger.info('TRANSACTION', '[makeTransaction] Using Appwrite function for withdrawal');
+          
+          const requestData = {
+            cardId: fromCardId,
+            amount: amount,
+            currency: 'GHS',
+            withdrawalMethod: 'mobile_money', // Default method - could be customizable
+            description: description || 'Withdrawal',
+            ...(fee && fee > 0 && { fee })
+          };
+          
+          // Execute Appwrite function for withdrawal
+          const result = await executeFunction('withdrawals', requestData);
+          
+          logger.info('TRANSACTION', '[makeTransaction] Withdrawal function result:', result);
+          
+          if (result.success) {
+            const data = result.data;
+            
+            // Create approval request for withdrawal
+            const { createApprovalRequest, autoApprove } = await import('@/lib/appwrite/transactionApprovalService');
+            
+            // For large amounts, require approval; for smaller amounts, auto-approve
+            const requiresApproval = amount > 500; // Amounts over 500 GHS require approval
+            
+            // Add pending transaction locally to show in history
+            const newTransaction = {
+              userId: user.$id || user.id || '',
+              cardId: fromCardId,
+              amount: -data.amount, // Negative for withdrawal
+              type: 'withdrawal',
+              category: 'withdrawal',
+              description: description || 'Withdrawal',
+              status: requiresApproval ? 'pending_approval' : 'completed',
+              fee: data.fee
+            };
+            
+            addTransaction(newTransaction);
+            
+            let approvalData = null;
+            
+            if (requiresApproval) {
+              // Create approval request for large withdrawals
+              try {
+                const approvalResponse = await createApprovalRequest({
+                  transactionId: data.withdrawalId || `withdrawal_${Date.now()}`,
+                  approvalType: 'biometric', // Require biometric for withdrawals
+                  expiryMinutes: 15, // 15 minutes to approve
+                  metadata: {
+                    amount: amount,
+                    currency: 'GHS',
+                    withdrawalMethod: requestData.withdrawalMethod,
+                    fee: data.fee || 0
+                  }
+                });
+                
+                approvalData = approvalResponse;
+                
+                logger.info('WITHDRAWAL', 'Approval request created for withdrawal', {
+                  withdrawalId: data.withdrawalId,
+                  approvalId: approvalResponse.approvalId
+                });
+              } catch (approvalError) {
+                logger.warn('WITHDRAWAL', 'Failed to create approval request, proceeding without approval', approvalError);
+              }
+            } else {
+              // Auto-approve small withdrawals and update balance
+              try {
+                await autoApprove(data.withdrawalId || `withdrawal_${Date.now()}`, `Small withdrawal amount (${amount} GHS)`);
+                
+                // Update local card balance for auto-approved withdrawals
+                updateCardBalance(fromCardId, data.newBalance);
+                
+                logger.info('WITHDRAWAL', 'Small withdrawal auto-approved', { withdrawalId: data.withdrawalId });
+              } catch (approvalError) {
+                logger.warn('WITHDRAWAL', 'Failed to auto-approve withdrawal', approvalError);
+                // Still update balance for small withdrawals
+                updateCardBalance(fromCardId, data.newBalance);
+              }
+            }
+            
+            // Add fee transaction if there's a fee
+            if (data.fee > 0) {
+              addTransaction({
+                userId: user.$id || user.id || '',
+                cardId: fromCardId,
+                amount: -data.fee, // Negative for fee
+                type: 'fee',
+                category: 'fee',
+                description: 'Withdrawal fee',
+                status: 'completed'
+              });
+            }
+            
+            logger.info('TRANSACTION', '[makeTransaction] Withdrawal completed successfully via Appwrite function', {
+              requiresApproval,
+              approvalId: approvalData?.approvalId
+            });
+            
+            return { 
+              success: true, 
+              requiresApproval,
+              approval: approvalData
+            };
+          } else {
+            logger.error('TRANSACTION', '[makeTransaction] Withdrawal function failed:', result.error);
+            return {
+              success: false,
+              error: result.error || 'Withdrawal failed'
+            };
+          }
+        } catch (error) {
+          logger.error('TRANSACTION', '[makeTransaction] Withdrawal function error:', error);
+          return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Withdrawal failed'
+          };
+        }
       }
-
-      // Add transaction to local state and database
+      
+      // For other transaction types, add to local state and database
       addTransaction(transactionData);
 
       logger.info('TRANSACTION', `[makeTransaction] ${type} transaction completed successfully`, {
@@ -2046,6 +2198,129 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
       };
     }
   };
+
+  // Refresh pending approvals count
+  const refreshPendingApprovals: AppContextType['refreshPendingApprovals'] = async () => {
+    try {
+      const { getPendingApprovals } = await import('@/lib/appwrite/transactionApprovalService');
+      const approvals = await getPendingApprovals();
+      setPendingApprovalsCount(approvals.length);
+      
+      logger.info('APPROVALS', `Refreshed pending approvals count: ${approvals.length}`);
+    } catch (error) {
+      logger.warn('APPROVALS', 'Failed to refresh pending approvals count:', error);
+    }
+  };
+
+  // Handle approval status changes
+  const handleApprovalStatusChange: AppContextType['handleApprovalStatusChange'] = async (approvalId, approved, transactionId) => {
+    logger.info('APPROVALS', `Handling approval status change: ${approvalId} - ${approved ? 'approved' : 'rejected'}`);
+    
+    try {
+      // Update transaction status if we have the transaction ID
+      if (transactionId) {
+        const newStatus = approved ? 'completed' : 'rejected';
+        
+        // Update local transaction status
+        setTransactions(prev => 
+          prev.map(tx => {
+            // Match by transaction ID or by description containing the transaction ID
+            if (tx.id === transactionId || tx.description.includes(transactionId)) {
+              return { ...tx, status: newStatus };
+            }
+            return tx;
+          })
+        );
+        
+        // Update activity status
+        setActivity(prev => 
+          prev.map(act => {
+            if (act.transactionId === transactionId || act.id.includes(transactionId)) {
+              return { ...act, status: newStatus as any };
+            }
+            return act;
+          })
+        );
+        
+        // If approved, process the transaction (update balances, etc.)
+        if (approved) {
+          // For deposits, withdrawals, and transfers - refresh balances
+          setTimeout(() => {
+            refreshCardBalances();
+            refreshTransactions();
+          }, 1000);
+          
+          // Create success activity event
+          const successEvent = {
+            id: `approval.success.${approvalId}`,
+            category: 'approval' as const,
+            type: 'approval.completed',
+            title: 'Transaction Approved',
+            subtitle: 'Your transaction has been approved and processed',
+            description: `Transaction ${transactionId} was approved and completed successfully`,
+            timestamp: new Date().toISOString(),
+            status: 'success' as const,
+            tags: ['approval', 'success'],
+          };
+          
+          pushActivity(successEvent);
+          
+          // Send success notification
+          const { pushTransactionNotification } = require('../lib/appwrite/notificationService');
+          pushTransactionNotification(
+            'success',
+            'Transaction Approved',
+            'Your transaction has been approved and processed successfully.',
+            0 // No amount needed for approval notification
+          );
+        } else {
+          // Create rejection activity event
+          const rejectionEvent = {
+            id: `approval.rejected.${approvalId}`,
+            category: 'approval' as const,
+            type: 'approval.rejected',
+            title: 'Transaction Rejected',
+            subtitle: 'Your transaction was rejected',
+            description: `Transaction ${transactionId} was rejected and will not be processed`,
+            timestamp: new Date().toISOString(),
+            status: 'error' as const,
+            tags: ['approval', 'rejected'],
+          };
+          
+          pushActivity(rejectionEvent);
+          
+          // Send rejection notification
+          const { pushTransactionNotification } = require('../lib/appwrite/notificationService');
+          pushTransactionNotification(
+            'error',
+            'Transaction Rejected',
+            'Your transaction was rejected and will not be processed.',
+            0 // No amount needed for rejection notification
+          );
+        }
+      }
+      
+      // Refresh pending approvals count
+      await refreshPendingApprovals();
+      
+      logger.info('APPROVALS', `Successfully handled approval status change for ${approvalId}`);
+      
+    } catch (error) {
+      logger.error('APPROVALS', `Failed to handle approval status change for ${approvalId}:`, error);
+      throw error;
+    }
+  };
+
+  // Load pending approvals count on auth ready
+  useEffect(() => {
+    if (isAuthenticated && user && !authLoading) {
+      refreshPendingApprovals();
+      
+      // Refresh every 60 seconds
+      const interval = setInterval(refreshPendingApprovals, 60000);
+      return () => clearInterval(interval);
+    }
+  }, [isAuthenticated, user, authLoading]);
 
   return (
     <AppContext.Provider
@@ -2086,6 +2361,10 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
         unarchiveNotification,
         toggleNotificationArchive,
         archiveAllReadNotifications,
+        // Transaction approvals
+        handleApprovalStatusChange,
+        refreshPendingApprovals,
+        pendingApprovalsCount,
       }}
     >
       {children}

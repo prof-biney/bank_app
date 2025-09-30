@@ -296,25 +296,46 @@ export default function WithdrawScreen() {
         return (
           <View style={styles.formSection}>
             <Text style={styles.sectionTitle}>Select Bank</Text>
-            <ScrollView style={styles.bankList} showsVerticalScrollIndicator={false}>
-              {GHANA_BANKS.map((bank) => (
-                <TouchableOpacity
-                  key={bank.id}
-                  style={[
-                    styles.optionButton,
-                    selectedBank === bank.id && styles.optionButtonSelected
-                  ]}
-                  onPress={() => setSelectedBank(bank.id)}
-                >
-                  <Text style={[
-                    styles.optionText,
-                    selectedBank === bank.id && styles.optionTextSelected
-                  ]}>
-                    {bank.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            <View style={styles.bankSelectionContainer}>
+              <Text style={styles.bankSelectionHint}>Scroll to see all banks</Text>
+              <ScrollView 
+                style={styles.bankList} 
+                showsVerticalScrollIndicator={true}
+                indicatorStyle="default"
+                bounces={true}
+                contentContainerStyle={styles.bankListContent}
+              >
+                {GHANA_BANKS.map((bank, index) => (
+                  <TouchableOpacity
+                    key={bank.id}
+                    style={[
+                      styles.optionButton,
+                      selectedBank === bank.id && styles.optionButtonSelected,
+                      index === GHANA_BANKS.length - 1 && styles.lastBankOption
+                    ]}
+                    onPress={() => setSelectedBank(bank.id)}
+                  >
+                    <View style={styles.bankOptionContent}>
+                      <Text style={[
+                        styles.optionText,
+                        selectedBank === bank.id && styles.optionTextSelected
+                      ]}>
+                        {bank.name}
+                      </Text>
+                      <Text style={[
+                        styles.bankShortName,
+                        selectedBank === bank.id && styles.bankShortNameSelected
+                      ]}>
+                        {bank.shortName}
+                      </Text>
+                    </View>
+                    {selectedBank === bank.id && (
+                      <Text style={styles.selectedIndicator}>✓</Text>
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
             
             <Text style={styles.inputLabel}>Account Number</Text>
             <TextInput
@@ -611,15 +632,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 8,
+    borderRadius: 8,
+    padding: 14,
+    marginHorizontal: 8,
+    marginBottom: 6,
     borderWidth: 1,
     borderColor: '#e9ecef',
+    minHeight: 60,
   },
   optionButtonSelected: {
     borderColor: '#007AFF',
     backgroundColor: '#f0f8ff',
+    borderWidth: 2,
+    shadowColor: '#007AFF',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
   },
   providerIcon: {
     fontSize: 20,
@@ -634,8 +663,45 @@ const styles = StyleSheet.create({
   optionTextSelected: {
     color: '#007AFF',
   },
+  bankSelectionContainer: {
+    marginBottom: 16,
+  },
+  bankSelectionHint: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 8,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
   bankList: {
-    maxHeight: 200,
+    maxHeight: 240,
+    borderRadius: 8,
+    backgroundColor: '#f8f9fa',
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  bankListContent: {
+    paddingVertical: 4,
+  },
+  bankOptionContent: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  bankShortName: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
+  },
+  bankShortNameSelected: {
+    color: '#007AFF',
+  },
+  selectedIndicator: {
+    fontSize: 16,
+    color: '#007AFF',
+    fontWeight: 'bold',
+  },
+  lastBankOption: {
+    marginBottom: 0,
   },
   textInput: {
     backgroundColor: '#fff',

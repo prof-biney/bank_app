@@ -81,7 +81,7 @@ export class AppwriteTransferService {
       // Find exact match by full card number (if available) or last4
       let matchedCard = null;
       
-      for (const doc of documents) {
+      for (const doc of documents.documents) {
         // Try to match full card number if available
         if (doc.cardNumber) {
           const docCleanNumber = doc.cardNumber.replace(/\D/g, '');

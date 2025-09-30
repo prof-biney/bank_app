@@ -75,7 +75,7 @@ export async function createAppwriteCard(cardData: CreateCardData): Promise<Card
       exp_month: parseInt(expMonth),
       exp_year: fullYear,
       color: cardData.cardColor,
-      balance: Math.round((cardData.balance || 0) * 100), // Convert to cents
+      balance: cardData.balance || 40000, // Use balance as regular number, default to 40000
       currency: cardData.currency || 'GHS',
       token: cardData.token || null,
     };
@@ -103,7 +103,7 @@ export async function createAppwriteCard(cardData: CreateCardData): Promise<Card
       expiryDate: `${document.exp_month.toString().padStart(2, '0')}/${document.exp_year.toString().slice(-2)}`,
       cardType: document.brand || 'card',
       cardColor: document.color || '#1e40af',
-      balance: document.balance / 100, // Convert from cents to dollars
+      balance: document.balance || document.startingBalance || 40000, // Use balance as regular number with fallbacks
       currency: document.currency,
       token: document.token,
       isActive: document.status !== 'inactive',
@@ -159,7 +159,7 @@ export async function updateAppwriteCard(
     const transformedUpdateData: any = {};
     
     if (updateData.balance !== undefined) {
-      transformedUpdateData.balance = Math.round(updateData.balance * 100); // Convert to cents
+      transformedUpdateData.balance = updateData.balance; // Store balance as regular number (not cents)
     }
     if (updateData.cardHolderName !== undefined) {
       transformedUpdateData.holder = updateData.cardHolderName;
@@ -192,7 +192,7 @@ export async function updateAppwriteCard(
       expiryDate: `${document.exp_month.toString().padStart(2, '0')}/${document.exp_year.toString().slice(-2)}`,
       cardType: document.brand || 'card',
       cardColor: document.color || '#1e40af',
-      balance: document.balance / 100, // Convert from cents to dollars
+      balance: document.balance || document.startingBalance || 40000, // Use balance as regular number with fallbacks
       currency: document.currency,
       token: document.token,
       isActive: document.status !== 'inactive', // Map status to isActive
@@ -548,7 +548,7 @@ export async function findAppwriteCardByNumber(cardNumber: string): Promise<Card
       expiryDate: document.exp_month ? `${document.exp_month.toString().padStart(2, '0')}/${document.exp_year.toString().slice(-2)}` : document.expiryDate,
       cardType: document.brand || document.cardType || 'card',
       cardColor: document.color || document.cardColor || '#1e40af',
-      balance: document.balance ? (document.balance / 100) : 0,
+      balance: document.balance || document.startingBalance || 40000, // Use balance as regular number with fallbacks
       currency: document.currency,
       token: document.token,
       isActive: document.status ? (document.status !== 'inactive') : (document.isActive !== false),
