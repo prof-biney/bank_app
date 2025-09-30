@@ -15,7 +15,7 @@ import {
   sessionHelpers
 } from './config';
 import { logger } from '../logger';
-import { User } from '../../types';
+import { User } from '@/types';
 
 // Authentication types
 export interface LoginCredentials {
@@ -27,6 +27,7 @@ export interface RegisterCredentials {
   email: string;
   password: string;
   name?: string;
+  phoneNumber?: string;
 }
 
 export interface BiometricTokenData {
@@ -132,7 +133,7 @@ export class AppwriteAuthService {
   /**
    * Register a new user
    */
-  async register({ email, password, name }: RegisterCredentials): Promise<AuthUser> {
+  async register({ email, password, name, phoneNumber }: RegisterCredentials): Promise<AuthUser> {
     try {
       logger.info('AUTH', 'Starting user registration', { email });
 
@@ -153,7 +154,7 @@ export class AppwriteAuthService {
             email: user.email,
             accountId: user.$id,
             avatar: 'https://via.placeholder.com/150/000000/FFFFFF/?text=User', // Required URL field
-            phoneNumber: '', // Required string field (empty for no phone)
+            phoneNumber: phoneNumber || '', // Store provided phone number or empty string
             
             // Optional fields
             emailVerified: user.emailVerification || false,

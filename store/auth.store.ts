@@ -20,7 +20,8 @@ import {
 } from "@/lib/appwrite/auth";
 import { User } from "@/types";
 import { create } from "zustand";
-import { logger } from "@/lib/logger";
+import { logger } from '@/lib/logger';
+import { loginAttemptsService, LoginAttemptResult } from '@/lib/loginAttempts';
 import {
   BiometricType,
   BiometricAuthResult,
@@ -58,6 +59,9 @@ type AuthState = {
   
   /** Timestamp of the last password login for security requirements */
   lastPasswordLogin: Date | null;
+  
+  /** Current login attempt status and lockout information */
+  loginAttempts: LoginAttemptResult | null;
   
   /**
    * Sets the authentication state
@@ -146,6 +150,14 @@ type AuthState = {
    * @returns A promise that resolves when state is updated
    */
   loadBiometricState: () => Promise<void>;
+  
+  /**
+   * Checks and loads current login attempt/lockout status for an email
+   * This ensures lockout state persists across app restarts
+   * @param email - Email to check lockout status for
+   * @returns A promise that resolves when status is loaded
+   */
+  checkLoginAttemptStatus: (email: string) => Promise<void>;
 };
 
 /**
@@ -160,6 +172,7 @@ const useAuthStore = create<AuthState>((set, get) => ({
   biometricEnabled: false,
   biometricType: null,
   lastPasswordLogin: null,
+  loginAttempts: null,
 
   /**
    * Updates the authentication state
@@ -309,6 +322,18 @@ const useAuthStore = create<AuthState>((set, get) => ({
         logger.info('AUTH', 'Starting login process', { email });
       }
 
+      // Check login attempts before proceeding
+      const attemptStatus = await loginAttemptsService.checkLoginAttempts(email);
+      set({ loginAttempts: attemptStatus });
+      
+      if (!attemptStatus.canAttempt) {
+        throw new Error(
+          attemptStatus.isLocked 
+            ? `Account temporarily locked. Too many failed attempts. Try again in ${loginAttemptsService.formatTimeRemaining(attemptStatus.lockoutTimeRemaining || 0)}.`
+            : 'Login attempts exceeded. Please try again later.'
+        );
+      }
+
       // Login with Appwrite
       const { user: authUser } = await appwriteLogin({ email, password });
       if (__DEV__) logger.info('AUTH', 'User authenticated', { userId: authUser.$id });
@@ -318,25 +343,43 @@ const useAuthStore = create<AuthState>((set, get) => ({
       if (__DEV__) logger.info('AUTH', 'User profile retrieved');
 
       if (!userProfile) {
-        logger.error('AUTH', 'No user profile found');
-        await appwriteLogout();
-        throw new Error('Could not load user profile. Please try again.');
+        logger.warn('AUTH', 'No user profile found, creating fallback profile');
+        // Create a minimal user profile from auth user data instead of failing
+        const fallbackProfile = {
+          name: authUser.name || authUser.email.split('@')[0] || 'User',
+          createdAt: new Date().toISOString(),
+          profilePicture: null
+        };
+        
+        set({
+          isAuthenticated: true,
+          user: {
+            $id: authUser.$id,
+            id: authUser.$id,
+            email: authUser.email,
+            name: fallbackProfile.name,
+            createdAt: fallbackProfile.createdAt,
+            avatar: null,
+            avatarFileId: null,
+          } as User,
+          lastPasswordLogin: new Date(),
+        });
+      } else {
+        // Set authenticated state with full profile
+        set({
+          isAuthenticated: true,
+          user: {
+            $id: authUser.$id,
+            id: authUser.$id,
+            email: authUser.email,
+            name: userProfile.name,
+            createdAt: userProfile.createdAt,
+            avatar: userProfile.profilePicture?.url,
+            avatarFileId: userProfile.profilePicture?.id,
+          } as User,
+          lastPasswordLogin: new Date(),
+        });
       }
-
-      // Set authenticated state
-      set({
-        isAuthenticated: true,
-        user: {
-          $id: authUser.$id,
-          id: authUser.$id,
-          email: authUser.email,
-          name: userProfile.name,
-          createdAt: userProfile.createdAt,
-          avatar: userProfile.profilePicture?.url,
-          avatarFileId: userProfile.profilePicture?.id,
-        } as User,
-        lastPasswordLogin: new Date(),
-      });
       
       // Update password login timestamp for biometric security
       await updateLastPasswordLogin();
@@ -371,6 +414,10 @@ const useAuthStore = create<AuthState>((set, get) => ({
         logger.warn('AUTH', 'Continuing without JWT token');
       }
 
+      // Clear login attempts on successful login
+      await loginAttemptsService.clearLoginAttempts(email);
+      set({ loginAttempts: null });
+      
       if (__DEV__) {
         logger.info('AUTH', 'Login completed successfully');
       }
@@ -382,6 +429,24 @@ const useAuthStore = create<AuthState>((set, get) => ({
         user: null,
       });
       (global as any).__APPWRITE_JWT__ = undefined;
+      
+      // Record failed login attempt (unless it's already a lockout error)
+      if (!error.message?.includes('Account temporarily locked')) {
+        try {
+          const updatedAttemptStatus = await loginAttemptsService.recordFailedAttempt(email);
+          set({ loginAttempts: updatedAttemptStatus });
+          
+          // Update error message to include remaining attempts info
+          if (updatedAttemptStatus.isLocked) {
+            error.message = `Account temporarily locked due to too many failed attempts. Try again in ${loginAttemptsService.formatTimeRemaining(updatedAttemptStatus.lockoutTimeRemaining || 0)}.`;
+          } else if (updatedAttemptStatus.remainingAttempts > 0) {
+            const attemptsText = updatedAttemptStatus.remainingAttempts === 1 ? 'attempt' : 'attempts';
+            error.message = `${error.message} ${updatedAttemptStatus.remainingAttempts} ${attemptsText} remaining.`;
+          }
+        } catch (attemptError) {
+          logger.error('AUTH', 'Error recording failed login attempt:', attemptError);
+        }
+      }
       
       // Surface full error to stdout/console for runtime environments
       try {
@@ -616,6 +681,41 @@ const useAuthStore = create<AuthState>((set, get) => ({
         biometricEnabled: false,
         biometricType: null,
       });
+    }
+  },
+  
+  /**
+   * Checks and loads current login attempt/lockout status for an email
+   * This ensures lockout state persists across app restarts and force-quits
+   */
+  checkLoginAttemptStatus: async (email: string): Promise<void> => {
+    if (!email?.trim()) {
+      set({ loginAttempts: null });
+      return;
+    }
+    
+    try {
+      const status = await loginAttemptsService.getCurrentLockoutStatus(email);
+      const attemptResult: LoginAttemptResult = {
+        isLocked: status.isLockedOut,
+        remainingAttempts: status.remainingAttempts,
+        lockoutTimeRemaining: status.timeLeftSeconds * 1000, // Convert to milliseconds
+        canAttempt: !status.isLockedOut,
+      };
+      
+      set({ loginAttempts: attemptResult });
+      
+      if (status.isLockedOut) {
+        logger.info('AUTH', 'Loaded lockout status from storage', {
+          email,
+          timeLeftSeconds: status.timeLeftSeconds,
+          attempts: status.attempts,
+        });
+      }
+    } catch (error) {
+      logger.error('AUTH', 'Error checking login attempt status:', error);
+      // On error, don't block user - set null state
+      set({ loginAttempts: null });
     }
   },
 }));
