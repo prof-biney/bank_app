@@ -30,8 +30,8 @@ import { ClearDataModal } from "@/components/ClearDataModal";
 import { TransactionAnalytics } from "@/components/TransactionAnalytics";
 import AnalyticsReportsModal from "@/components/AnalyticsReportsModal";
 import { useApp } from "@/context/AppContext";
-
 import { useTheme } from "@/context/ThemeContext";
+import { createMutedColor } from "@/theme/color-utils";
 
 export default function HomeScreen() {
   const { cards, activeCard, setActiveCard, transactions, clearAllTransactions, notifications } = useApp();
@@ -242,7 +242,10 @@ export default function HomeScreen() {
               {/* Empty state when no transactions */}
               {recentTransactions.length === 0 ? (
                 <View style={styles.emptyStateContainer}>
-                  <CreditCard color={colors.textSecondary} size={48} style={{ opacity: 0.5 }} />
+                  <CreditCard 
+                    color={createMutedColor(colors.textSecondary, colors.background)} 
+                    size={48} 
+                  />
                   <Text style={[styles.emptyStateTitle, { color: colors.textPrimary }]}>No transactions yet</Text>
                   <Text style={[styles.emptyStateDescription, { color: colors.textSecondary }]}>
                     Start by making a transfer or payment to see your transaction history here.

@@ -57,7 +57,7 @@ const ApprovalBadge: React.FC<ApprovalBadgeProps> = ({
       <TouchableOpacity
         style={[styles.container, style]}
         onPress={handlePress}
-        activeOpacity={0.7}
+        activeOpacity={0.85}
       >
         <MaterialIcons 
           name="pending-actions" 
