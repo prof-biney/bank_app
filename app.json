@@ -37,6 +37,8 @@
       "edgeToEdgeEnabled": true,
       "permissions": [
         "USE_BIOMETRIC",
+        "USE_FINGERPRINT",
+        "USE_BIOMETRIC",
         "USE_FINGERPRINT"
       ]
     },
@@ -61,6 +63,18 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "90c0a4d9-ed38-47b5-bdee-97664c4efe9f"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/90c0a4d9-ed38-47b5-bdee-97664c4efe9f"
     }
   }
 }
