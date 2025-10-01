@@ -1,4 +1,5 @@
 import { useAlert } from "@/context/AlertContext";
+import { useLoading } from "@/context/LoadingContext";
 import React from "react";
 import {
   KeyboardAvoidingView,
@@ -7,7 +8,6 @@ import {
   StyleSheet,
   Text,
   View,
-  TouchableOpacity,
   ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -15,6 +15,10 @@ import { BankCard } from "@/components/BankCard";
 import { useApp } from "@/context/AppContext";
 import useAuthStore from "@/store/auth.store";
 import { useTheme } from "@/context/ThemeContext";
+import { getApiBase } from '@/lib/api';
+import { logger } from "@/lib/logger";
+import { getValidJWT } from '@/lib/jwt';
+import { cardService, createCard, CreateCardData, findCardByNumber } from '@/lib/appwrite/cardService';
 
 import AddCardModal from "@/components/modals/AddCardModal";
 import ConfirmDialog from "@/components/modals/ConfirmDialog";
@@ -22,160 +26,217 @@ import CustomButton from "@/components/CustomButton";
 
 function AddCardButton() {
   const { showAlert } = useAlert();
-  const { addCard } = useApp();
+  const { startLoading, updateLoading, stopLoading, isLoading } = useLoading();
+  const { cards, setActiveCard, addCard } = useApp();
   const { user } = useAuthStore();
-  const { colors } = useTheme();
 
-  const { getApiBase } = require('@/lib/api');
-  
   let cardsUrl;
   try {
     const apiBase = getApiBase();
     cardsUrl = `${apiBase}/v1/cards`;
-    console.log('[AddCard] API Configuration:', { apiBase, cardsUrl });
+    logger.info('CARDS', 'API Configuration:', { apiBase, cardsUrl });
   } catch (error) {
-    console.error('[AddCard] API Configuration Error:', error);
+    logger.error('CARDS', 'API Configuration Error:', error);
     throw error;
   }
 
   const [visible, setVisible] = React.useState(false);
   const open = () => setVisible(true);
-  const close = () => setVisible(false);
+  const close = () => {
+    setVisible(false);
+  };
 
   const handleSubmit = async (payload: { number: string; name: string; exp_month: string; exp_year: string; cvc: string }) => {
+    logger.info('CARDS', '🚀 handleSubmit called');
+
+    // Normalize number and compute last4 once
+    const normalized = payload.number.replace(/\s+/g, "");
+    const last4 = normalized.slice(-4);
+
+    // Close modal immediately to show background processing
+    close();
+
+    const loadingId = startLoading('add_card', `Performing security checks for card ending in ${last4}...`);
+    logger.info('CARDS', '⏳ Loading state set to true');
+
     try {
-      const { getValidJWT, refreshAppwriteJWT } = require('@/lib/jwt');
-      
-      // Get a valid JWT token
-      let jwt = await getValidJWT();
-      const normalized = payload.number.replace(/\s+/g, "");
-      const last4In = normalized.slice(-4);
-      console.log('[AddCard] Submitting', { hasJwt: Boolean(jwt), last4: last4In });
-      
-      const makeRequest = async (token: string | undefined) => {
-        const requestBody = {
-          number: normalized,
-          name: payload.name,
-          exp_month: Number(payload.exp_month),
-          exp_year: Number(payload.exp_year),
-          cvc: payload.cvc,
-        };
-        
-        const headers = {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          "Idempotency-Key": `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        };
-        
-        // Log the request details
-        console.log('[AddCard] Request Details:', {
-          url: cardsUrl,
-          method: 'POST',
-          headers: {
-            ...headers,
-            // Mask the authorization token for security
-            Authorization: token ? `Bearer ${token.slice(0, 10)}...` : 'none'
-          },
-          body: {
-            ...requestBody,
-            // Mask sensitive card data in logs
-            number: `${normalized.slice(0, 4)}****${normalized.slice(-4)}`,
-            cvc: '***'
-          }
-        });
-        
-        return await fetch(cardsUrl, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(requestBody),
-        });
-      };
-      
-      let res = await makeRequest(jwt);
-      
-      // If we get a 401, try refreshing the token once
-      if (res.status === 401 && jwt) {
-        console.log('[AddCard] Got 401, refreshing JWT and retrying...');
-        jwt = await refreshAppwriteJWT();
-        if (jwt) {
-          res = await makeRequest(jwt);
-        }
-      }
-      
-      const raw = await res.text();
-      let data: any = raw;
-      try { data = JSON.parse(raw); } catch {}
-      
-      // Log the response details
-      console.log('[AddCard] Response Details:', {
-        status: res.status,
-        statusText: res.statusText,
-        headers: Object.fromEntries(res.headers.entries()),
-        rawBody: raw,
-        parsedBody: data
+      logger.info('CARDS', 'Starting card validation and submission', {
+        holderName: payload.name,
+        last4,
+        expiry: `${payload.exp_month}/${payload.exp_year}`,
+        hasUser: Boolean(user),
       });
-      
-      if (!res.ok) {
-        console.error('[AddCard] Error response', { 
-          status: res.status, 
-          statusText: res.statusText,
-          url: cardsUrl,
-          data,
-          rawBody: raw
+
+      // Validate user is authenticated
+      logger.info('CARDS', '🔍 Checking user authentication', {
+        hasUser: Boolean(user),
+        userId: (user as any)?.id || (user as any)?.$id || 'missing',
+        userIdField: (user as any)?.id ? 'id' : (user as any)?.$id ? '$id' : 'none',
+      });
+
+      const userId = (user as any)?.id || (user as any)?.$id;
+      if (!userId) {
+        logger.error('CARDS', 'User not authenticated');
+        showAlert('error', 'Please sign in to add cards.', 'Authentication Required');
+        stopLoading(loadingId);
+        return;
+      }
+
+      logger.info('CARDS', '✅ User authentication validated successfully', { userId });
+
+      // Check for duplicate cards in current state
+      logger.info('CARDS', '🔍 Checking for duplicate cards', {
+        cardsCount: cards.length,
+        targetLast4: last4,
+        targetName: payload.name.toLowerCase().trim(),
+      });
+
+      const existingCard = cards.find((card) => {
+        const cardLast4 = (card.cardNumber || '').replace(/[^\d]/g, '').slice(-4);
+        return (
+          cardLast4 === last4 && card.cardHolderName.toLowerCase().trim() === payload.name.toLowerCase().trim()
+        );
+      });
+
+      if (existingCard) {
+        logger.warn('CARDS', 'Duplicate card detected', {
+          existingCardId: existingCard.id,
+          holderName: payload.name,
+          last4,
         });
+        showAlert('error', `A card ending in ${last4} for ${payload.name} already exists in your account.`, 'Duplicate Card');
+        stopLoading(loadingId);
+        return;
+      }
+
+      logger.info('CARDS', '✅ No duplicate cards found, proceeding to JWT');
+
+      // Update loading message for JWT acquisition
+      updateLoading(loadingId, `Authenticating card request for ${last4}...`);
+
+  // Get JWT token for API calls (with fallback support)
+  logger.info('CARDS', '🔑 Attempting to get JWT token');
+      let jwt: string | undefined;
+      let useAppwriteDirectly = false;
+      
+      try {
+        const jwtPromise = getValidJWT();
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('JWT request timed out')), 10000)
+        );
+
+        jwt = await Promise.race([jwtPromise, timeoutPromise]);
         
-        // For 500 errors, provide more detailed context
-        if (res.status === 500) {
-          console.error('[AddCard] Server Error Details:', {
-            'Possible causes': [
-              'Server misconfiguration (missing environment variables)',
-              'Database connection issues',
-              'Invalid card data validation',
-              'Appwrite authentication issues'
-            ],
-            'Check server logs': 'Look for detailed error information in your server logs'
+        // Check if this is a fallback token
+        if (jwt && typeof jwt === 'string' && jwt.includes('.fallback')) {
+          logger.info('CARDS', '✅ Fallback token retrieved - using Appwrite directly');
+          useAppwriteDirectly = true;
+        } else if (jwt && typeof jwt === 'string') {
+          logger.info('CARDS', '✅ Real JWT token retrieved successfully');
+        } else {
+          logger.warn('CARDS', 'No JWT token returned - using Appwrite directly');
+          useAppwriteDirectly = true;
+        }
+      } catch (jwtError) {
+        logger.warn('CARDS', 'JWT token acquisition failed - using Appwrite directly', jwtError);
+        useAppwriteDirectly = true;
+      }
+
+      // Update loading message for duplicate checking
+      updateLoading(loadingId, `Verifying card details for ${last4}...`);
+
+      // Check for duplicates in Appwrite database
+      try {
+        logger.info('CARDS', 'Checking for duplicate cards in Appwrite database');
+        const existingCard = await findCardByNumber(payload.number.replace(/\s+/g, ''), payload.name.trim());
+        
+        if (existingCard) {
+          logger.warn('CARDS', 'Duplicate card found in Appwrite database', {
+            existingCardId: existingCard.id,
+            holderName: existingCard.cardHolderName,
+            last4
           });
+          showAlert('error', `A card ending in ${last4} for ${payload.name} already exists in your account.`, 'Card Already Exists');
+          stopLoading(loadingId);
+          return;
         }
         
-        const msg = (data && typeof data === 'object' && (data as any).error === "validation_error")
-          ? JSON.stringify((data as any).details)
-          : (data && typeof data === 'object' && ((data as any).message || (data as any).error)) || `HTTP ${res.status}: ${res.statusText || 'Server Error'}`;
-        throw new Error(msg);
+        logger.info('CARDS', 'No duplicate found in Appwrite, proceeding with creation');
+      } catch (duplicateCheckError) {
+        logger.warn('CARDS', 'Duplicate check in Appwrite failed, proceeding with creation', duplicateCheckError);
       }
-      console.log('[AddCard] Success', { status: res.status, last4: data?.authorization?.last4 || last4In });
-      const last4 = data?.authorization?.last4 || last4In || "0000";
-      const brand = (data?.authorization?.brand || "visa").toLowerCase();
-      const expMonth = String(data?.authorization?.exp_month || payload.exp_month).padStart(2, "0");
-      const expYear = String(data?.authorization?.exp_year || payload.exp_year).slice(-2);
-      const masked = `•••• •••• •••• ${last4}`;
-      const holder = data?.customer?.name || payload.name || "Card Holder";
 
-      // Default starting balance GHS 40,000
-      const startingBalance = 40000;
+      logger.info('CARDS', '🔄 Duplicate check completed, continuing to card creation');
 
-      addCard({
-        userId: (user as any)?.accountId || (user as any)?.$id || "",
-        cardNumber: masked,
-        cardHolderName: holder,
-        expiryDate: `${expMonth}/${expYear}`,
-        cardType: brand,
-        cardColor: "#1F2937",
-        balance: startingBalance,
-        token: data?.token,
-        currency: 'GHS',
+      // Update loading message for card creation
+      updateLoading(loadingId, `Creating card record for ${last4}...`);
+
+      // Prepare card data for creation
+      const cardData = {
+        userId: userId,
+        cardNumber: payload.number, // Full card number
+        cardHolderName: payload.name.trim(),
+        expiryDate: `${payload.exp_month.padStart(2, '0')}/${payload.exp_year}`,
+        cardType: 'card' as const,
+        cardColor: '#1D4ED8',
+        currency: 'GHS' as const,
+        token: `card_token_${last4}_${Date.now()}`,
+        isActive: true, // New cards are active by default
+        // Balance will be set by Appwrite database default and fetched asynchronously
+      };
+
+      logger.info('CARDS', '💾 Creating card with AppContext (handles both local and Appwrite)', {
+        last4,
+        holderName: payload.name,
+        userId: userId,
       });
-      showAlert("success", "Card added successfully.", "Card Added");
-      close();
-    } catch (e: any) {
-      console.error('[AddCard] Exception', { message: e?.message, stack: e?.stack });
-      showAlert("error", e?.message || "Failed to add card", "Error");
+
+      // Update loading message for final steps
+      updateLoading(loadingId, `Finalizing card setup for ${last4}...`);
+
+      // Use addCard which handles both local state and Appwrite persistence
+      await addCard(cardData);
+
+      logger.info('CARDS', '✅ Card added to local state successfully');
+      showAlert('success', `Card ending in ${last4} has been added successfully.`, 'Card Added');
+      logger.info('CARDS', '✅ Card creation flow completed successfully');
+    } catch (error: any) {
+      logger.error('CARDS', '💥 EXCEPTION CAUGHT in handleSubmit', {
+        errorType: typeof error,
+        errorName: error?.name,
+        message: error?.message,
+        stack: error?.stack ? error.stack.slice(0, 500) : 'no-stack',
+        errorObject: error,
+      });
+
+      let errorMessage = 'Failed to add card. Please try again.';
+      if (error?.message) {
+        if (error.message.includes('fetch')) {
+          errorMessage = 'Network error. Please check your connection and try again.';
+        } else if (error.message.includes('JWT') || error.message.includes('auth')) {
+          errorMessage = 'Authentication failed. Please sign in again.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+
+      showAlert('error', errorMessage, 'Error');
+    } finally {
+      logger.info('CARDS', '🔄 Setting loading state to false');
+      stopLoading(loadingId);
+      logger.info('CARDS', '✅ Loading state reset completed');
     }
   };
 
   return (
     <>
       <CustomButton onPress={open} title="+ Add Card" variant="primary" size="md" />
-      <AddCardModal visible={visible} onClose={close} onSubmit={handleSubmit} />
+      <AddCardModal 
+        visible={visible} 
+        onClose={close} 
+        onSubmit={handleSubmit}
+        isLoading={isLoading}
+      />
     </>
   );
 }
@@ -186,6 +247,7 @@ export default function CardsScreen() {
   const [confirmVisible, setConfirmVisible] = React.useState(false);
   const [pendingDeleteId, setPendingDeleteId] = React.useState<string | null>(null);
   const { showAlert } = useAlert();
+  const { startLoading, stopLoading } = useLoading();
 
   const handleDelete = (id: string) => {
     setPendingDeleteId(id);
@@ -250,10 +312,21 @@ export default function CardsScreen() {
         cancelText="Cancel"
         tone="danger"
         onCancel={() => { setConfirmVisible(false); setPendingDeleteId(null); }}
-        onConfirm={() => {
+        onConfirm={async () => {
           if (pendingDeleteId) {
-            removeCard(pendingDeleteId);
-            showAlert('success', 'Card removed successfully.', 'Card Deleted');
+            const cardToDelete = cards.find(c => c.id === pendingDeleteId);
+            const last4 = cardToDelete?.cardNumber.slice(-4) || 'card';
+            const loadingId = startLoading('delete_card', `Removing card ending in ${last4}...`);
+            
+            try {
+              await removeCard(pendingDeleteId);
+              showAlert('success', 'Card removed successfully.', 'Card Deleted');
+            } catch (error) {
+              logger.error('CARDS', 'Failed to delete card:', error);
+              showAlert('error', 'Failed to remove card. Please try again.', 'Delete Failed');
+            } finally {
+              stopLoading(loadingId);
+            }
           }
           setConfirmVisible(false);
           setPendingDeleteId(null);

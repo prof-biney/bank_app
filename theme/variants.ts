@@ -21,7 +21,7 @@ export function getButtonStyles(colors: ThemeColors, opts: { variant?: ButtonVar
   switch (variant) {
     case 'primary':
       backgroundColor = colors.tintPrimary;
-      textColor = chooseReadableText(colors.tintPrimary);
+      textColor = '#FFFFFF'; // Ensure consistent white text for primary buttons
       break;
     case 'secondary':
       backgroundColor = colors.card;
@@ -34,7 +34,7 @@ export function getButtonStyles(colors: ThemeColors, opts: { variant?: ButtonVar
       break;
     case 'danger':
       backgroundColor = colors.negative;
-      textColor = chooseReadableText(colors.negative);
+      textColor = '#FFFFFF'; // Ensure consistent white text for danger buttons
       break;
   }
 

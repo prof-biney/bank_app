@@ -1,4 +1,5 @@
-import { account } from './appwrite';
+import { authService } from './appwrite/auth';
+import { logger } from '@/lib/logger';
 
 declare const global: any;
 
@@ -17,32 +18,31 @@ export async function ensureAppwriteJWT(getJwt: (() => Promise<string>) | null) 
 export async function refreshAppwriteJWT(): Promise<string | undefined> {
   try {
     // First, ensure we have an active session
-    const session = await account.getSession('current');
+    const session = await authService.getCurrentSession();
     if (!session) {
-      console.warn('[refreshAppwriteJWT] No active session found');
+      logger.warn('JWT', 'No active session found');
       global.__APPWRITE_JWT__ = undefined;
       return undefined;
     }
     
     // Create JWT with proper error handling for scope issues
-    const jwt = await account.createJWT();
-    const token = jwt?.jwt;
-    if (token) {
-      global.__APPWRITE_JWT__ = token;
-      console.log('[refreshAppwriteJWT] JWT created successfully');
-      return token;
+    const result = await authService.createJWT();
+    if (result && result.jwt) {
+      global.__APPWRITE_JWT__ = result.jwt;
+      logger.info('JWT', 'JWT created successfully');
+      return result.jwt;
     }
     
-    console.warn('[refreshAppwriteJWT] JWT creation returned no token');
+    logger.warn('JWT', 'JWT creation returned no token');
     return undefined;
   } catch (e: any) {
-    console.error('[refreshAppwriteJWT] Failed to refresh Appwrite JWT:', e);
+    logger.error('JWT', 'Failed to refresh Appwrite JWT', e);
     
     // Handle specific error cases
     if (e.message?.includes('missing scope')) {
-      console.error('[refreshAppwriteJWT] Missing scope error - user may need to re-authenticate');
+      logger.error('JWT', 'Missing scope error - user may need to re-authenticate');
     } else if (e.message?.includes('guests')) {
-      console.error('[refreshAppwriteJWT] User has guest role - authentication issue');
+      logger.error('JWT', 'User has guest role - authentication issue');
     }
     
     global.__APPWRITE_JWT__ = undefined;
@@ -60,7 +60,7 @@ export async function getValidJWT(): Promise<string | undefined> {
     token = await refreshAppwriteJWT();
     return token;
   } catch (e) {
-    console.error('Failed to get valid JWT:', e);
+    logger.error('JWT', 'Failed to get valid JWT', e);
     return undefined;
   }
 }
@@ -77,7 +77,7 @@ export async function refreshAppwriteJWTWithRetry(maxRetries = 3): Promise<strin
     try {
       const token = await refreshAppwriteJWT();
       if (token) {
-        console.log(`[refreshAppwriteJWTWithRetry] JWT refreshed successfully on attempt ${attempt + 1}`);
+        logger.info('JWT', `JWT refreshed successfully on attempt ${attempt + 1}`);
         return token;
       }
     } catch (error: any) {
@@ -85,18 +85,18 @@ export async function refreshAppwriteJWTWithRetry(maxRetries = 3): Promise<strin
       
       // Don't retry on authentication/scope errors - these require re-authentication
       if (error.message?.includes('missing scope') || error.message?.includes('guests') || error.message?.includes('Invalid credentials')) {
-        console.error('[refreshAppwriteJWTWithRetry] Authentication error - no retry:', error.message);
+        logger.error('JWT', 'Authentication error - no retry', { message: error.message });
         break;
       }
       
       if (attempt >= maxRetries) {
-        console.error('[refreshAppwriteJWTWithRetry] Max retries reached:', error.message);
+        logger.error('JWT', 'Max retries reached', { message: error.message });
         break;
       }
       
       // Exponential backoff: 1s, 2s, 4s
       const delay = Math.pow(2, attempt - 1) * 1000;
-      console.warn(`[refreshAppwriteJWTWithRetry] Attempt ${attempt} failed, retrying in ${delay}ms:`, error.message);
+      logger.warn('JWT', `Attempt ${attempt} failed, retrying in ${delay}ms`, { message: error.message });
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
@@ -124,7 +124,7 @@ export async function isJWTValid(): Promise<boolean> {
     
     return (expiration - now) > bufferTime;
   } catch (error) {
-    console.warn('[isJWTValid] Failed to decode JWT:', error);
+    logger.warn('JWT', 'Failed to decode JWT', error);
     return false;
   }
 }
@@ -142,12 +142,12 @@ export async function getValidJWTWithAutoRefresh(): Promise<string | undefined> 
     }
     
     // Token is missing or expired, try to refresh
-    console.log('[getValidJWTWithAutoRefresh] Token expired or missing, refreshing...');
+    logger.info('JWT', 'Token expired or missing, refreshing...');
     const newToken = await refreshAppwriteJWTWithRetry();
     
     return newToken;
   } catch (error) {
-    console.error('[getValidJWTWithAutoRefresh] Failed to get valid JWT:', error);
+    logger.error('JWT', 'Failed to get valid JWT', error);
     return undefined;
   }
 }

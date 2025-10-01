@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 /**
  * Notification Analytics Service
  * 
@@ -117,7 +118,7 @@ class NotificationAnalyticsService {
         this.events = JSON.parse(eventsRaw);
       }
     } catch (error) {
-      console.warn('[NotificationAnalytics] Failed to load metrics:', error);
+      logger.warn('ANALYTICS', '[NotificationAnalytics] Failed to load metrics:', error);
     }
   }
 
@@ -130,7 +131,7 @@ class NotificationAnalyticsService {
         AsyncStorage.setItem(this.EVENTS_KEY, JSON.stringify(this.events.slice(-this.MAX_EVENTS))),
       ]);
     } catch (error) {
-      console.warn('[NotificationAnalytics] Failed to save metrics:', error);
+      logger.warn('ANALYTICS', '[NotificationAnalytics] Failed to save metrics:', error);
     }
   }
 
@@ -252,9 +253,9 @@ class NotificationAnalyticsService {
       this.recalculateMetrics();
       this.saveMetrics();
       
-      console.log('[NotificationAnalytics] Tracked notification created:', notification.id);
+      logger.info('ANALYTICS', '[NotificationAnalytics] Tracked notification created:', notification.id);
     } catch (error) {
-      console.warn('[NotificationAnalytics] Failed to track notification created:', error);
+      logger.warn('ANALYTICS', '[NotificationAnalytics] Failed to track notification created:', error);
     }
   }
 
@@ -277,9 +278,9 @@ class NotificationAnalyticsService {
       this.recalculateMetrics();
       this.saveMetrics();
       
-      console.log('[NotificationAnalytics] Tracked notification read:', notificationId);
+      logger.info('ANALYTICS', '[NotificationAnalytics] Tracked notification read:', notificationId);
     } catch (error) {
-      console.warn('[NotificationAnalytics] Failed to track notification read:', error);
+      logger.warn('ANALYTICS', '[NotificationAnalytics] Failed to track notification read:', error);
     }
   }
 
@@ -295,9 +296,9 @@ class NotificationAnalyticsService {
       this.updateDailyStats('archived');
       this.saveMetrics();
       
-      console.log('[NotificationAnalytics] Tracked notification archived:', notificationId);
+      logger.info('ANALYTICS', '[NotificationAnalytics] Tracked notification archived:', notificationId);
     } catch (error) {
-      console.warn('[NotificationAnalytics] Failed to track notification archived:', error);
+      logger.warn('ANALYTICS', '[NotificationAnalytics] Failed to track notification archived:', error);
     }
   }
 
@@ -313,9 +314,9 @@ class NotificationAnalyticsService {
       this.updateDailyStats('deleted');
       this.saveMetrics();
       
-      console.log('[NotificationAnalytics] Tracked notification deleted:', notificationId);
+      logger.info('ANALYTICS', '[NotificationAnalytics] Tracked notification deleted:', notificationId);
     } catch (error) {
-      console.warn('[NotificationAnalytics] Failed to track notification deleted:', error);
+      logger.warn('ANALYTICS', '[NotificationAnalytics] Failed to track notification deleted:', error);
     }
   }
 
@@ -338,9 +339,9 @@ class NotificationAnalyticsService {
 
       this.saveMetrics();
       
-      console.log(`[NotificationAnalytics] Tracked database operation: ${operation} - ${success ? 'success' : 'failure'}${duration ? ` (${duration}ms)` : ''}`);
+      logger.info('ANALYTICS', `[NotificationAnalytics] Tracked database operation: ${operation} - ${success ? 'success' : 'failure'}${duration ? ` (${duration}ms)` : ''}`);
     } catch (error) {
-      console.warn('[NotificationAnalytics] Failed to track database operation:', error);
+      logger.warn('ANALYTICS', '[NotificationAnalytics] Failed to track database operation:', error);
     }
   }
 
@@ -370,9 +371,9 @@ class NotificationAnalyticsService {
 
       this.saveMetrics();
       
-      console.log(`[NotificationAnalytics] Tracked batch operation: ${operation} - ${successful}/${total} successful`);
+      logger.info('ANALYTICS', `[NotificationAnalytics] Tracked batch operation: ${operation} - ${successful}/${total} successful`);
     } catch (error) {
-      console.warn('[NotificationAnalytics] Failed to track batch operation:', error);
+      logger.warn('ANALYTICS', '[NotificationAnalytics] Failed to track batch operation:', error);
     }
   }
 
@@ -473,9 +474,9 @@ class NotificationAnalyticsService {
         AsyncStorage.removeItem(this.EVENTS_KEY),
       ]);
       
-      console.log('[NotificationAnalytics] Analytics data cleared');
+      logger.info('ANALYTICS', '[NotificationAnalytics] Analytics data cleared');
     } catch (error) {
-      console.warn('[NotificationAnalytics] Failed to clear analytics:', error);
+      logger.warn('ANALYTICS', '[NotificationAnalytics] Failed to clear analytics:', error);
     }
   }
 }

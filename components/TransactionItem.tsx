@@ -1,8 +1,11 @@
+import { logger } from '@/lib/logger';
 import {
   ArrowDownLeft,
   ArrowUpRight,
   Banknote,
   CreditCard,
+  PlusCircle,
+  Wallet,
 } from "lucide-react-native";
 import React, { useState } from "react";
 import { StyleSheet, Text, View, TouchableOpacity } from "react-native";
@@ -20,7 +23,7 @@ export function TransactionItem({ transaction }: TransactionItemProps) {
   const getTransactionIcon = () => {
     switch (transaction.type) {
       case "deposit":
-        return <ArrowDownLeft color={colors.positive} size={20} />;
+        return <PlusCircle color={colors.positive} size={20} />;
       case "transfer":
         return <ArrowUpRight color={colors.negative} size={20} />;
       case "withdraw":
@@ -28,12 +31,33 @@ export function TransactionItem({ transaction }: TransactionItemProps) {
       case "payment":
         return <CreditCard color={colors.negative} size={20} />;
       default:
-        return <CreditCard color={colors.textSecondary} size={20} />;
+        return <Wallet color={colors.textSecondary} size={20} />;
     }
   };
 
   const getAmountColor = () => {
+    // For deposits, always show positive (green) as they increase balance
+    if (transaction.type === "deposit") {
+      return colors.positive;
+    }
     return transaction.amount > 0 ? colors.positive : colors.negative;
+  };
+
+  const getTransactionDescription = () => {
+    if (transaction.type === "deposit") {
+      if (transaction.status === "pending") {
+        return `Deposit (Pending) - ${transaction.description}`;
+      }
+      return `Deposit - ${transaction.description}`;
+    }
+    return transaction.description;
+  };
+
+  const getTransactionCategory = () => {
+    if (transaction.type === "deposit") {
+      return transaction.status === "pending" ? "Pending Deposit" : "Account Funding";
+    }
+    return transaction.category;
   };
 
   const formatDate = (dateString: string) => {
@@ -64,7 +88,7 @@ export function TransactionItem({ transaction }: TransactionItemProps) {
             adjustsFontSizeToFit
             minimumFontScale={0.7}
           >
-            {transaction.description}
+            {getTransactionDescription()}
           </Text>
           <Text 
             style={[styles.category, { color: colors.textSecondary }]}
@@ -73,13 +97,13 @@ export function TransactionItem({ transaction }: TransactionItemProps) {
             adjustsFontSizeToFit
             minimumFontScale={0.8}
           >
-            {transaction.category}
+            {getTransactionCategory()}
           </Text>
         </View>
 
         <View style={styles.amountContainer}>
           <Text style={[styles.amount, { color: getAmountColor() }]}>
-            {transaction.amount > 0 ? "+" : ""}GHS 
+            {(transaction.type === "deposit" || transaction.amount > 0) ? "+" : ""}GHS 
             {Math.abs(transaction.amount).toFixed(2)}
           </Text>
           <Text style={[styles.date, { color: colors.textSecondary }]}>{formatDate(transaction.date)}</Text>
@@ -92,11 +116,11 @@ export function TransactionItem({ transaction }: TransactionItemProps) {
         onClose={() => setShowDetailModal(false)}
         onTransactionUpdated={() => {
           // Transaction updated - the AppContext will handle state updates
-          console.log('Transaction updated:', transaction.id);
+          logger.info('UI', 'Transaction updated:', transaction.id);
         }}
         onTransactionDeleted={() => {
           // Transaction deleted - the AppContext will handle state updates
-          console.log('Transaction deleted:', transaction.id);
+          logger.info('UI', 'Transaction deleted:', transaction.id);
         }}
       />
     </>

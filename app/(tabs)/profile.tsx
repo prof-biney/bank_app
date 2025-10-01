@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 import useAuthStore from "@/store/auth.store";
 import { router } from "expo-router";
 import { navigateAfterLogout } from "@/lib/safeNavigation";
@@ -6,9 +7,8 @@ import {
   LogOut,
   Settings,
 } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -16,71 +16,72 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useAlert } from '@/context/AlertContext';
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useTheme } from "@/context/ThemeContext";
 import { ProfilePicture } from "@/components/ProfilePicture";
 import { ImagePickerModal } from "@/components/ImagePickerModal";
 import { LogoutModal } from "@/components/LogoutModal";
+import LoadingAnimation from '@/components/LoadingAnimation';
+import { useLoading, LOADING_CONFIGS } from '@/hooks/useLoading';
 
 export default function ProfileScreen() {
-  const { user, logout, updateProfilePicture, isLoading } = useAuthStore();
+  const { user, logout, updateProfilePicture } = useAuthStore();
+  const { showAlert } = useAlert();
   const [showImagePicker, setShowImagePicker] = useState(false);
-  const [isUpdatingPicture, setIsUpdatingPicture] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const { loading, withLoading } = useLoading();
 
-  const handleSignOut = () => {
+  const handleSignOut = useCallback(() => {
+    logger.debug('SCREEN', 'Sign out button pressed');
     setShowLogoutModal(true);
-  };
+  }, []);
 
-  const handleConfirmLogout = async () => {
+  const handleConfirmLogout = useCallback(async () => {
     try {
-      setIsLoggingOut(true);
-      await logout();
+      logger.debug('SCREEN', 'Confirming logout');
+      // Close modal immediately for better UX
       setShowLogoutModal(false);
       
-      // Use safe navigation utility to handle post-logout navigation
-      await navigateAfterLogout('/sign-in');
+      // Start loading indication
+      await withLoading(async () => {
+        await logout();
+        await navigateAfterLogout('/sign-in');
+      }, LOADING_CONFIGS.LOGOUT);
     } catch (error) {
-      console.error('Logout error:', error);
-      setShowLogoutModal(false);
-      Alert.alert(
-        'Error',
-        'Failed to sign out. Please try again.'
-      );
-    } finally {
-      setIsLoggingOut(false);
+      logger.error('SCREEN', 'Logout error:', error);
+      showAlert('error', 'Failed to sign out. Please try again.', 'Error');
     }
-  };
+  }, [logout, showAlert, withLoading]);
 
-  const handleSettings = () => {
+  const handleSettings = useCallback(() => {
+    logger.debug('SCREEN', 'Settings button pressed');
     router.push("/settings");
-  };
+  }, []);
 
-  const handleHelpSupport = () => {
+  const handleHelpSupport = useCallback(() => {
+    logger.debug('SCREEN', 'Help & Support button pressed');
     router.push("/help-support");
-  };
+  }, []);
 
-  const handleProfilePicturePress = () => {
+  const handleProfilePicturePress = useCallback(() => {
+    logger.debug('SCREEN', 'Profile picture pressed');
     setShowImagePicker(true);
-  };
+  }, []);
 
-  const handleImageSelected = async (imageUri: string) => {
+  const handleImageSelected = useCallback(async (imageUri: string) => {
     try {
-      setIsUpdatingPicture(true);
-      await updateProfilePicture(imageUri);
-      Alert.alert('Success', 'Profile picture updated successfully!');
+      logger.debug('SCREEN', 'Image selected for profile picture');
+      await withLoading(async () => {
+        await updateProfilePicture(imageUri);
+        showAlert('success', 'Profile picture updated successfully!', 'Success');
+      }, LOADING_CONFIGS.UPLOAD_PHOTO);
     } catch (error) {
-      console.error('Profile picture update error:', error);
-      Alert.alert(
-        'Error',
-        error instanceof Error ? error.message : 'Failed to update profile picture'
-      );
-    } finally {
-      setIsUpdatingPicture(false);
+      logger.error('SCREEN', 'Profile picture update error:', error);
+      showAlert('error', error instanceof Error ? error.message : 'Failed to update profile picture', 'Error');
     }
-  };
+  }, [updateProfilePicture, showAlert, withLoading]);
 
   const { colors } = useTheme();
 
@@ -100,7 +101,7 @@ export default function ProfileScreen() {
             imageUrl={user?.avatar}
             size="large"
             editable
-            loading={isUpdatingPicture}
+            loading={loading.visible}
             onPress={handleProfilePicturePress}
             style={styles.profilePicture}
           />
@@ -109,24 +110,42 @@ export default function ProfileScreen() {
         </View>
 
         <View style={[styles.menuSection, { backgroundColor: colors.card }]}>
-          <TouchableOpacity style={[styles.menuItem, { borderBottomColor: colors.border }]} onPress={handleSettings}>
+          <TouchableOpacity 
+            style={[styles.menuItem, { borderBottomColor: colors.border }]} 
+            onPress={handleSettings}
+            activeOpacity={0.6}
+            delayPressIn={50}
+            delayPressOut={50}
+          >
             <View style={styles.menuItemLeft}>
               <Settings color={colors.textSecondary} size={20} />
               <Text style={[styles.menuItemText, { color: colors.textPrimary }]}>Settings</Text>
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity style={[styles.menuItem, { borderBottomColor: colors.border }]} onPress={handleHelpSupport}>
+          <TouchableOpacity 
+            style={[styles.menuItem, { borderBottomColor: colors.border }]} 
+            onPress={handleHelpSupport}
+            activeOpacity={0.6}
+            delayPressIn={50}
+            delayPressOut={50}
+          >
             <View style={styles.menuItemLeft}>
               <HelpCircle color={colors.textSecondary} size={20} />
               <Text style={[styles.menuItemText, { color: colors.textPrimary }]}>Help & Support</Text>
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity style={[styles.menuItem, { borderBottomColor: colors.border }]} onPress={handleSignOut}>
+          <TouchableOpacity 
+            style={[styles.menuItem, { borderBottomColor: colors.border }]} 
+            onPress={handleSignOut}
+            activeOpacity={0.6}
+            delayPressIn={50}
+            delayPressOut={50}
+          >
             <View style={styles.menuItemLeft}>
               <LogOut color={colors.negative} size={20} />
-              <Text style={[styles.menuItemText, { color: colors.negative }] }>
+              <Text style={[styles.menuItemText, { color: colors.negative }]}>
                 Sign Out
               </Text>
             </View>
@@ -144,7 +163,15 @@ export default function ProfileScreen() {
         visible={showLogoutModal}
         onClose={() => setShowLogoutModal(false)}
         onConfirm={handleConfirmLogout}
-        isLoading={isLoggingOut}
+        isLoading={false}
+      />
+      
+      <LoadingAnimation
+        visible={loading.visible}
+        message={loading.message}
+        subtitle={loading.subtitle}
+        type={loading.type}
+        size={loading.size}
       />
     </SafeAreaView>
   );

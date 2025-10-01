@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, {
   createContext,
@@ -33,7 +34,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(JSON.parse(userData));
       }
     } catch (error) {
-      console.error("Error checking auth state:", error);
+      logger.error('CONTEXT', "Error checking auth state:", error);
     } finally {
       setIsLoading(false);
     }
@@ -53,7 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(mockUser);
       return true;
     } catch (error) {
-      console.error("Sign in error:", error);
+      logger.error('CONTEXT', "Sign in error:", error);
       return false;
     }
   };
@@ -76,7 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(mockUser);
       return true;
     } catch (error) {
-      console.error("Sign up error:", error);
+      logger.error('CONTEXT', "Sign up error:", error);
       return false;
     }
   };
@@ -86,7 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await AsyncStorage.removeItem("user");
       setUser(null);
     } catch (error) {
-      console.error("Sign out error:", error);
+      logger.error('CONTEXT', "Sign out error:", error);
     }
   };
 

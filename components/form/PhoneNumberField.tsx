@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 import React, { useEffect, useState, useRef } from "react";
 import { 
   Text, 
@@ -15,6 +16,7 @@ import {
   PhoneNumberValidationState
 } from "./types";
 import { useFormStyles } from "./styles";
+import { useTheme } from "@/context/ThemeContext";
 import { 
   parsePhoneNumberFromString, 
   getCountryCallingCode, 
@@ -223,7 +225,7 @@ const PhoneNumberField: React.FC<PhoneNumberFieldProps> = ({
         maxDigits
       };
     } catch (error) {
-      console.log('Error validating phone number:', error);
+      logger.info('UI', 'Error validating phone number:', error);
       return { 
         isValid: false, 
         message: "Error validating phone number", 
@@ -281,7 +283,7 @@ const PhoneNumberField: React.FC<PhoneNumberFieldProps> = ({
         });
       }
     } catch (error) {
-      console.log('Error getting example number:', error);
+      logger.info('UI', 'Error getting example number:', error);
       // Default to 10 digits (US standard) if there's an error
       onValidationChange({
         ...validation,
@@ -382,6 +384,7 @@ const PhoneNumberField: React.FC<PhoneNumberFieldProps> = ({
   };
 
   const styles = useFormStyles();
+  const { colors } = useTheme();
   return (
     <View style={styles.inputContainer}>
       <Text style={styles.label}>{label}</Text>
@@ -412,7 +415,7 @@ const PhoneNumberField: React.FC<PhoneNumberFieldProps> = ({
             value={value}
             onChangeText={handleChangeText}
             placeholder={placeholder}
-            placeholderTextColor={undefined}
+            placeholderTextColor={colors.inputPlaceholder}
             keyboardType="phone-pad"
             {...rest}
           />

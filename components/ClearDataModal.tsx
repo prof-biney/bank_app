@@ -16,7 +16,7 @@ interface ClearDataModalProps {
   onClose: () => void;
   onConfirm: () => void;
   isLoading?: boolean;
-  dataType: 'transactions' | 'activity' | 'notifications' | 'all';
+  dataType: 'transactions' | 'activity' | 'notifications' | 'payments' | 'all';
   count?: number;
 }
 
@@ -93,6 +93,13 @@ export function ClearDataModal({
           title: 'Clear All Notifications?',
           description: `This will permanently delete all ${count} notification${count !== 1 ? 's' : ''} from your account. This action cannot be undone.`,
           actionText: isLoading ? 'Clearing...' : 'Clear Notifications',
+          icon: <Trash2 color={colors.negative} size={24} />
+        };
+      case 'payments':
+        return {
+          title: 'Clear All Payments?',
+          description: `This will permanently delete all ${count} payment${count !== 1 ? 's' : ''} from your history. This action cannot be undone.`,
+          actionText: isLoading ? 'Clearing...' : 'Clear Payments',
           icon: <Trash2 color={colors.negative} size={24} />
         };
       case 'all':
@@ -176,7 +183,8 @@ export function ClearDataModal({
                 <Text style={[styles.countText, { color: colors.textPrimary }]}>
                   {count} {dataType === 'transactions' ? 'transaction' : 
                          dataType === 'activity' ? 'activity event' :
-                         dataType === 'notifications' ? 'notification' : 'item'}{count !== 1 ? 's' : ''} will be deleted
+                         dataType === 'notifications' ? 'notification' :
+                         dataType === 'payments' ? 'payment' : 'item'}{count !== 1 ? 's' : ''} will be deleted
                 </Text>
               </View>
             )}
@@ -205,7 +213,13 @@ export function ClearDataModal({
                 { backgroundColor: colors.negative },
                 isLoading && { opacity: 0.7 }
               ]}
-              onPress={onConfirm}
+              onPress={async () => {
+                try {
+                  await onConfirm();
+                } catch (error) {
+                  console.error('Error in onConfirm:', error);
+                }
+              }}
               disabled={isLoading}
             >
               <Text style={[styles.buttonText, styles.confirmButtonText]}>

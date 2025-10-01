@@ -23,36 +23,9 @@ export function configureErrorSuppression() {
     console.info = () => {};
     console.debug = () => {};
   } else {
-    // In development, suppress console errors in the UI overlay completely
-    // but still log them to the terminal/debugger for debugging
-    const originalError = console.error;
-    const originalWarn = console.warn;
-    const originalLog = console.log;
-    
-    // Override console methods to prevent UI overlays while preserving terminal logging
-    console.error = (...args) => {
-      // Check if this is running in Metro/development environment
-      if (typeof __DEV__ !== 'undefined' && __DEV__) {
-        // Log to native console (terminal) but don't trigger React Native LogBox
-        if (typeof global.nativeLoggingHook !== 'undefined') {
-          global.nativeLoggingHook.error(...args);
-        } else {
-          // Fallback: log to original console but suppress LogBox
-          originalError.apply(console, args);
-        }
-      }
-    };
-    
-    console.warn = (...args) => {
-      // Similar approach for warnings
-      if (typeof __DEV__ !== 'undefined' && __DEV__) {
-        if (typeof global.nativeLoggingHook !== 'undefined') {
-          global.nativeLoggingHook.warn(...args);
-        } else {
-          originalWarn.apply(console, args);
-        }
-      }
-    };
+    // In development, keep console methods but rely on LogBox configuration
+    // to suppress unwanted error overlays. Don't override console methods
+    // as this can cause issues with debugging and native logging hooks.
   }
 
   // Disable LogBox warnings for specific patterns

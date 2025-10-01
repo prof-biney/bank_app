@@ -36,19 +36,19 @@ const themeOptions: ThemeOption[] = [
   {
     mode: 'light',
     label: 'Light',
-    icon: 'light-mode',
+    icon: 'wb-sunny',
     description: 'Always use light theme',
   },
   {
     mode: 'dark',
     label: 'Dark',
-    icon: 'dark-mode',
+    icon: 'brightness-2',
     description: 'Always use dark theme',
   },
   {
     mode: 'system',
     label: 'System',
-    icon: 'settings-brightness',
+    icon: 'brightness-auto',
     description: 'Use system preference',
   },
 ];
@@ -74,11 +74,11 @@ export function ThemeToggle({ style, showLabel = false, size = 'medium' }: Theme
   const getCurrentIcon = () => {
     switch (themeMode) {
       case 'light':
-        return 'light-mode';
+        return 'wb-sunny';
       case 'dark':
-        return 'dark-mode';
+        return 'brightness-2';
       default:
-        return 'settings-brightness';
+        return 'brightness-auto';
     }
   };
 

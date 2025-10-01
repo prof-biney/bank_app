@@ -1,5 +1,6 @@
+import { logger } from '@/lib/logger';
 import { router } from "expo-router";
-import { ArrowLeft, Clock, CheckCircle, AlertCircle, CreditCard, Plus } from "lucide-react-native";
+import { ArrowLeft, Clock, CheckCircle, CreditCard, Plus } from "lucide-react-native";
 import React, { useState } from "react";
 import { 
   KeyboardAvoidingView,
@@ -10,13 +11,13 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BankCard } from "@/components/BankCard";
 import { useApp } from "@/context/AppContext";
 import { useAlert } from "@/context/AlertContext";
-import { showAlertWithNotification } from "@/lib/notificationService";
+import { useLoading } from "@/context/LoadingContext";
+import { showAlertWithNotification } from "@/lib/appwrite/notificationService";
 import { useTheme } from "@/context/ThemeContext";
 import CustomButton from "@/components/CustomButton";
 import Badge from "@/components/ui/Badge";
@@ -27,10 +28,10 @@ import { validatePhoneForNetwork, getNetworkInfo, formatPhoneForDisplay, type Mo
 export default function DepositScreen() {
   const { cards, activeCard, setActiveCard, makeDeposit } = useApp();
   const { showAlert } = useAlert();
+  const { startLoading, stopLoading } = useLoading();
   const [amount, setAmount] = useState("");
   const [escrowMethod, setEscrowMethod] = useState<'mobile_money' | 'bank_transfer' | 'cash'>('mobile_money');
   const [description, setDescription] = useState("");
-  const [isProcessing, setIsProcessing] = useState(false);
   const [step, setStep] = useState<
     "select-card" | "enter-details" | "mobile-money" | "confirm-deposit" | "escrow-instructions" | "processing"
   >("select-card");
@@ -128,7 +129,7 @@ export default function DepositScreen() {
     }
 
     const depositAmount = parseFloat(amount);
-    setIsProcessing(true);
+    const loadingId = startLoading('deposit', `Creating deposit request for GHS ${depositAmount.toFixed(2)}...`);
     
     try {
       const result = await makeDeposit({
@@ -161,9 +162,9 @@ export default function DepositScreen() {
       }
     } catch (error) {
       showAlertWithNotification(showAlert, 'error', 'An unexpected error occurred. Please try again.', 'Deposit Failed');
-      console.error('Deposit error:', error);
+      logger.error('SCREEN', 'Deposit error:', error);
     } finally {
-      setIsProcessing(false);
+      stopLoading(loadingId);
     }
   };
 
@@ -174,7 +175,7 @@ export default function DepositScreen() {
     }
 
     setStep("processing");
-    setIsProcessing(true);
+    const loadingId = startLoading('deposit', 'Confirming payment and updating balance...');
     
     try {
       const result = await makeDeposit({
@@ -200,10 +201,10 @@ export default function DepositScreen() {
       }
     } catch (error) {
       showAlertWithNotification(showAlert, 'error', 'An unexpected error occurred. Please try again.', 'Deposit Failed');
-      console.error('Deposit confirmation error:', error);
+      logger.error('SCREEN', 'Deposit confirmation error:', error);
       setStep("escrow-instructions"); // Go back to instructions
     } finally {
-      setIsProcessing(false);
+      stopLoading(loadingId);
     }
   };
 
@@ -344,7 +345,7 @@ export default function DepositScreen() {
                     // { key: 'cash' as const, label: 'Cash Deposit', desc: 'Immediate' }
                   ].map((method) => {
                     const isSelected = escrowMethod === method.key;
-                    const v = getBadgeVisuals(colors, { tone: 'accent', selected: isSelected, size: 'lg' });
+                    const v = getBadgeVisuals(colors, { tone: 'accent', selected: isSelected, size: 'md' });
                     return (
                       <TouchableOpacity
                         key={method.key}
@@ -561,9 +562,8 @@ export default function DepositScreen() {
                 style={styles.editButton}
               />
               <CustomButton
-                title={isProcessing ? "Creating..." : "Create Deposit"}
+                title="Create Deposit"
                 variant="primary"
-                disabled={isProcessing}
                 onPress={handleCreateDeposit}
                 style={styles.confirmButton}
               />
@@ -620,14 +620,8 @@ export default function DepositScreen() {
                 title="Cancel Deposit"
                 variant="secondary"
                 onPress={() => {
-                  Alert.alert(
-                    'Cancel Deposit',
-                    'Are you sure you want to cancel this deposit request?',
-                    [
-                      { text: 'No', style: 'cancel' },
-                      { text: 'Yes', onPress: () => router.back() }
-                    ]
-                  );
+                  // Use in-app alert to keep UI consistent (non-blocking)
+                  showAlert('warning', 'Are you sure you want to cancel this deposit request?', 'Cancel Deposit');
                 }}
                 style={styles.cancelButton}
               />
@@ -645,22 +639,15 @@ export default function DepositScreen() {
           <View style={styles.content}>
             <View style={styles.processingContainer}>
               <View style={styles.processingIcon}>
-                {isProcessing ? (
-                  <Clock color={colors.warning} size={48} />
-                ) : (
-                  <CheckCircle color={colors.positive} size={48} />
-                )}
+                <CheckCircle color={colors.positive} size={48} />
               </View>
               
               <Text style={[styles.processingTitle, { color: colors.textPrimary }]}>
-                {isProcessing ? "Processing Your Deposit..." : "Deposit Completed!"}
+                Deposit Completed!
               </Text>
               
               <Text style={[styles.processingText, { color: colors.textSecondary }]}>
-                {isProcessing 
-                  ? "Please wait while we verify your payment and update your balance."
-                  : "Your deposit has been successfully processed and your balance has been updated."
-                }
+                Your deposit has been successfully processed and your balance has been updated.
               </Text>
             </View>
           </View>

@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 /**
  * Connection Service
  * 
@@ -5,7 +6,7 @@
  * user-friendly notifications instead of console errors.
  */
 
-import { pushSystemNotification } from './notificationService';
+import { pushSystemNotification } from './appwrite/notificationService';
 
 export type ConnectionStatus = 'connected' | 'disconnected' | 'connecting' | 'reconnecting';
 
@@ -30,7 +31,7 @@ class ConnectionMonitor {
    */
   init(showAlert: (type: 'success' | 'error' | 'warning' | 'info', message: string, title?: string) => void) {
     this.state.showAlert = showAlert;
-    console.log('[ConnectionMonitor] Initialized with alert system');
+    logger.info('CONNECTION', '[ConnectionMonitor] Initialized with alert system');
   }
 
   /**
@@ -64,7 +65,7 @@ class ConnectionMonitor {
       );
     }
 
-    console.log('[ConnectionMonitor] Connected to real-time services');
+    logger.info('CONNECTION', '[ConnectionMonitor] Connected to real-time services');
   }
 
   /**
@@ -92,7 +93,7 @@ class ConnectionMonitor {
       );
     }
 
-    console.warn('[ConnectionMonitor] Disconnected from real-time services:', reason);
+    logger.warn('CONNECTION', '[ConnectionMonitor] Disconnected from real-time services:', reason);
   }
 
   /**
@@ -105,14 +106,14 @@ class ConnectionMonitor {
       reconnectAttempts: attempt,
     };
 
-    console.log(`[ConnectionMonitor] Reconnecting... (attempt ${attempt}, delay ${delaySeconds}s)`);
+    logger.info('CONNECTION', `[ConnectionMonitor] Reconnecting... (attempt ${attempt}, delay ${delaySeconds}s)`);
   }
 
   /**
    * Handle connection error
    */
   onError(error: any) {
-    console.warn('[ConnectionMonitor] Connection error:', error);
+    logger.warn('CONNECTION', '[ConnectionMonitor] Connection error:', error);
     
     // Don't spam error alerts, just log
     if (this.state.reconnectAttempts === 0) {
@@ -160,7 +161,7 @@ class ConnectionMonitor {
     if (this.state.showAlert) {
       this.state.showAlert(type, message, title);
     } else {
-      console.log(`[ConnectionMonitor] Alert: ${title} - ${message}`);
+      logger.info('CONNECTION', `[ConnectionMonitor] Alert: ${title} - ${message}`);
     }
   }
 
@@ -181,13 +182,13 @@ class ConnectionMonitor {
         const matches = message.match(/Reconnect will be attempted in (\d+) seconds/);
         const delaySeconds = matches ? parseInt(matches[1], 10) : 1;
         this.onReconnecting(this.state.reconnectAttempts + 1, delaySeconds);
-        console.debug('[Realtime] Connection lost, attempting reconnect in', delaySeconds, 'seconds');
+        logger.debug('CONNECTION', `[Realtime] Connection lost, attempting reconnect in ${delaySeconds} seconds`);
         return;
       }
       
       if (message.includes('Reconnect will be attempted') ||
           message.includes('WebSocket connection')) {
-        console.debug('[Realtime]', ...args);
+        logger.debug('CONNECTION', `[Realtime] ${args.join(' ')}`);
         return;
       }
       
@@ -201,20 +202,20 @@ class ConnectionMonitor {
       // Detect connection events from logs
       if (message.includes('Realtime connection established')) {
         this.onConnected();
-        console.debug('[Realtime] Connected to real-time services');
+        logger.debug('CONNECTION', '[Realtime] Connected to real-time services');
         return;
       }
       
       if (message.includes('Realtime connection closed')) {
         this.onDisconnected('Connection closed');
-        console.debug('[Realtime] Connection closed');
+        logger.debug('CONNECTION', '[Realtime] Connection closed');
         return;
       }
       
       // Suppress verbose realtime logs
       if (message.includes('[realtime]') ||
           message.includes('WebSocket')) {
-        console.debug('[Realtime]', ...args);
+        logger.debug('CONNECTION', `[Realtime] ${args.join(' ')}`);
         return;
       }
       
@@ -227,7 +228,7 @@ class ConnectionMonitor {
       
       // Handle WebSocket warnings
       if (message.includes('WebSocket') || message.includes('realtime')) {
-        console.debug('[Realtime]', ...args);
+        logger.debug('CONNECTION', `[Realtime] ${args.join(' ')}`);
         return;
       }
       
@@ -235,14 +236,14 @@ class ConnectionMonitor {
       originalWarn.apply(console, args);
     };
 
-    console.log('[ConnectionMonitor] Console error suppression enabled for realtime messages');
+    logger.info('CONNECTION', '[ConnectionMonitor] Console error suppression enabled for realtime messages');
   }
 
   /**
    * Force reconnection attempt (if supported by client)
    */
   forceReconnect() {
-    console.log('[ConnectionMonitor] Forcing reconnection attempt...');
+    logger.info('CONNECTION', '[ConnectionMonitor] Forcing reconnection attempt...');
     this.state.reconnectAttempts = 0;
     this.onReconnecting(1, 0);
   }
@@ -261,7 +262,7 @@ export function enhanceClientWithConnectionMonitoring(client: any) {
   const originalSubscribe = client.subscribe;
   
   client.subscribe = function(channels: string[], callback: (message: any) => void) {
-    console.log('[ConnectionMonitor] Setting up subscription with connection monitoring');
+    logger.info('CONNECTION', '[ConnectionMonitor] Setting up subscription with connection monitoring');
     
     const enhancedCallback = (message: any) => {
       // Handle connection events
@@ -290,9 +291,9 @@ export function enhanceClientWithConnectionMonitoring(client: any) {
     return () => {
       try {
         unsubscribe();
-        console.log('[ConnectionMonitor] Unsubscribed from channels');
+        logger.info('CONNECTION', '[ConnectionMonitor] Unsubscribed from channels');
       } catch (error) {
-        console.warn('[ConnectionMonitor] Error during unsubscribe:', error);
+        logger.warn('CONNECTION', '[ConnectionMonitor] Error during unsubscribe:', error);
       }
     };
   };
@@ -307,7 +308,7 @@ export function initConnectionMonitoring(
   showAlert: (type: 'success' | 'error' | 'warning' | 'info', message: string, title?: string) => void
 ) {
   connectionMonitor.init(showAlert);
-  console.log('[ConnectionMonitor] Monitoring initialized');
+  logger.info('CONNECTION', '[ConnectionMonitor] Monitoring initialized');
 }
 
 /**

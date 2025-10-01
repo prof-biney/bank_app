@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 import React, { createContext, useContext, useMemo, useState, useEffect, useRef } from 'react';
 import { ColorSchemeName, useColorScheme, Appearance, Animated, ViewStyle } from 'react-native';
 import { withAlpha } from '@/theme/color-utils';
@@ -74,6 +75,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [themeMode, setThemeModeState] = useState<ThemeMode>('system');
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   
   // Determine if we should use dark mode
   const isDark = useMemo(() => {
@@ -97,11 +99,31 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
           setThemeModeState(savedTheme as ThemeMode);
         }
       } catch (error) {
-        console.warn('Failed to load theme preference:', error);
+        logger.warn('CONTEXT', 'Failed to load theme preference:', error);
+      } finally {
+        // Mark initial load as complete after a longer delay to ensure complete stabilization
+        setTimeout(() => {
+          setIsInitialLoad(false);
+        }, 200);
       }
     };
     loadThemePreference();
   }, []);
+
+  // Listen for system color scheme changes when in system mode
+  useEffect(() => {
+    if (themeMode === 'system') {
+      const subscription = Appearance.addChangeListener(({ colorScheme }) => {
+        // Log the system theme change
+        logger.info('THEME', `System color scheme changed to: ${colorScheme}`);
+        
+        // The isDark computed value will automatically update due to systemColorScheme change
+        // This ensures smooth automatic theme switching when system theme changes
+      });
+
+      return () => subscription?.remove();
+    }
+  }, [themeMode]);
 
   // Enhanced color system with better dark mode UX - softer colors for eye comfort
   const colors = useMemo<ThemeColors>(
@@ -193,7 +215,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       await AsyncStorage.setItem(THEME_STORAGE_KEY, mode);
       setThemeModeState(mode);
     } catch (error) {
-      console.warn('Failed to save theme preference:', error);
+      logger.warn('CONTEXT', 'Failed to save theme preference:', error);
       setThemeModeState(mode); // Still update state even if save fails
     }
   };
@@ -204,16 +226,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   };
 
   // Create transition style for smooth theme changes
-  const transitionStyle: ViewStyle = {
+  // Disable animations on initial load to prevent shake
+  // Avoid scale transform on auth screens to prevent shaking
+  const transitionStyle: ViewStyle = isInitialLoad ? {} : {
     opacity: fadeAnim,
-    transform: [
-      {
-        scale: fadeAnim.interpolate({
-          inputRange: [0.95, 1],
-          outputRange: [0.98, 1],
-        }),
-      },
-    ],
+    // Only use minimal opacity changes for smoother transitions
+    // Scale transform was causing visible shaking on login screen
   };
 
   const value: Theme = {

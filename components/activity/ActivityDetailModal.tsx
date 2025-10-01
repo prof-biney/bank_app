@@ -55,8 +55,7 @@ export default function ActivityDetailModal({
         setLoading(true);
         const { getApiBase } = require('@/lib/api');
         const url = `${getApiBase()}/v1/payments`;
-        const jwt = (global as any).__APPWRITE_JWT__ || undefined;
-        const res = await fetch(url, { headers: { ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}) } });
+        const res = await fetch(url, { headers: {} });
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
 const found = Array.isArray(data?.data) ? data.data.find((p: any) => p.id === event.transactionId) : null;

@@ -1,5 +1,6 @@
 import { useAlert } from "@/context/AlertContext";
-import { createUser } from "@/lib/appwrite";
+// Firebase imports removed - using Appwrite auth service
+import { authService } from "@/lib/appwrite/auth";
 import useAuthStore from "@/store/auth.store";
 import { Link, router } from "expo-router";
 import React, { useState, useEffect, useRef } from "react";
@@ -9,7 +10,6 @@ import {
   SafeAreaView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
   Animated,
@@ -21,7 +21,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, MaterialIcons } from "@expo/vector-icons";
 import { useTheme } from "@/context/ThemeContext";
-import { parsePhoneNumberFromString, getCountryCallingCode, getExampleNumber, AsYouType, getCountries } from 'libphonenumber-js';
+import { parsePhoneNumberFromString, getCountryCallingCode, getExampleNumber, getCountries } from 'libphonenumber-js';
 import examples from 'libphonenumber-js/examples.mobile.json';
 // Import reusable form components
 import { 
@@ -35,6 +35,11 @@ import {
   ConfirmPasswordValidationState
 } from "@/components/form";
 import { withAlpha } from "@/theme/color-utils";
+import LoadingAnimation from '@/components/LoadingAnimation';
+import { useLoading, LOADING_CONFIGS } from '@/hooks/useLoading';
+import { logger } from "@/lib/logger";
+import BiometricSetupModal from '@/components/auth/BiometricSetupModal';
+import { useBiometricMessages } from '@/context/BiometricToastContext';
 
 // Get all available countries and create a comprehensive country data array
 // This uses the getCountries function from libphonenumber-js to get all country codes
@@ -85,7 +90,7 @@ const countryData = getCountries()
 
 export default function SignUpScreen() {
   const { colors } = useTheme();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { loading, withLoading } = useLoading();
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -127,8 +132,16 @@ export default function SignUpScreen() {
   // Animated values for smooth transitions
   const animatedWidth = useRef(new Animated.Value(0)).current;
   const phoneAnimatedWidth = useRef(new Animated.Value(0)).current;
-  const { login } = useAuthStore();
+  const { login, isAuthenticated, fetchAuthenticatedUser, setupBiometric } = useAuthStore();
   const { showAlert } = useAlert();
+  const [showSuccessAlert, setShowSuccessAlert] = useState(false);
+  const navigationTimeoutRef = useRef<NodeJS.Timeout | number | null>(null);
+  
+  // Biometric setup state
+  const [showBiometricSetup, setShowBiometricSetup] = useState(false);
+  const [accountCreated, setAccountCreated] = useState(false);
+  
+  const biometricMessages = useBiometricMessages();
   
   // Function to detect user's country based on IP address
   const detectUserCountry = async () => {
@@ -145,7 +158,7 @@ export default function SignUpScreen() {
         updateMaxDigitsForCountry(data.country_code);
       }
     } catch (error) {
-      console.log('Error detecting country:', error);
+      logger.info('SCREEN', 'Error detecting country:', error);
       // Default to US if detection fails
       setCountryCode('US');
       updateMaxDigitsForCountry('US');
@@ -172,7 +185,7 @@ export default function SignUpScreen() {
         }));
       }
     } catch (error) {
-      console.log('Error getting example number:', error);
+      logger.info('SCREEN', 'Error getting example number:', error);
       // Default to 10 digits (US standard) if there's an error
       setValidation(prev => ({
         ...prev,
@@ -260,7 +273,7 @@ export default function SignUpScreen() {
         maxDigits
       };
     } catch (error) {
-      console.log('Error validating phone number:', error);
+      logger.info('SCREEN', 'Error validating phone number:', error);
       return { 
         isValid: false, 
         message: "Error validating phone number", 
@@ -489,6 +502,35 @@ export default function SignUpScreen() {
     detectUserCountry();
   }, []);
   
+  // Monitor authentication state changes for navigation
+  useEffect(() => {
+    if (isAuthenticated && showSuccessAlert) {
+      // User is now authenticated and we've shown the success alert
+      // Navigate to the onboarding screen
+      const timer = setTimeout(() => {
+        router.replace("/onboarding");
+        setShowSuccessAlert(false);
+      }, 1200); // Small delay to ensure smooth transition
+      
+      navigationTimeoutRef.current = timer;
+      
+      return () => {
+        if (navigationTimeoutRef.current) {
+          clearTimeout(navigationTimeoutRef.current);
+        }
+      };
+    }
+  }, [isAuthenticated, showSuccessAlert]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (navigationTimeoutRef.current) {
+        clearTimeout(navigationTimeoutRef.current);
+      }
+    };
+  }, []);
+  
   // Real-time validation as user types
   useEffect(() => {
     if (validation.name.isTouched) {
@@ -539,6 +581,7 @@ export default function SignUpScreen() {
     }
   }, [form.phoneNumber, countryCode]);
   
+  // Replace the password validation effect
   useEffect(() => {
     if (validation.password.isTouched) {
       const passwordValidation = validatePassword(form.password);
@@ -548,14 +591,13 @@ export default function SignUpScreen() {
           ...prev.password, 
           isValid: passwordValidation.isValid, 
           errorMessage: passwordValidation.message 
-        }
+        },  // Add comma here
       }));
       
       // Update password strength whenever password changes
       updatePasswordStrength(form.password);
       
       // Also validate confirm password if it's been touched
-      // since changing password affects confirm password validation
       if (validation.confirmPassword.isTouched) {
         const confirmPasswordValidation = validateConfirmPassword(
           form.password,
@@ -707,9 +749,8 @@ export default function SignUpScreen() {
   };
 
   const submit = async () => {
-    const { name, email, phoneNumber, password, confirmPassword } = form;
+    const { name, email, phoneNumber, password } = form;
 
-    // Validate all fields
     if (!validateForm()) {
       // Show alert for the first error found
       if (!validation.name.isValid) {
@@ -734,68 +775,146 @@ export default function SignUpScreen() {
       }
       return;
     }
-    
-    // Double check password matching
-    if (password !== confirmPassword) {
-      showAlert("error", "Passwords do not match", "Password Mismatch");
-      return;
-    }
-    
-    // Format phone number with country code for submission
-    const formattedPhoneNumber = `+${getCountryCallingCode(countryCode)}${phoneNumber.replace(/\D/g, '')}`;
-
-    setIsSubmitting(true);
 
     try {
-      // Include the formatted phone number in the user creation
-      await createUser({ email, name, password, phoneNumber: formattedPhoneNumber });
+      await withLoading(async () => {
+        logger.debug('AUTH', '[SignUp] Attempting to create user account');
 
-      // login
-      await login(email, password);
+        // Format phone number with country code
+        const formattedPhoneNumber = `+${getCountryCallingCode(countryCode)}${phoneNumber.replace(/\D/g, '')}`;
 
-      // Show success message before navigation
-      showAlert(
-        "success",
-        "Your account has been created successfully.",
-        "Welcome!"
-      );
+        // Create user account using Appwrite auth service
+        const user = await authService.register({
+          email,
+          name,
+          password,
+          phoneNumber: formattedPhoneNumber,
+        });
 
-      // Navigate after a short delay to allow the user to see the alert
-      setTimeout(() => {
-        router.replace("/onboarding");
-      }, 500);
-    } catch (error: any) {
-      // Handle specific error types with more descriptive messages
-      let errorMessage = "Failed to create account. Please try again.";
-      let errorTitle = "Sign Up Error";
+        logger.debug('AUTH', '[SignUp] User account created successfully:', { userId: user.$id });
 
-      if (error.message) {
-        if (error.message.includes("email already exists")) {
-          errorMessage =
-            "An account with this email already exists. Please use a different email or sign in.";
-          errorTitle = "Email Already Registered";
-        } else if (error.message.includes("invalid email")) {
-          errorMessage =
-            "The email address format is invalid. Please check and try again.";
-        } else if (error.message.includes("password")) {
-          errorMessage =
-            "The password does not meet security requirements. Please try a different password.";
-          errorTitle = "Password Error";
-        } else if (error.message.includes("network")) {
-          errorMessage =
-            "Network error. Please check your internet connection and try again.";
-          errorTitle = "Connection Error";
-        } else {
-          // Use the original error message if it's available
-          errorMessage = error.message;
+      // Confirm the user document exists in the database. Use a small retry helper
+      // because writes may take a short moment to be readable.
+      const fetchWithRetry = async (id: string, attempts = 3, delayMs = 600) => {
+        let lastErr: any = null;
+        for (let i = 0; i < attempts; i++) {
+          try {
+            const res = await authService.getUserProfile(id);
+            return res;
+          } catch (e) {
+            lastErr = e;
+            logger.warn('AUTH', `[SignUp] fetchUser attempt ${i + 1} failed, retrying in ${delayMs}ms`, e);
+            // small backoff
+            // don't await on the last iteration
+            if (i < attempts - 1) await new Promise((r) => setTimeout(r, delayMs));
+          }
         }
+        throw lastErr;
+      };
+
+      let userData: any = null;
+      userData = await fetchWithRetry(user.$id, 3, 600);
+
+      if (!userData || !userData.$id) {
+        throw new Error('User document not found after account creation');
       }
 
-      showAlert("error", errorMessage, errorTitle);
-      console.log("Sign up error:", error);
-    } finally {
-      setIsSubmitting(false);
+      logger.debug('AUTH', '[SignUp] User data fetched successfully:', { userId: userData.$id });
+
+      // Attempt to ensure auth store state is updated by performing login and then
+      // fetching the authenticated user into the global store. If login fails we
+      // still consider the account created but navigation may not proceed.
+      try {
+        await login(email, password);
+        // Ensure the global auth store fetches and sets the authenticated user
+        try {
+          await fetchAuthenticatedUser();
+        } catch (fetchAuthErr) {
+          logger.warn('AUTH', '[SignUp] fetchAuthenticatedUser after login failed (non-fatal):', fetchAuthErr);
+        }
+      } catch (loginErr) {
+        logger.warn('AUTH', '[SignUp] Login after createUser failed (non-fatal):', loginErr);
+      }
+
+      // Show success message and offer biometric setup
+      showAlert('success', 'Your account has been created successfully!', 'Welcome!');
+      setShowSuccessAlert(true);
+      setAccountCreated(true);
+      
+      // Show biometric setup modal instead of immediately navigating
+      setShowBiometricSetup(true);
+      }, LOADING_CONFIGS.REGISTER);
+    } catch (err: any) {
+      setShowSuccessAlert(false);
+      // Log full error object for debugging
+      logger.error('AUTH', '[SignUp] Error during signup (full):', { err });
+
+      // If SDK provides structured error fields, include them in logs
+      if ((err as any)?.code) logger.error('AUTH', '[SignUp] SDK error code:', (err as any).code);
+      if ((err as any)?.response) logger.error('AUTH', '[SignUp] SDK response:', (err as any).response);
+
+      // Derive friendly message
+      let message = 'Failed to create account. Please try again.';
+      let serverDetails = '';
+      if (typeof err === 'string') {
+        message = err;
+      } else if (err?.message) {
+        message = err.message;
+      } else if ((err as any)?.response?.message) {
+        message = (err as any).response.message;
+      }
+
+      // Append server error details for diagnostics (kept concise for users)
+      if ((err as any)?.response?.message) serverDetails = (err as any).response.message;
+      else if ((err as any)?.message) serverDetails = (err as any).message;
+
+      const title = message.includes('email already exists') ? 'Email Already Registered' : 'Sign Up Error';
+      const alertMessage = serverDetails ? `${message}
+\nDetails: ${serverDetails}
+If this persists, contact support.` : `${message}
+If this persists, contact support.`;
+
+      showAlert('error', alertMessage, title);
     }
+  };
+  
+  // Biometric setup handlers
+  const handleBiometricSetup = async () => {
+    try {
+      const result = await setupBiometric();
+      
+      if (result.success) {
+        biometricMessages.setupSuccess(result.biometricType);
+      } else {
+        biometricMessages.setupFailed(result.error);
+      }
+      
+      return result;
+    } catch (error) {
+      logger.error('AUTH', 'Biometric setup error in sign-up:', error);
+      biometricMessages.setupFailed('An unexpected error occurred during setup');
+      return {
+        success: false,
+        error: 'Failed to set up biometric authentication',
+      };
+    }
+  };
+  
+  const handleBiometricSetupClose = () => {
+    setShowBiometricSetup(false);
+    // Navigate to onboarding after closing the modal
+    if (accountCreated) {
+      router.replace('/onboarding');
+    }
+  };
+  
+  const handleBiometricSkip = () => {
+    // User chose to skip biometric setup
+    logger.info('AUTH', 'User skipped biometric setup during sign-up');
+    biometricMessages.showInfo(
+      'Biometric Setup Skipped',
+      'You can enable biometric authentication later in Settings'
+    );
   };
 
   // Country selection modal component
@@ -849,7 +968,9 @@ export default function SignUpScreen() {
     );
   };
 
-  const { width } = Dimensions.get('window');
+  // const { width } = Dimensions.get('window');
+
+  // Loading handled by LoadingAnimation component
 
   return (
     <SafeAreaView style={styles.container}>
@@ -875,7 +996,7 @@ export default function SignUpScreen() {
             <View style={styles.heroSection}>
               <View style={styles.logoContainer}>
                 <View style={[styles.logoCircle, { backgroundColor: withAlpha('#FFFFFF', 0.2) }]}>
-                  <MaterialIcons name="person-add" size={32} color="#FFFFFF" />
+                  <MaterialIcons name="account-balance" size={32} color="#FFFFFF" />
                 </View>
               </View>
               <Text style={styles.heroTitle}>Join Us Today</Text>
@@ -949,7 +1070,7 @@ export default function SignUpScreen() {
                 <View style={styles.sectionDivider}>
                   <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
                   <View style={[styles.dividerIconContainer, { backgroundColor: colors.card }]}>
-                    <MaterialIcons name="security" size={16} color={colors.tintPrimary} />
+                    <MaterialIcons name="verified-user" size={16} color={colors.tintPrimary} />
                   </View>
                   <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
                 </View>
@@ -998,15 +1119,15 @@ export default function SignUpScreen() {
                   end={{ x: 1, y: 0 }}
                   style={[
                     styles.gradientButton,
-                    isSubmitting && styles.buttonDisabled
+                    loading.visible && styles.buttonDisabled
                   ]}
                 >
                   <TouchableOpacity
                     style={styles.buttonInner}
                     onPress={submit}
-                    disabled={isSubmitting}
+                    disabled={loading.visible}
                   >
-                    {isSubmitting ? (
+                    {loading.visible ? (
                       <View style={styles.loadingContainer}>
                         <MaterialIcons name="hourglass-empty" size={20} color="#FFFFFF" />
                         <Text style={styles.loadingText}>Creating Account...</Text>
@@ -1039,6 +1160,22 @@ export default function SignUpScreen() {
       
       {/* Enhanced Country Selection Modal */}
       {renderCountrySelectionModal()}
+      
+      {/* Biometric Setup Modal */}
+      <BiometricSetupModal
+        visible={showBiometricSetup}
+        onClose={handleBiometricSetupClose}
+        onSetup={handleBiometricSetup}
+        onSkip={handleBiometricSkip}
+      />
+      
+      <LoadingAnimation
+        visible={loading.visible}
+        message={loading.message}
+        subtitle={loading.subtitle}
+        type={loading.type}
+        size={loading.size}
+      />
     </SafeAreaView>
   );
 }
@@ -1205,25 +1342,11 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     marginLeft: 8,
   },
-  buttonDisabled: {
-    opacity: 0.7,
-  },
   
   // Footer Styles
   authFooter: {
     alignItems: 'center',
     paddingBottom: 40,
-  },
-  footerText: {
-    fontSize: 15,
-    marginBottom: 8,
-  },
-  footerLink: {
-    padding: 8,
-  },
-  footerLinkText: {
-    fontSize: 16,
-    fontWeight: '600',
   },
   content: {
     flex: 1,
@@ -1527,6 +1650,13 @@ const styles = StyleSheet.create({
   footerText: {
     color: "#6B7280",
     fontSize: 14,
+  },
+  footerLink: {
+    padding: 8,
+  },
+  footerLinkText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   link: {
     marginLeft: 4,

@@ -8,6 +8,7 @@ export interface ActivityEvent {
   type: string; // e.g., transaction.created, card.added, card.removed, account.updated
   title: string;
   subtitle?: string;
+  description?: string;
   amount?: number;
   currency?: string;
   status?: ActivityStatus;

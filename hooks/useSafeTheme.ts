@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 import { useTheme, type Theme } from '@/context/ThemeContext';
 
 // Fallback theme for when ThemeContext is not available
@@ -19,7 +20,7 @@ const fallbackTheme: Theme = {
     tintSoftBg: '#E6FFFA',
   },
   setDarkMode: () => {
-    console.warn('ThemeContext not available - cannot toggle dark mode');
+    logger.warn('HOOKS', 'ThemeContext not available - cannot toggle dark mode');
   },
 };
 
@@ -31,7 +32,7 @@ export function useSafeTheme(): Theme {
   try {
     return useTheme();
   } catch (error) {
-    console.warn('ThemeContext not available, using fallback theme:', error);
+    logger.warn('HOOKS', 'ThemeContext not available, using fallback theme:', error);
     return fallbackTheme;
   }
 }

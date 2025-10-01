@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 import React, { useEffect } from 'react';
 import { useAlert } from '@/context/AlertContext';
 import { initConnectionMonitoring } from '@/lib/connectionService';
@@ -19,7 +20,7 @@ export function ConnectionMonitorWrapper({ children }: ConnectionMonitorWrapperP
     // Initialize connection monitoring with alert system
     initConnectionMonitoring(showAlert);
     
-    console.log('[ConnectionMonitorWrapper] Connection monitoring initialized with alert system');
+    logger.info('UI', '[ConnectionMonitorWrapper] Connection monitoring initialized with alert system');
   }, [showAlert]);
   
   return <>{children}</>;

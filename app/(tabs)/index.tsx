@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 import useAuthStore from "@/store/auth.store";
 import { router } from "expo-router";
 import {
@@ -26,6 +27,8 @@ import { QuickAction } from "@/components/QuickAction";
 import { TransactionItem } from "@/components/TransactionItem";
 import { ProfilePicture } from "@/components/ProfilePicture";
 import { ClearDataModal } from "@/components/ClearDataModal";
+import { TransactionAnalytics } from "@/components/TransactionAnalytics";
+import AnalyticsReportsModal from "@/components/AnalyticsReportsModal";
 import { useApp } from "@/context/AppContext";
 
 import { useTheme } from "@/context/ThemeContext";
@@ -37,12 +40,13 @@ export default function HomeScreen() {
   const [dateFilter, setDateFilter] = React.useState("all");
   const [showClearTransactions, setShowClearTransactions] = React.useState(false);
   const [isClearingTransactions, setIsClearingTransactions] = React.useState(false);
+  const [showAnalyticsReports, setShowAnalyticsReports] = React.useState(false);
 
   const { user } = useAuthStore();
   const unreadCount = React.useMemo(() => {
     const unreadNotifications = notifications.filter(n => n.unread && !n.archived);
     const count = unreadNotifications.length;
-    console.log('[HomeScreen] Notification count calculation:', {
+    logger.info('SCREEN', '[HomeScreen] Notification count calculation:', {
       totalNotifications: notifications.length,
       unreadCount: count,
       unreadNotifications: unreadNotifications,
@@ -111,9 +115,10 @@ export default function HomeScreen() {
     setIsClearingTransactions(true);
     try {
       await clearAllTransactions();
+      logger.info('SCREEN', 'Transactions cleared successfully, dismissing modal');
       setShowClearTransactions(false);
     } catch (error) {
-      console.error('Failed to clear transactions:', error);
+      logger.error('SCREEN', 'Failed to clear transactions:', error);
     } finally {
       setIsClearingTransactions(false);
     }
@@ -132,6 +137,12 @@ export default function HomeScreen() {
         style={styles.keyboardContainer}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
+        <ScrollView 
+          style={styles.mainScrollView}
+          contentContainerStyle={styles.scrollViewContent}
+          showsVerticalScrollIndicator={false}
+          bounces={true}
+        >
         <View style={styles.content}>
           <View style={styles.header}>
             <View style={styles.headerLeft}>
@@ -190,14 +201,17 @@ export default function HomeScreen() {
             <QuickAction
               icon={<CreditCard color={colors.tintPrimary} size={24} />}
               label="Withdraw"
-              onPress={() => {}}
+              onPress={() => router.push("/withdraw")}
             />
             <QuickAction
               icon={<MoreHorizontal color={colors.tintPrimary} size={24} />}
               label="More"
-              onPress={() => {}}
+              onPress={() => setShowAnalyticsReports(true)}
             />
           </View>
+
+          {/* Transaction Analytics */}
+          <TransactionAnalytics />
 
           <View style={[styles.transactionsSection, { backgroundColor: colors.card }]}>
             {/* Sticky Header */}
@@ -251,6 +265,7 @@ export default function HomeScreen() {
             </ScrollView>
           </View>
         </View>
+        </ScrollView>
 
         <NotificationModal
           visible={showNotifications}
@@ -272,6 +287,11 @@ export default function HomeScreen() {
           count={transactions.length}
           isLoading={isClearingTransactions}
         />
+
+        <AnalyticsReportsModal
+          visible={showAnalyticsReports}
+          onClose={() => setShowAnalyticsReports(false)}
+        />
       </KeyboardAvoidingView>
       </Animated.View>
     </SafeAreaView>
@@ -284,6 +304,13 @@ const styles = StyleSheet.create({
   },
   keyboardContainer: {
     flex: 1,
+  },
+  mainScrollView: {
+    flex: 1,
+  },
+  scrollViewContent: {
+    flexGrow: 1,
+    paddingBottom: 100, // Add padding to account for tab bar
   },
   content: {
     flex: 1,

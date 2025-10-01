@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 import { Bell, CreditCard, TrendingUp, X, Mail, MailOpen, Trash2, Eraser, Archive, ArchiveRestore } from "lucide-react-native";
 import ConfirmDialog from '@/components/modals/ConfirmDialog';
 import React from "react";
@@ -13,11 +14,11 @@ import {
 import { useTheme } from "@/context/ThemeContext";
 import { withAlpha } from "@/theme/color-utils";
 import { getChipStyles } from "@/theme/variants";
-import { ScrollView as GHScrollView, GestureHandlerRootView } from 'react-native-gesture-handler';
-import { Pressable } from 'react-native';
 import CustomButton from "@/components/CustomButton";
 import { getBadgeVisuals } from "@/theme/badge-utils";
 import { useApp } from "@/context/AppContext";
+import LoadingAnimation from '@/components/LoadingAnimation';
+import { useLoading, LOADING_CONFIGS } from '@/hooks/useLoading';
 
 interface NotificationModalProps {
   visible: boolean;
@@ -29,6 +30,7 @@ export function NotificationModal({
   onClose,
 }: NotificationModalProps) {
   const { colors } = useTheme();
+  const { loading, withLoading } = useLoading();
   const { 
     notifications, 
     markNotificationRead, 
@@ -56,7 +58,7 @@ export function NotificationModal({
   
   const filtered = React.useMemo(() => {
     const base = notifications;
-    console.log('[NotificationModal] Filtering notifications:', {
+    logger.info('UI', '[NotificationModal] Filtering notifications:', {
       total: base.length,
       filter,
       unreadCount: base.filter(n => n.unread).length,
@@ -69,7 +71,7 @@ export function NotificationModal({
     else if (filter === 'archived') result = base.filter(n => n.archived);
     else result = base.filter(n => n.type === filter && !n.archived);
     
-    console.log('[NotificationModal] Filtered result:', {
+    logger.info('UI', '[NotificationModal] Filtered result:', {
       count: result.length,
       unreadInResult: result.filter(n => n.unread).length
     });
@@ -95,7 +97,6 @@ export function NotificationModal({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={[styles.container, { backgroundColor: colors.background }]}>
           <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
             <Text style={[styles.title, { color: colors.textPrimary }]}>Notifications</Text>
@@ -107,7 +108,16 @@ export function NotificationModal({
                     title: 'Mark all as read?',
                     message: 'This will mark your latest notifications as read.',
                     onConfirm: async () => {
-                      await markAllNotificationsRead();
+                      await withLoading(
+                        async () => {
+                          await markAllNotificationsRead();
+                          setConfirm(null);
+                        },
+                        {
+                          ...LOADING_CONFIGS.SYNC_DATA,
+                          message: 'Marking all as read...',
+                        }
+                      );
                     }
                   });
                 }} 
@@ -123,7 +133,16 @@ export function NotificationModal({
                     title: 'Mark all as unread?',
                     message: 'This will mark your latest notifications as unread.',
                     onConfirm: async () => {
-                      await markAllNotificationsUnread();
+                      await withLoading(
+                        async () => {
+                          await markAllNotificationsUnread();
+                          setConfirm(null);
+                        },
+                        {
+                          ...LOADING_CONFIGS.SYNC_DATA,
+                          message: 'Marking all as unread...',
+                        }
+                      );
                     }
                   });
                 }} 
@@ -139,7 +158,16 @@ export function NotificationModal({
                     title: 'Archive all read notifications?',
                     message: 'This will archive all read notifications. You can find them in the Archived filter.',
                     onConfirm: async () => {
-                      await archiveAllReadNotifications();
+                      await withLoading(
+                        async () => {
+                          await archiveAllReadNotifications();
+                          setConfirm(null);
+                        },
+                        {
+                          ...LOADING_CONFIGS.SYNC_DATA,
+                          message: 'Archiving read notifications...',
+                        }
+                      );
                     }
                   });
                 }} 
@@ -156,7 +184,17 @@ export function NotificationModal({
                     message: 'This will permanently delete all notifications for your account.',
                     tone: 'danger',
                     onConfirm: async () => {
-                      await clearAllNotifications();
+                      await withLoading(
+                        async () => {
+                          await clearAllNotifications();
+                          setConfirm(null);
+                        },
+                        {
+                          ...LOADING_CONFIGS.SYNC_DATA,
+                          message: 'Clearing all notifications...',
+                          subtitle: 'This may take a moment',
+                        }
+                      );
                     },
                   });
                 }} 
@@ -175,7 +213,7 @@ export function NotificationModal({
           </View>
 				
 					<View>
-						<GHScrollView 
+						<ScrollView 
 							horizontal 
 							showsHorizontalScrollIndicator={false} 
 							contentContainerStyle={{ flexDirection: 'row', gap: 0, paddingHorizontal: 16, paddingVertical: 8 }}
@@ -204,7 +242,7 @@ export function NotificationModal({
 									</View>
 								);
 							})}
-						</GHScrollView>
+						</ScrollView>
 					</View>
 
           <ScrollView
@@ -225,7 +263,12 @@ export function NotificationModal({
                   key={notification.id}
                   style={[styles.notificationItem, { backgroundColor: colors.card }]}
                   onPress={async () => { 
-                    if (notification.unread) await markNotificationRead(notification.id); 
+                    if (notification.unread) {
+                      await withLoading(
+                        async () => await markNotificationRead(notification.id),
+                        { ...LOADING_CONFIGS.SAVING, message: 'Marking as read...' }
+                      );
+                    }
                   }}
                   onLongPress={async () => { 
                     await toggleNotificationRead(notification.id); 
@@ -258,7 +301,16 @@ export function NotificationModal({
                             message: notification.archived ? 'This notification will be moved back to your active notifications.' : 'This notification will be archived and moved out of your main list.',
                             tone: notification.archived ? 'success' : 'default',
                             onConfirm: async () => {
-                              await toggleNotificationArchive(notification.id);
+                              await withLoading(
+                                async () => {
+                                  await toggleNotificationArchive(notification.id);
+                                  setConfirm(null);
+                                },
+                                {
+                                  ...LOADING_CONFIGS.SYNC_DATA,
+                                  message: notification.archived ? 'Unarchiving...' : 'Archiving...',
+                                }
+                              );
                             }
                           });
                         }}
@@ -275,7 +327,16 @@ export function NotificationModal({
                             message: 'This item will be permanently removed.',
                             tone: 'danger',
                             onConfirm: async () => {
-                              await deleteNotification(notification.id);
+                              await withLoading(
+                                async () => {
+                                  await deleteNotification(notification.id);
+                                  setConfirm(null);
+                                },
+                                {
+                                  ...LOADING_CONFIGS.SYNC_DATA,
+                                  message: 'Deleting notification...',
+                                }
+                              );
                             }
                           });
                         }}
@@ -298,17 +359,24 @@ export function NotificationModal({
             confirmText="Confirm"
             cancelText="Cancel"
             tone={confirm?.tone || 'default'}
-            onConfirm={() => { 
+            onConfirm={async () => { 
               try { 
-                confirm?.onConfirm?.(); 
+                await confirm?.onConfirm?.(); 
               } finally { 
                 setConfirm(null); 
               } 
             }}
             onCancel={() => setConfirm(null)}
           />
+          
+          <LoadingAnimation
+            visible={loading.visible}
+            message={loading.message}
+            subtitle={loading.subtitle}
+            type={loading.type}
+            size={loading.size}
+          />
         </View>
-      </GestureHandlerRootView>
     </Modal>
   );
 }

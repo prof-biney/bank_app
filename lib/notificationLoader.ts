@@ -1,3 +1,4 @@
+import { logger } from '@/lib/logger';
 /**
  * Enhanced Notification Loading Service
  * 
@@ -6,8 +7,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Query } from 'react-native-appwrite';
-import { databases, appwriteConfig } from '@/lib/appwrite';
+import { AppwriteQuery as Query, databases, appwriteConfig } from './appwrite/config';
 import { Notification } from '@/types';
 import { trackDatabaseOperation } from '@/lib/notificationAnalytics';
 
@@ -72,10 +72,10 @@ class NotificationLoader {
       const cacheRaw = await AsyncStorage.getItem(this.CACHE_KEY);
       if (cacheRaw) {
         this.cache = JSON.parse(cacheRaw);
-        console.log('[NotificationLoader] Cache loaded with', Object.keys(this.cache.pages).length, 'pages');
+        logger.info('NOTIFICATIONS', '[NotificationLoader] Cache loaded with', Object.keys(this.cache.pages).length, 'pages');
       }
     } catch (error) {
-      console.warn('[NotificationLoader] Failed to load cache:', error);
+      logger.warn('NOTIFICATIONS', '[NotificationLoader] Failed to load cache:', error);
     }
     
     this.initialized = true;
@@ -99,7 +99,7 @@ class NotificationLoader {
 
       await AsyncStorage.setItem(this.CACHE_KEY, JSON.stringify(cacheToSave));
     } catch (error) {
-      console.warn('[NotificationLoader] Failed to save cache:', error);
+      logger.warn('NOTIFICATIONS', '[NotificationLoader] Failed to save cache:', error);
     }
   }
 
@@ -167,14 +167,14 @@ class NotificationLoader {
       const duration = Date.now() - startTime;
       trackDatabaseOperation(true, 'load_notifications_page', duration);
       
-      console.log(`[NotificationLoader] Loaded ${notifications.length} notifications from database (${duration}ms)`);
+      logger.info('NOTIFICATIONS', `[NotificationLoader] Loaded ${notifications.length} notifications from database (${duration}ms)`);
       return result;
       
     } catch (error) {
       const duration = Date.now() - startTime;
       trackDatabaseOperation(false, 'load_notifications_page', duration);
       
-      console.error('[NotificationLoader] Database load failed:', error);
+      logger.error('NOTIFICATIONS', '[NotificationLoader] Database load failed:', error);
       throw error;
     }
   }
@@ -190,11 +190,11 @@ class NotificationLoader {
     }
     
     if (!this.isCacheValid(cachedPage.timestamp, maxAge)) {
-      console.log('[NotificationLoader] Cache expired for key:', cacheKey);
+      logger.info('NOTIFICATIONS', '[NotificationLoader] Cache expired for key:', cacheKey);
       return null;
     }
     
-    console.log(`[NotificationLoader] Loaded ${cachedPage.notifications.length} notifications from cache`);
+    logger.info('NOTIFICATIONS', `[NotificationLoader] Loaded ${cachedPage.notifications.length} notifications from cache`);
     
     return {
       notifications: cachedPage.notifications,
@@ -233,7 +233,7 @@ class NotificationLoader {
     
     // Check if we're already loading this page
     if (this.loadingPromises.has(requestKey)) {
-      console.log('[NotificationLoader] Using existing loading promise for:', requestKey);
+      logger.info('NOTIFICATIONS', '[NotificationLoader] Using existing loading promise for:', requestKey);
       return await this.loadingPromises.get(requestKey)!;
     }
 
@@ -265,7 +265,7 @@ class NotificationLoader {
           return cached;
         }
       } catch (error) {
-        console.warn('[NotificationLoader] Cache load failed:', error);
+        logger.warn('NOTIFICATIONS', '[NotificationLoader] Cache load failed:', error);
       }
     }
 
@@ -276,25 +276,25 @@ class NotificationLoader {
       // Save to cache in background (don't await)
       if (useCache) {
         this.savePage(cursor, page).catch(error => {
-          console.warn('[NotificationLoader] Failed to cache page:', error);
+          logger.warn('NOTIFICATIONS', '[NotificationLoader] Failed to cache page:', error);
         });
       }
       
       return page;
     } catch (error) {
-      console.error('[NotificationLoader] Failed to load from database:', error);
+      logger.error('NOTIFICATIONS', '[NotificationLoader] Failed to load from database:', error);
       
       // Try to fall back to stale cache if available
       if (useCache) {
-        console.log('[NotificationLoader] Attempting stale cache fallback');
+        logger.info('NOTIFICATIONS', '[NotificationLoader] Attempting stale cache fallback');
         try {
           const staleCache = await this.loadFromCache(cursor, Infinity); // Accept any age
           if (staleCache) {
-            console.log('[NotificationLoader] Using stale cache as fallback');
+            logger.info('NOTIFICATIONS', '[NotificationLoader] Using stale cache as fallback');
             return { ...staleCache, fromCache: true };
           }
         } catch (cacheError) {
-          console.warn('[NotificationLoader] Stale cache fallback failed:', cacheError);
+          logger.warn('NOTIFICATIONS', '[NotificationLoader] Stale cache fallback failed:', cacheError);
         }
       }
       
@@ -332,7 +332,7 @@ class NotificationLoader {
     }
     
     await this.saveCache();
-    console.log('[NotificationLoader] Cache invalidated');
+    logger.info('NOTIFICATIONS', '[NotificationLoader] Cache invalidated');
   }
 
   public async clearCache(): Promise<void> {
@@ -344,9 +344,9 @@ class NotificationLoader {
     
     try {
       await AsyncStorage.removeItem(this.CACHE_KEY);
-      console.log('[NotificationLoader] Cache cleared');
+      logger.info('NOTIFICATIONS', '[NotificationLoader] Cache cleared');
     } catch (error) {
-      console.warn('[NotificationLoader] Failed to clear cache:', error);
+      logger.warn('NOTIFICATIONS', '[NotificationLoader] Failed to clear cache:', error);
     }
   }
 
@@ -373,7 +373,7 @@ class NotificationLoader {
   // Batch operations for better performance
 
   public async preloadNextPages(currentCursor: string, pages: number = 2): Promise<void> {
-    console.log(`[NotificationLoader] Preloading ${pages} pages starting from:`, currentCursor);
+    logger.info('NOTIFICATIONS', `[NotificationLoader] Preloading ${pages} pages starting from:`, currentCursor);
     
     let cursor = currentCursor;
     const promises: Promise<NotificationPage>[] = [];
@@ -393,14 +393,14 @@ class NotificationLoader {
     
     try {
       await Promise.all(promises);
-      console.log('[NotificationLoader] Preloading completed');
+      logger.info('NOTIFICATIONS', '[NotificationLoader] Preloading completed');
     } catch (error) {
-      console.warn('[NotificationLoader] Preloading failed:', error);
+      logger.warn('NOTIFICATIONS', '[NotificationLoader] Preloading failed:', error);
     }
   }
 
   public async warmupCache(): Promise<void> {
-    console.log('[NotificationLoader] Warming up cache...');
+    logger.info('NOTIFICATIONS', '[NotificationLoader] Warming up cache...');
     
     try {
       const firstPage = await this.loadNotifications({
@@ -408,16 +408,16 @@ class NotificationLoader {
         limit: this.DEFAULT_LIMIT * 2, // Load more on warmup
       });
       
-      console.log(`[NotificationLoader] Cache warmed up with ${firstPage.notifications.length} notifications`);
+      logger.info('NOTIFICATIONS', `[NotificationLoader] Cache warmed up with ${firstPage.notifications.length} notifications`);
       
       // Preload next page if available
       if (firstPage.hasMore && firstPage.cursor) {
         this.preloadNextPages(firstPage.cursor, 1).catch(error => {
-          console.warn('[NotificationLoader] Cache warmup preload failed:', error);
+          logger.warn('NOTIFICATIONS', '[NotificationLoader] Cache warmup preload failed:', error);
         });
       }
     } catch (error) {
-      console.warn('[NotificationLoader] Cache warmup failed:', error);
+      logger.warn('NOTIFICATIONS', '[NotificationLoader] Cache warmup failed:', error);
     }
   }
 }

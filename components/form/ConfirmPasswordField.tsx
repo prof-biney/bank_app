@@ -7,6 +7,7 @@ import {
   validateConfirmPassword 
 } from "./types";
 import { useFormStyles } from "./styles";
+import { useTheme } from "@/context/ThemeContext";
 
 /**
  * Props for the ConfirmPasswordField component
@@ -79,6 +80,7 @@ const ConfirmPasswordField: React.FC<ConfirmPasswordFieldProps> = ({
   };
 
   const styles = useFormStyles();
+  const { colors } = useTheme();
   return (
     <View style={styles.inputContainer}>
       <Text style={styles.label}>{label}</Text>
@@ -99,7 +101,7 @@ const ConfirmPasswordField: React.FC<ConfirmPasswordFieldProps> = ({
           value={value}
           onChangeText={handleChangeText}
           placeholder={placeholder}
-          placeholderTextColor={undefined}
+          placeholderTextColor={colors.inputPlaceholder}
           secureTextEntry={!showPassword}
           {...rest}
         />

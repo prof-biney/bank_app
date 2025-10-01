@@ -10,6 +10,7 @@ import {
   PasswordStrength
 } from "./types";
 import { useFormStyles } from "./styles";
+import { useTheme } from "@/context/ThemeContext";
 
 /**
  * Props for the PasswordField component
@@ -56,6 +57,22 @@ const PasswordField: React.FC<PasswordFieldProps> = ({
   // Animated value for smooth width transition in strength meter
   const animatedWidth = useRef(new Animated.Value(0)).current;
   
+  // Update password strength
+  const updatePasswordStrength = (password: string) => {
+    const score = calculatePasswordStrength(password);
+    const strength = getPasswordStrength(score);
+    
+    // Update state
+    setPasswordStrength(strength);
+    
+    // Animate width for smooth transition
+    Animated.timing(animatedWidth, {
+      toValue: strength.score,
+      duration: 300,
+      useNativeDriver: false, // width changes can't use native driver
+    }).start();
+  };
+  
   // Validate password when value changes
   useEffect(() => {
     if (validation.isTouched) {
@@ -76,22 +93,6 @@ const PasswordField: React.FC<PasswordFieldProps> = ({
     // of the parent component, and including the entire validation object would cause the effect to run
     // whenever any validation property changes, creating a potential loop when we update validation state.
   }, [value, validation.isTouched, enableValidation]);
-  
-  // Update password strength
-  const updatePasswordStrength = (password: string) => {
-    const score = calculatePasswordStrength(password);
-    const strength = getPasswordStrength(score);
-    
-    // Update state
-    setPasswordStrength(strength);
-    
-    // Animate width for smooth transition
-    Animated.timing(animatedWidth, {
-      toValue: strength.score,
-      duration: 300,
-      useNativeDriver: false, // width changes can't use native driver
-    }).start();
-  };
   
   // Handle text change
   const handleChangeText = (text: string) => {
@@ -122,6 +123,7 @@ const PasswordField: React.FC<PasswordFieldProps> = ({
   };
 
   const styles = useFormStyles();
+  const { colors } = useTheme();
   return (
     <View style={styles.inputContainer}>
       <Text style={styles.label}>{label}</Text>
@@ -140,7 +142,7 @@ const PasswordField: React.FC<PasswordFieldProps> = ({
           value={value}
           onChangeText={handleChangeText}
           placeholder={placeholder}
-          placeholderTextColor={undefined}
+          placeholderTextColor={colors.inputPlaceholder}
           secureTextEntry={!showPassword}
           {...rest}
         />

@@ -5,8 +5,8 @@
       "barStyle": "dark-content"
     },
     "androidStatusBar": {
-      "backgroundColor": "#ffffff",
-      "barStyle": "dark-content"
+      "backgroundColor": "#0F766E",
+      "barStyle": "light-content"
     },
     "name": "bank_app",
     "slug": "bank_app",
@@ -16,15 +16,39 @@
     "scheme": "bankapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F766E"
+    },
+    "extra": {
+      "firebaseConfig": {
+        "apiKey": "EXPO_PUBLIC_FIREBASE_API_KEY",
+        "authDomain": "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN",
+        "projectId": "EXPO_PUBLIC_FIREBASE_PROJECT_ID",
+        "databaseURL": "EXPO_PUBLIC_FIREBASE_DATABASE_URL",
+        "messagingSenderId": "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID",
+        "appId": "EXPO_PUBLIC_FIREBASE_APP_ID"
+      }
+    },
     "ios": {
-      "supportsTablet": true
+      "bundleIdentifier": "com.charatech.bankapp",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "This app uses Face ID for secure and convenient authentication."
+      }
     },
     "android": {
+      "package": "com.charatech.bankapp",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -37,12 +61,13 @@
       [
         "expo-splash-screen",
         {
+          "backgroundColor": "#0F766E",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "hideAsync": false
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true

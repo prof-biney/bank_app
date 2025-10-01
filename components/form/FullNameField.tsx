@@ -3,6 +3,7 @@ import { Text, TextInput, TouchableOpacity, View } from "react-native";
 import { Feather, MaterialIcons } from "@expo/vector-icons";
 import { FormFieldProps, ValidationState, validateName } from "./types";
 import { useFormStyles } from "./styles";
+import { useTheme } from "@/context/ThemeContext";
 
 /**
  * Props for the FullNameField component
@@ -50,6 +51,7 @@ const FullNameField: React.FC<FullNameFieldProps> = ({
   };
 
   const styles = useFormStyles();
+  const { colors } = useTheme();
   return (
     <View style={styles.inputContainer}>
       <Text style={styles.label}>{label}</Text>
@@ -68,7 +70,7 @@ const FullNameField: React.FC<FullNameFieldProps> = ({
           value={value}
           onChangeText={handleChangeText}
           placeholder={placeholder}
-          placeholderTextColor={undefined}
+          placeholderTextColor={colors.inputPlaceholder}
           {...rest}
         />
         {value.length > 0 && (

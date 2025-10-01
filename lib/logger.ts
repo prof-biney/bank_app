@@ -15,15 +15,17 @@ export type LogCategory =
   | 'NETWORK' 
   | 'UI' 
   | 'STORAGE' 
-  | 'APPWRITE' 
+  | 'FIREBASE' 
   | 'CONFIG' 
   | 'TRANSACTION'
   | 'CARD'
+  | 'CARDS'
   | 'NOTIFICATION'
   | 'ACTIVITY'
   | 'JWT'
   | 'CONNECTION'
-  | 'GENERAL';
+  | 'GENERAL'
+  | 'SCREEN';
 
 interface LogConfig {
   enabled: boolean;
@@ -36,6 +38,12 @@ interface LogConfig {
 
 class Logger {
   private config: LogConfig;
+  private configuration: {
+    debug: (message: string, ...data: any[]) => void;
+    info: (message: string, ...data: any[]) => void;
+    warn: (message: string, ...data: any[]) => void;
+    error: (message: string, ...data: any[]) => void;
+  };
   private logLevels: Record<LogLevel, number> = {
     DEBUG: 0,
     INFO: 1,
@@ -139,11 +147,11 @@ class Logger {
     error: (message: string, ...data: any[]) => this.error('DATABASE', message, ...data),
   };
 
-  appwrite = {
-    debug: (message: string, ...data: any[]) => this.debug('APPWRITE', message, ...data),
-    info: (message: string, ...data: any[]) => this.info('APPWRITE', message, ...data),
-    warn: (message: string, ...data: any[]) => this.warn('APPWRITE', message, ...data),
-    error: (message: string, ...data: any[]) => this.error('APPWRITE', message, ...data),
+  firebase = {
+    debug: (message: string, ...data: any[]) => this.debug('FIREBASE', message, ...data),
+    info: (message: string, ...data: any[]) => this.info('FIREBASE', message, ...data),
+    warn: (message: string, ...data: any[]) => this.warn('FIREBASE', message, ...data),
+    error: (message: string, ...data: any[]) => this.error('FIREBASE', message, ...data),
   };
 
   network = {
@@ -153,12 +161,7 @@ class Logger {
     error: (message: string, ...data: any[]) => this.error('NETWORK', message, ...data),
   };
 
-  config = {
-    debug: (message: string, ...data: any[]) => this.debug('CONFIG', message, ...data),
-    info: (message: string, ...data: any[]) => this.info('CONFIG', message, ...data),
-    warn: (message: string, ...data: any[]) => this.warn('CONFIG', message, ...data),
-    error: (message: string, ...data: any[]) => this.error('CONFIG', message, ...data),
-  };
+  // 'config' runtime value is initialized in the constructor; no top-level initializer here
 
   constructor(config?: Partial<LogConfig>) {
     this.config = {
@@ -186,11 +189,11 @@ class Logger {
       error: (message: string, ...data: any[]) => this.error('DATABASE', message, ...data),
     };
 
-    this.appwrite = {
-      debug: (message: string, ...data: any[]) => this.debug('APPWRITE', message, ...data),
-      info: (message: string, ...data: any[]) => this.info('APPWRITE', message, ...data),
-      warn: (message: string, ...data: any[]) => this.warn('APPWRITE', message, ...data),
-      error: (message: string, ...data: any[]) => this.error('APPWRITE', message, ...data),
+    this.firebase = {
+      debug: (message: string, ...data: any[]) => this.debug('FIREBASE', message, ...data),
+      info: (message: string, ...data: any[]) => this.info('FIREBASE', message, ...data),
+      warn: (message: string, ...data: any[]) => this.warn('FIREBASE', message, ...data),
+      error: (message: string, ...data: any[]) => this.error('FIREBASE', message, ...data),
     };
 
     this.network = {
@@ -200,7 +203,7 @@ class Logger {
       error: (message: string, ...data: any[]) => this.error('NETWORK', message, ...data),
     };
 
-    // Configuration logging methods (renamed to avoid conflict with config property)
+    // Configuration logging methods (use 'configuration' helper)
     this.configuration = {
       debug: (message: string, ...data: any[]) => this.debug('CONFIG', message, ...data),
       info: (message: string, ...data: any[]) => this.info('CONFIG', message, ...data),
@@ -281,7 +284,7 @@ export const loggerConfigs = {
   networkOnly: {
     enabled: true,
     minLevel: 'DEBUG' as LogLevel,
-    enabledCategories: ['NETWORK', 'APPWRITE', 'CONNECTION'] as LogCategory[],
+    enabledCategories: ['NETWORK', 'FIREBASE', 'CONNECTION'] as LogCategory[],
     showTimestamp: true,
     showCategory: true,
     colorEnabled: true,
