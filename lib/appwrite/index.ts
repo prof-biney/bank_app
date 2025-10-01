@@ -112,12 +112,14 @@ export type {
 
 export type {
   WithdrawalRequest,
-  WithdrawalResult,
+  WithdrawalResponse,
   WithdrawalMethod,
-  MobileMoneyWithdrawal,
-  BankTransferWithdrawal,
-  CashPickupWithdrawal,
-  WithdrawalInstructions
+  WithdrawalInstructions,
+  WithdrawalFilters,
+  WithdrawalQueryOptions,
+  GhanaianMobileNetwork,
+  GhanaianBank,
+  CashPickupProvider
 } from './withdrawalService';
 
 export type {

@@ -338,7 +338,6 @@ const EnhancedBiometricButton: React.FC<EnhancedBiometricButtonProps> = ({
           styles.pressable,
           {
             transform: [{ scale: isPressed ? 0.98 : 1 }],
-            opacity: pressed ? 0.9 : 1,
           },
         ]}
       >

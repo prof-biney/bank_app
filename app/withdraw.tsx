@@ -13,7 +13,6 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -26,41 +25,43 @@ import { router } from 'expo-router';
 
 import { useApp } from '@/context/AppContext';
 import useAuthStore from '@/store/auth.store';
-import { withdrawalService, type WithdrawalRequest, type WithdrawalMethod } from '@/lib/appwrite';
+import { withdrawalService } from '@/lib/appwrite';
+import type { WithdrawalRequest, WithdrawalMethod, GhanaianMobileNetwork, GhanaianBank, CashPickupProvider } from '@/lib/appwrite/withdrawalService';
+import { useAlert } from '@/context/AlertContext';
 
 type TabType = 'mobile_money' | 'bank_transfer' | 'cash_pickup';
 
 // Mobile Money Providers in Ghana
 const MOBILE_MONEY_PROVIDERS = [
-  { id: 'mtn', name: 'MTN Mobile Money', icon: '📱', color: '#FFD700' },
-  { id: 'vodafone', name: 'Telecel Cash', icon: '📱', color: '#E60026' },
-  { id: 'airteltigo', name: 'AirtelTigo Money', icon: '📱', color: '#FF6B35' },
+  { id: 'mtn' as GhanaianMobileNetwork, name: 'MTN Mobile Money', icon: '📱', color: '#FFD700' },
+  { id: 'telecel' as GhanaianMobileNetwork, name: 'Telecel Cash', icon: '📱', color: '#E60026' },
+  { id: 'airteltigo' as GhanaianMobileNetwork, name: 'AirtelTigo Money', icon: '📱', color: '#FF6B35' },
 ];
 
 // Major Ghanaian Banks
 const GHANA_BANKS = [
-  { id: 'gcb', name: 'GCB Bank Limited', shortName: 'GCB' },
-  { id: 'ecobank', name: 'Ecobank Ghana', shortName: 'Ecobank' },
-  { id: 'stanbic', name: 'Stanbic Bank Ghana', shortName: 'Stanbic' },
-  { id: 'fidelity', name: 'Fidelity Bank Ghana', shortName: 'Fidelity' },
-  { id: 'cal_bank', name: 'CAL Bank', shortName: 'CAL Bank' },
-  { id: 'standard_chartered', name: 'Standard Chartered Bank Ghana', shortName: 'Standard Chartered' },
-  { id: 'absa', name: 'Absa Bank Ghana', shortName: 'Absa' },
-  { id: 'access_bank', name: 'Access Bank Ghana', shortName: 'Access Bank' },
-  { id: 'gtbank', name: 'Guaranty Trust Bank Ghana', shortName: 'GTBank' },
-  { id: 'unibank', name: 'Universal Merchant Bank', shortName: 'UMB' },
+  { id: 'gcb' as GhanaianBank, name: 'GCB Bank Limited', shortName: 'GCB' },
+  { id: 'ecobank' as GhanaianBank, name: 'Ecobank Ghana', shortName: 'Ecobank' },
+  { id: 'stanbic' as GhanaianBank, name: 'Stanbic Bank Ghana', shortName: 'Stanbic' },
+  { id: 'fidelity' as GhanaianBank, name: 'Fidelity Bank Ghana', shortName: 'Fidelity' },
+  { id: 'cal_bank' as GhanaianBank, name: 'CAL Bank', shortName: 'CAL Bank' },
+  { id: 'standard_chartered' as GhanaianBank, name: 'Standard Chartered Bank Ghana', shortName: 'Standard Chartered' },
+  { id: 'absa' as GhanaianBank, name: 'Absa Bank Ghana', shortName: 'Absa' },
+  { id: 'gt_bank' as GhanaianBank, name: 'Guaranty Trust Bank Ghana', shortName: 'GTBank' },
+  { id: 'uba' as GhanaianBank, name: 'United Bank for Africa', shortName: 'UBA' },
 ];
 
 // Cash Pickup Providers
 const CASH_PICKUP_PROVIDERS = [
-  { id: 'western_union', name: 'Western Union', icon: '💰' },
-  { id: 'moneygram', name: 'MoneyGram', icon: '💳' },
-  { id: 'ria', name: 'Ria Money Transfer', icon: '💵' },
+  { id: 'western_union' as CashPickupProvider, name: 'Western Union', icon: '💰' },
+  { id: 'moneygram' as CashPickupProvider, name: 'MoneyGram', icon: '💳' },
+  { id: 'super_express' as CashPickupProvider, name: 'Super Express Services', icon: '💵' },
 ];
 
 export default function WithdrawScreen() {
   const { cards, makeTransaction, refreshCardBalances } = useApp();
   const { user } = useAuthStore();
+  const { showAlert } = useAlert();
   const [activeTab, setActiveTab] = useState<TabType>('mobile_money');
   const [selectedCard, setSelectedCard] = useState(cards[0]?.id || '');
   const [amount, setAmount] = useState('');
@@ -89,7 +90,7 @@ export default function WithdrawScreen() {
       const selectedCardData = cards.find(card => card.id === selectedCard);
       
       if (!selectedCardData) {
-        Alert.alert('Error', 'Please select a valid card');
+        showAlert('error', 'Please select a valid card', 'Error');
         return;
       }
 
@@ -100,72 +101,75 @@ export default function WithdrawScreen() {
         withdrawalRequest = {
           cardId: selectedCard,
           amount: withdrawalAmount,
-          method: 'mobile_money' as WithdrawalMethod,
-          mobileMoneyDetails: {
-            provider: selectedProvider,
-            phoneNumber: mobileNumber
-          }
+          currency: 'GHS',
+          withdrawalMethod: 'mobile_money',
+          mobileNetwork: selectedProvider as GhanaianMobileNetwork,
+          mobileNumber: mobileNumber,
+          recipientName: user?.name || 'Account Holder',
+          description: 'Mobile money withdrawal'
         };
       } else if (activeTab === 'bank_transfer') {
         withdrawalRequest = {
           cardId: selectedCard,
           amount: withdrawalAmount,
-          method: 'bank_transfer' as WithdrawalMethod,
-          bankTransferDetails: {
-            bankCode: selectedBank,
-            accountNumber: accountNumber,
-            accountName: accountName
-          }
+          currency: 'GHS',
+          withdrawalMethod: 'bank_transfer',
+          bankName: selectedBank as GhanaianBank,
+          accountNumber: accountNumber,
+          accountName: accountName,
+          description: 'Bank transfer withdrawal'
         };
       } else {
         withdrawalRequest = {
           cardId: selectedCard,
           amount: withdrawalAmount,
-          method: 'cash_pickup' as WithdrawalMethod,
-          cashPickupDetails: {
-            provider: selectedPickupProvider,
-            recipientName: recipientName,
-            recipientPhone: recipientPhone
-          }
+          currency: 'GHS',
+          withdrawalMethod: 'cash_pickup',
+          pickupProvider: selectedPickupProvider as CashPickupProvider,
+          receiverName: recipientName,
+          receiverPhone: recipientPhone,
+          receiverIdType: 'ghana_card', // Default ID type
+          receiverIdNumber: 'GHA-XXXXXXXX-X', // Placeholder - would get from form
+          description: 'Cash pickup withdrawal'
         };
       }
 
       // Process withdrawal
-      const result = await withdrawalService.processWithdrawal(withdrawalRequest);
+      const result = await withdrawalService.initiateWithdrawal(withdrawalRequest);
 
-      if (result.success) {
+      if (result.success && result.data) {
         // Create transaction record
         await makeTransaction({
           type: 'withdrawal',
           amount: withdrawalAmount,
           fromCardId: selectedCard,
           description: `Withdrawal via ${getMethodDisplayName()}`,
-          fee: result.fee || 0
+          fee: result.data.fees || 0
         });
 
         // Refresh balances
         await refreshCardBalances();
 
-        // Show success with instructions
-        Alert.alert(
+        // Format instructions for display
+        const instructions = result.data.instructions;
+        const instructionText = instructions?.steps?.join('\n\n') || 'Withdrawal initiated successfully';
+
+        // Show success with instructions (use styled alert)
+        showAlert(
+          'success',
+          `Reference: ${result.data.reference}\n\n${instructionText}`,
           'Withdrawal Initiated',
-          result.instructions,
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                resetForm();
-                router.push('/(root)/(tabs)/home');
-              }
-            }
-          ]
+          5000
         );
+        // Navigate after showing success
+        resetForm();
+        router.push('/(root)/(tabs)/home');
       } else {
-        Alert.alert('Withdrawal Failed', result.message || 'Unable to process withdrawal');
+        showAlert('error', result.error || 'Unable to process withdrawal', 'Withdrawal Failed');
       }
     } catch (error) {
       console.error('Withdrawal error:', error);
-      Alert.alert('Error', 'Failed to process withdrawal. Please try again.');
+      showAlert('error', 'Failed to process withdrawal. Please try again.', 'Error');
     } finally {
       setIsLoading(false);
     }
@@ -173,12 +177,12 @@ export default function WithdrawScreen() {
 
   const validateForm = (): boolean => {
     if (!selectedCard) {
-      Alert.alert('Error', 'Please select a card');
+      showAlert('error', 'Please select a card', 'Error');
       return false;
     }
 
     if (!amount || parseFloat(amount) <= 0) {
-      Alert.alert('Error', 'Please enter a valid amount');
+      showAlert('error', 'Please enter a valid amount', 'Error');
       return false;
     }
 
@@ -186,43 +190,43 @@ export default function WithdrawScreen() {
     const selectedCardData = cards.find(card => card.id === selectedCard);
     
     if (!selectedCardData || selectedCardData.balance < withdrawalAmount) {
-      Alert.alert('Error', 'Insufficient balance');
+      showAlert('error', 'Insufficient balance', 'Error');
       return false;
     }
 
     if (activeTab === 'mobile_money') {
       if (!selectedProvider) {
-        Alert.alert('Error', 'Please select a mobile money provider');
+        showAlert('error', 'Please select a mobile money provider', 'Error');
         return false;
       }
       if (!mobileNumber || mobileNumber.length < 10) {
-        Alert.alert('Error', 'Please enter a valid mobile number');
+        showAlert('error', 'Please enter a valid mobile number', 'Error');
         return false;
       }
     } else if (activeTab === 'bank_transfer') {
       if (!selectedBank) {
-        Alert.alert('Error', 'Please select a bank');
+        showAlert('error', 'Please select a bank', 'Error');
         return false;
       }
       if (!accountNumber || accountNumber.length < 10) {
-        Alert.alert('Error', 'Please enter a valid account number');
+        showAlert('error', 'Please enter a valid account number', 'Error');
         return false;
       }
       if (!accountName.trim()) {
-        Alert.alert('Error', 'Please enter account holder name');
+        showAlert('error', 'Please enter account holder name', 'Error');
         return false;
       }
     } else {
       if (!selectedPickupProvider) {
-        Alert.alert('Error', 'Please select a pickup provider');
+        showAlert('error', 'Please select a pickup provider', 'Error');
         return false;
       }
       if (!recipientName.trim()) {
-        Alert.alert('Error', 'Please enter recipient name');
+        showAlert('error', 'Please enter recipient name', 'Error');
         return false;
       }
       if (!recipientPhone || recipientPhone.length < 10) {
-        Alert.alert('Error', 'Please enter a valid recipient phone number');
+        showAlert('error', 'Please enter a valid recipient phone number', 'Error');
         return false;
       }
     }

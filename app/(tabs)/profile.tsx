@@ -113,9 +113,8 @@ export default function ProfileScreen() {
           <TouchableOpacity 
             style={[styles.menuItem, { borderBottomColor: colors.border }]} 
             onPress={handleSettings}
-            activeOpacity={0.6}
-            delayPressIn={50}
-            delayPressOut={50}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <View style={styles.menuItemLeft}>
               <Settings color={colors.textSecondary} size={20} />
@@ -126,9 +125,8 @@ export default function ProfileScreen() {
           <TouchableOpacity 
             style={[styles.menuItem, { borderBottomColor: colors.border }]} 
             onPress={handleHelpSupport}
-            activeOpacity={0.6}
-            delayPressIn={50}
-            delayPressOut={50}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <View style={styles.menuItemLeft}>
               <HelpCircle color={colors.textSecondary} size={20} />
@@ -139,9 +137,8 @@ export default function ProfileScreen() {
           <TouchableOpacity 
             style={[styles.menuItem, { borderBottomColor: colors.border }]} 
             onPress={handleSignOut}
-            activeOpacity={0.6}
-            delayPressIn={50}
-            delayPressOut={50}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <View style={styles.menuItemLeft}>
               <LogOut color={colors.negative} size={20} />

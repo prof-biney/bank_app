@@ -105,7 +105,7 @@ export async function trackEvent(eventName: string, eventData: any): Promise<voi
     // Here you can add integrations with analytics services:
     // - Google Analytics
     // - Mixpanel  
-    // - Firebase Analytics
+    // - Appwrite Analytics
     // - Custom analytics API
     
     // Example with hypothetical analytics service:

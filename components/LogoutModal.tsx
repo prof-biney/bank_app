@@ -140,6 +140,8 @@ export function LogoutModal({ visible, onClose, onConfirm, isLoading = false }: 
               ]}
               onPress={onClose}
               disabled={isLoading}
+              activeOpacity={0.7}
+              hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
             >
               <Text style={[styles.buttonText, { color: colors.textPrimary }]}>
                 Cancel
@@ -155,6 +157,8 @@ export function LogoutModal({ visible, onClose, onConfirm, isLoading = false }: 
               ]}
               onPress={onConfirm}
               disabled={isLoading}
+              activeOpacity={0.8}
+              hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
             >
               <View style={styles.buttonContent}>
                 <LogOut color="#FFFFFF" size={16} />
