@@ -15,7 +15,7 @@ export type LogCategory =
   | 'NETWORK' 
   | 'UI' 
   | 'STORAGE' 
-  | 'FIREBASE' 
+  | 'APPWRITE'
   | 'CONFIG' 
   | 'TRANSACTION'
   | 'CARD'
@@ -147,11 +147,11 @@ class Logger {
     error: (message: string, ...data: any[]) => this.error('DATABASE', message, ...data),
   };
 
-  firebase = {
-    debug: (message: string, ...data: any[]) => this.debug('FIREBASE', message, ...data),
-    info: (message: string, ...data: any[]) => this.info('FIREBASE', message, ...data),
-    warn: (message: string, ...data: any[]) => this.warn('FIREBASE', message, ...data),
-    error: (message: string, ...data: any[]) => this.error('FIREBASE', message, ...data),
+  appwrite = {
+    debug: (message: string, ...data: any[]) => this.debug('APPWRITE', message, ...data),
+    info: (message: string, ...data: any[]) => this.info('APPWRITE', message, ...data),
+    warn: (message: string, ...data: any[]) => this.warn('APPWRITE', message, ...data),
+    error: (message: string, ...data: any[]) => this.error('APPWRITE', message, ...data),
   };
 
   network = {
@@ -189,11 +189,11 @@ class Logger {
       error: (message: string, ...data: any[]) => this.error('DATABASE', message, ...data),
     };
 
-    this.firebase = {
-      debug: (message: string, ...data: any[]) => this.debug('FIREBASE', message, ...data),
-      info: (message: string, ...data: any[]) => this.info('FIREBASE', message, ...data),
-      warn: (message: string, ...data: any[]) => this.warn('FIREBASE', message, ...data),
-      error: (message: string, ...data: any[]) => this.error('FIREBASE', message, ...data),
+    this.appwrite = {
+      debug: (message: string, ...data: any[]) => this.debug('APPWRITE', message, ...data),
+      info: (message: string, ...data: any[]) => this.info('APPWRITE', message, ...data),
+      warn: (message: string, ...data: any[]) => this.warn('APPWRITE', message, ...data),
+      error: (message: string, ...data: any[]) => this.error('APPWRITE', message, ...data),
     };
 
     this.network = {

@@ -20,6 +20,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '@/context/ThemeContext';
 import { BiometricType } from '@/lib/biometric/biometric.service';
+import { createMutedColor } from '@/theme/color-utils';
 
 const { width } = Dimensions.get('window');
 
@@ -127,26 +128,26 @@ const BiometricAuthButton: React.FC<BiometricAuthButtonProps> = ({
 
   const sizeConfig = getSizeConfig();
 
-  // Get variant styles
+  // Get variant styles with disabled state handling
   const getVariantStyles = () => {
     const baseStyles = {
-      backgroundColor: colors.tintPrimary,
-      borderColor: colors.tintPrimary,
-      textColor: '#FFFFFF',
+      backgroundColor: disabled ? createMutedColor(colors.tintPrimary, colors.background) : colors.tintPrimary,
+      borderColor: disabled ? createMutedColor(colors.tintPrimary, colors.background) : colors.tintPrimary,
+      textColor: disabled ? createMutedColor('#FFFFFF', colors.background) : '#FFFFFF',
     };
 
     switch (variant) {
       case 'secondary':
         return {
-          backgroundColor: colors.card,
-          borderColor: colors.border,
-          textColor: colors.textPrimary,
+          backgroundColor: disabled ? createMutedColor(colors.card, colors.background) : colors.card,
+          borderColor: disabled ? createMutedColor(colors.border, colors.background) : colors.border,
+          textColor: disabled ? createMutedColor(colors.textPrimary, colors.background) : colors.textPrimary,
         };
       case 'outline':
         return {
           backgroundColor: 'transparent',
-          borderColor: colors.tintPrimary,
-          textColor: colors.tintPrimary,
+          borderColor: disabled ? createMutedColor(colors.tintPrimary, colors.background) : colors.tintPrimary,
+          textColor: disabled ? createMutedColor(colors.tintPrimary, colors.background) : colors.tintPrimary,
         };
       case 'primary':
       default:
@@ -235,10 +236,10 @@ const BiometricAuthButton: React.FC<BiometricAuthButtonProps> = ({
     }
   }, [loading, pulseAnim]);
 
-  // Disabled state animation
+  // Disabled state animation - removed opacity change since colors handle it
   useEffect(() => {
     Animated.timing(opacityAnim, {
-      toValue: disabled ? 0.5 : 1,
+      toValue: 1, // Always full opacity - colors provide the disabled state
       duration: 200,
       useNativeDriver: true,
     }).start();
@@ -266,17 +267,13 @@ const BiometricAuthButton: React.FC<BiometricAuthButtonProps> = ({
     disabled && styles.disabled,
   ];
 
-  const iconColor = disabled 
-    ? colors.textSecondary 
-    : hasError 
-      ? colors.destructive 
-      : variantStyles.textColor;
+  const iconColor = hasError 
+    ? colors.destructive 
+    : variantStyles.textColor;
 
-  const textColor = disabled 
-    ? colors.textSecondary 
-    : hasError 
-      ? colors.destructive 
-      : variantStyles.textColor;
+  const textColor = hasError 
+    ? colors.destructive 
+    : variantStyles.textColor;
 
   return (
     <Animated.View style={[animatedStyle]}>

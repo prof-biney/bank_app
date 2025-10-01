@@ -338,7 +338,6 @@ const EnhancedBiometricButton: React.FC<EnhancedBiometricButtonProps> = ({
           styles.pressable,
           {
             transform: [{ scale: isPressed ? 0.98 : 1 }],
-            opacity: pressed ? 0.9 : 1,
           },
         ]}
       >
@@ -476,7 +475,7 @@ const styles = StyleSheet.create({
     width: 3,
     height: 3,
     borderRadius: 1.5,
-    opacity: 0.6,
+    opacity: 0.85, // Improved visibility while still subtle
   },
   label: {
     fontWeight: '600',

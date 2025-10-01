@@ -1,6 +1,7 @@
 import React from "react";
 import { Pressable, Text, View } from "react-native";
 import { useTheme } from "@/context/ThemeContext";
+import { createVibrancColor } from "@/theme/color-utils";
 
 interface BadgeProps {
   label?: string;
@@ -56,7 +57,14 @@ export default function Badge({
       <Pressable
         testID={testID}
         onPress={onPress}
-        style={({ pressed }) => [containerStyle, pressed && { opacity: 0.9 }, style]}
+        style={({ pressed }) => [
+          containerStyle, 
+          pressed && { 
+            backgroundColor: createVibrancColor(backgroundColor ?? colors.card, 0.1),
+            borderColor: createVibrancColor(borderColor ?? colors.border, 0.1)
+          }, 
+          style
+        ]}
       >
         {label ? (
           <Text style={[{ color: textColor ?? colors.textSecondary, fontWeight: '600', fontSize: 13 }, textStyle]}>{label}</Text>

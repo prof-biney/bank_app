@@ -1,6 +1,6 @@
 import { StyleSheet } from 'react-native';
 import { ThemeColors } from '@/context/ThemeContext';
-import { withAlpha, chooseReadableText } from '@/theme/color-utils';
+import { withAlpha, chooseReadableText, createMutedColor, createVibrancColor, getDisabledColors } from '@/theme/color-utils';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 export type ButtonSize = 'sm' | 'md' | 'lg';
@@ -20,21 +20,21 @@ export function getButtonStyles(colors: ThemeColors, opts: { variant?: ButtonVar
 
   switch (variant) {
     case 'primary':
-      backgroundColor = colors.tintPrimary;
-      textColor = '#FFFFFF'; // Ensure consistent white text for primary buttons
+      backgroundColor = disabled ? createMutedColor(colors.tintPrimary, colors.background) : colors.tintPrimary;
+      textColor = disabled ? createMutedColor('#FFFFFF', colors.background) : '#FFFFFF';
       break;
     case 'secondary':
-      backgroundColor = colors.card;
-      borderColor = colors.border;
-      textColor = colors.textPrimary;
+      backgroundColor = disabled ? createMutedColor(colors.card, colors.background) : colors.card;
+      borderColor = disabled ? createMutedColor(colors.border, colors.background) : colors.border;
+      textColor = disabled ? createMutedColor(colors.textPrimary, colors.background) : colors.textPrimary;
       break;
     case 'ghost':
       backgroundColor = 'transparent';
-      textColor = colors.tintPrimary;
+      textColor = disabled ? createMutedColor(colors.tintPrimary, colors.background) : colors.tintPrimary;
       break;
     case 'danger':
-      backgroundColor = colors.negative;
-      textColor = '#FFFFFF'; // Ensure consistent white text for danger buttons
+      backgroundColor = disabled ? createMutedColor(colors.negative, colors.background) : colors.negative;
+      textColor = disabled ? createMutedColor('#FFFFFF', colors.background) : '#FFFFFF';
       break;
   }
 
@@ -50,9 +50,7 @@ export function getButtonStyles(colors: ThemeColors, opts: { variant?: ButtonVar
     container.borderWidth = 1;
     container.borderColor = borderColor;
   }
-  if (disabled) {
-    container.opacity = 0.6;
-  }
+  // No opacity needed - colors are already adjusted for disabled state
 
   const text = {
     fontSize: sizing.text,
@@ -91,26 +89,26 @@ export function getChipStyles(colors: ThemeColors, opts: { tone?: ChipTone; size
 
   switch (tone) {
     case 'neutral':
-      if (selected) setSolid(colors.textSecondary); // subtle solid neutral
+      if (selected) setSolid(createVibrancColor(colors.textSecondary)); // More vibrant selected state
       else {
-        bg = colors.card; border = colors.border; text = colors.textSecondary;
+        bg = colors.card; border = colors.border; text = createMutedColor(colors.textSecondary, colors.background);
       }
       break;
     case 'accent':
-      if (selected) setSolid(colors.tintPrimary);
-      else { bg = colors.tintSoftBg; border = colors.border; text = colors.tintPrimary; }
+      if (selected) setSolid(createVibrancColor(colors.tintPrimary));
+      else { bg = colors.tintSoftBg; border = colors.border; text = createMutedColor(colors.tintPrimary, colors.background); }
       break;
     case 'success':
-      if (selected) setSolid(colors.positive);
-      else setSoft(colors.positive, withAlpha(colors.positive, 0.12));
+      if (selected) setSolid(createVibrancColor(colors.positive));
+      else setSoft(createMutedColor(colors.positive, colors.background), withAlpha(colors.positive, 0.12));
       break;
     case 'warning':
-      if (selected) setSolid(colors.warning);
-      else setSoft(colors.warning, withAlpha(colors.warning, 0.12));
+      if (selected) setSolid(createVibrancColor(colors.warning));
+      else setSoft(createMutedColor(colors.warning, colors.background), withAlpha(colors.warning, 0.12));
       break;
     case 'danger':
-      if (selected) setSolid(colors.negative);
-      else setSoft(colors.negative, withAlpha(colors.negative, 0.12));
+      if (selected) setSolid(createVibrancColor(colors.negative));
+      else setSoft(createMutedColor(colors.negative, colors.background), withAlpha(colors.negative, 0.12));
       break;
   }
 

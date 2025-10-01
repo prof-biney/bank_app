@@ -145,7 +145,7 @@ export default function SignInScreen() {
   // Monitor authentication state changes for navigation
   useEffect(() => {
     if (isAuthenticated) {
-      // Give a moment for Firebase auth state to fully propagate
+      // Give a moment for auth state to fully propagate
       const timer = setTimeout(() => {
         if (showSuccessAlert) {
           router.replace("/");

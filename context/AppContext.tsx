@@ -1352,8 +1352,7 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
 
   // Appwrite Realtime subscription removed
   // Note: Appwrite realtime was previously used here via client.subscribe().
-  // The project has migrated away from Appwrite; Firebase realtime listeners
-  // or onSnapshot can be implemented per-collection if live updates are required.
+  // Realtime listeners can be implemented per-collection if live updates are required.
   // For now, keep a no-op effect to avoid runtime errors and preserve app lifecycle.
   useEffect(() => {
     const dbId = appwriteConfig.databaseId;

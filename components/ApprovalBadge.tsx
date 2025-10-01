@@ -4,6 +4,8 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { getPendingApprovals } from '@/lib/appwrite/transactionApprovalService';
 import TransactionApproval from './TransactionApproval';
 import { logger } from '@/lib/logger';
+import { useTheme } from '@/context/ThemeContext';
+import { createVibrancColor, withAlpha } from '@/theme/color-utils';
 
 interface ApprovalBadgeProps {
   style?: any;
@@ -16,6 +18,7 @@ const ApprovalBadge: React.FC<ApprovalBadgeProps> = ({
   iconSize = 24,
   badgeSize = 16,
 }) => {
+  const { colors } = useTheme();
   const [pendingCount, setPendingCount] = useState(0);
   const [showApprovals, setShowApprovals] = useState(false);
 
@@ -55,20 +58,24 @@ const ApprovalBadge: React.FC<ApprovalBadgeProps> = ({
   return (
     <>
       <TouchableOpacity
-        style={[styles.container, style]}
+        style={[styles.container, { 
+          backgroundColor: withAlpha(colors.tintPrimary, 0.1),
+          borderRadius: 8,
+        }, style]}
         onPress={handlePress}
-        activeOpacity={0.7}
+        activeOpacity={0.85}
       >
         <MaterialIcons 
           name="pending-actions" 
           size={iconSize} 
-          color="#007AFF" 
+          color={colors.tintPrimary} 
         />
         <View style={[styles.badge, { 
           width: badgeSize, 
           height: badgeSize, 
           borderRadius: badgeSize / 2,
-          minWidth: badgeSize
+          minWidth: badgeSize,
+          backgroundColor: colors.negative
         }]}>
           <Text style={[styles.badgeText, { 
             fontSize: badgeSize * 0.7,
@@ -97,7 +104,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     right: 0,
-    backgroundColor: '#FF3B30',
     alignItems: 'center',
     justifyContent: 'center',
   },

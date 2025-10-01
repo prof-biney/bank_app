@@ -2,15 +2,17 @@ import { router } from "expo-router";
 import { ArrowLeft, Bell, Globe, Shield, BarChart3, ChevronRight } from "lucide-react-native";
 import React, { useState, useEffect } from "react";
 import { useTheme } from "@/context/ThemeContext";
-import { StyleSheet, Text, TouchableOpacity, View, Animated, Alert, ScrollView, Modal } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View, Animated, ScrollView, Modal } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { CustomSwitch } from "@/components/ui/CustomSwitch";
 import useAuthStore from "@/store/auth.store";
-import { useAlert } from "@/context/AlertContext";
+import { withAlpha, createMutedColor } from "@/theme/color-utils";
 import { useBiometricMessages } from "@/context/BiometricToastContext";
 import { checkBiometricAvailability, BiometricAvailability } from "@/lib/biometric/biometric.service";
+import { useAlert } from "@/context/AlertContext";
+import ConfirmDialog from "@/components/modals/ConfirmDialog";
 
 export default function SettingsScreen() {
   const { colors, transitionStyle } = useTheme();
@@ -33,6 +35,7 @@ export default function SettingsScreen() {
   const [isInitializing, setIsInitializing] = useState(true);
   const [showLanguageSelector, setShowLanguageSelector] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState('English');
+  const [showBiometricDisableConfirm, setShowBiometricDisableConfirm] = useState(false);
   
   const availableLanguages = [
     { code: 'en', name: 'English' },
@@ -160,39 +163,23 @@ export default function SettingsScreen() {
         setIsSettingUpBiometric(false);
       }
     } else {
-      // Disable biometric authentication
-      try {
-        // Confirm with user
-        Alert.alert(
-          'Disable Biometric Authentication',
-          'Are you sure you want to disable biometric authentication? You will need to use your password to sign in.',
-          [
-            {
-              text: 'Cancel',
-              style: 'cancel',
-            },
-            {
-              text: 'Disable',
-              style: 'destructive',
-              onPress: async () => {
-                try {
-                  await disableBiometric();
-                  biometricMessages.authDisabled();
-                } catch (error) {
-                  console.error('Error disabling biometrics:', error);
-                  biometricMessages.genericError('disable biometric authentication');
-                }
-              },
-            },
-          ],
-        );
-      } catch (error) {
-        console.error('Error disabling biometrics:', error);
-        biometricMessages.genericError('disable biometric authentication');
-      }
+      // Disable biometric authentication - show confirmation
+      setShowBiometricDisableConfirm(true);
     }
   };
-
+  
+  // Handle biometric disable confirmation
+  const handleBiometricDisableConfirm = async () => {
+    setShowBiometricDisableConfirm(false);
+    try {
+      await disableBiometric();
+      biometricMessages.authDisabled();
+    } catch (error) {
+      console.error('Error disabling biometrics:', error);
+      biometricMessages.genericError('disable biometric authentication');
+    }
+  };
+  
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <Animated.View style={[{ flex: 1 }, transitionStyle]}>
@@ -247,9 +234,8 @@ export default function SettingsScreen() {
                 <Text style={[
                   styles.settingText, 
                   { 
-                    color: notificationsEnabled ? colors.textPrimary : colors.textPrimary,
-                    fontWeight: notificationsEnabled ? '700' : '600',
-                    opacity: notificationsEnabled ? 1 : 0.85
+                    color: notificationsEnabled ? colors.textPrimary : createMutedColor(colors.textPrimary, colors.background),
+                    fontWeight: notificationsEnabled ? '700' : '600'
                   }
                 ]}>Push Notifications</Text>
                 <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>Receive notifications about account activity</Text>
@@ -288,9 +274,8 @@ export default function SettingsScreen() {
                 <Text style={[
                   styles.settingText, 
                   { 
-                    color: biometricEnabled ? colors.textPrimary : colors.textPrimary,
-                    fontWeight: biometricEnabled ? '700' : '600',
-                    opacity: biometricEnabled ? 1 : 0.85
+                    color: biometricEnabled ? colors.textPrimary : createMutedColor(colors.textPrimary, colors.background),
+                    fontWeight: biometricEnabled ? '700' : '600'
                   }
                 ]}>Biometric Authentication</Text>
                 <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>Sign in with Face ID, Touch ID, or fingerprint</Text>
@@ -337,9 +322,8 @@ export default function SettingsScreen() {
                 <Text style={[
                   styles.settingText, 
                   { 
-                    color: analyticsEnabled ? colors.textPrimary : colors.textPrimary,
-                    fontWeight: analyticsEnabled ? '700' : '600',
-                    opacity: analyticsEnabled ? 1 : 0.85
+                    color: analyticsEnabled ? colors.textPrimary : createMutedColor(colors.textPrimary, colors.background),
+                    fontWeight: analyticsEnabled ? '700' : '600'
                   }
                 ]}>Share Analytics Data</Text>
                 <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>Help improve our services by sharing anonymous usage data</Text>
@@ -452,6 +436,19 @@ export default function SettingsScreen() {
           </View>
         </View>
       </Modal>
+      
+      {/* Biometric Disable Confirmation Dialog */}
+      <ConfirmDialog
+        visible={showBiometricDisableConfirm}
+        title="Disable Biometric Authentication"
+        message="Are you sure you want to disable biometric authentication? You will need to use your password to sign in."
+        confirmText="Disable"
+        cancelText="Cancel"
+        tone="danger"
+        onConfirm={handleBiometricDisableConfirm}
+        onCancel={() => setShowBiometricDisableConfirm(false)}
+        leftIcon={<Shield color={colors.negative} size={20} />}
+      />
     </SafeAreaView>
   );
 }

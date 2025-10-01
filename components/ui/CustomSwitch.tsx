@@ -192,9 +192,7 @@ export function CustomSwitch({
       testID={testID}
       style={[
         styles.container,
-        {
-          opacity: disabled ? 0.6 : 1,
-        },
+        // No opacity needed - colors already handle disabled state
       ]}
       activeOpacity={0.8}
     >

@@ -64,15 +64,68 @@ export default function ConfirmDialog({
 }
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
-  container: { width: '100%', maxWidth: 420, borderRadius: 12, overflow: 'hidden' },
-  header: { paddingHorizontal: 16, paddingVertical: 12 },
-  title: { fontSize: 16, fontWeight: '700' },
-  body: { paddingHorizontal: 16, paddingVertical: 16 },
-  message: { fontSize: 14 },
-  leftIconContainer: { position: 'absolute', left: 12, top: 12 },
-  footer: { flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 12, paddingVertical: 12 },
-  btn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },
-  btnText: { fontSize: 14, fontWeight: '600' },
+  overlay: { 
+    flex: 1, 
+    backgroundColor: 'rgba(0,0,0,0.4)', 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    paddingHorizontal: 20 
+  },
+  container: { 
+    width: '100%', 
+    maxWidth: 420, 
+    borderRadius: 16, 
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 12
+  },
+  header: { 
+    paddingHorizontal: 20, 
+    paddingVertical: 16, 
+    flexDirection: 'row', 
+    alignItems: 'center' 
+  },
+  title: { 
+    fontSize: 18, 
+    fontWeight: '700', 
+    flex: 1, 
+    marginLeft: 12 
+  },
+  body: { 
+    paddingHorizontal: 20, 
+    paddingVertical: 8,
+    paddingBottom: 24 
+  },
+  message: { 
+    fontSize: 15, 
+    lineHeight: 22 
+  },
+  leftIconContainer: { 
+    width: 28, 
+    height: 28, 
+    alignItems: 'center', 
+    justifyContent: 'center' 
+  },
+  footer: { 
+    flexDirection: 'row', 
+    justifyContent: 'flex-end', 
+    paddingHorizontal: 16, 
+    paddingVertical: 16,
+    gap: 12
+  },
+  btn: { 
+    paddingHorizontal: 20, 
+    paddingVertical: 12, 
+    borderRadius: 12,
+    minWidth: 80,
+    alignItems: 'center'
+  },
+  btnText: { 
+    fontSize: 15, 
+    fontWeight: '600' 
+  },
 });
 
