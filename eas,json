@@ -1,0 +1,10 @@
+{
+  "build": {
+    "production": {
+      "android": {
+        "buildType": "apk"
+      },
+      "node": "20.16.0"
+    }
+  }
+}
