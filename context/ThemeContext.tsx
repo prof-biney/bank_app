@@ -32,6 +32,7 @@ export type ThemeColors = {
   negative: string;
   warning: string;
   info: string;
+  destructive: string;
   
   // Semantic backgrounds
   errorBg: string;
@@ -153,6 +154,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       negative: isDark ? '#EF4444' : '#DC2626', // Softer red
       warning: isDark ? '#F59E0B' : '#D97706', // Softer amber
       info: isDark ? '#3B82F6' : '#2563EB', // Softer blue
+      destructive: isDark ? '#EF4444' : '#DC2626', // Same as negative for destructive actions
       
       // Semantic backgrounds - darker but not harsh
       errorBg: isDark ? '#2D1B1B' : '#FEE2E2', // Warmer error background

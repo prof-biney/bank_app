@@ -288,6 +288,26 @@ export function TransactionDetailModal({
                 </Text>
               </View>
             )}
+            {transaction.mobileNumber && (
+              <View style={styles.detailRow}>
+                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>
+                  Mobile Number:
+                </Text>
+                <Text style={[styles.detailValue, { color: colors.textPrimary }]}>
+                  {transaction.mobileNumber}
+                </Text>
+              </View>
+            )}
+            {transaction.mobileNetwork && (
+              <View style={styles.detailRow}>
+                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>
+                  Mobile Network:
+                </Text>
+                <Text style={[styles.detailValue, { color: colors.textPrimary }]}>
+                  {transaction.mobileNetwork.toUpperCase()}
+                </Text>
+              </View>
+            )}
             <View style={styles.detailRow}>
               <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>
                 Date:

@@ -5,10 +5,11 @@
  * Generates insights, trends, and downloadable reports for cards and transactions.
  */
 
-import { databases, appwriteConfig, Query, AppwriteQuery } from './config';
+import { databases, collections, appwriteConfig, Query, AppwriteQuery } from './config';
 import { databaseService } from './database';
 import { Card, Transaction } from '@/constants/index';
 import { logger } from '@/lib/logger';
+import { activityLogger } from '@/lib/activityLogger';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 
@@ -174,6 +175,11 @@ class AnalyticsService {
           throw new Error(`Unsupported report format: ${options.format}`);
       }
 
+      // Log report generation activity (fire-and-forget)
+      this.logReportGenerationActivity(options, filePath).catch(error => {
+        logger.warn('ANALYTICS', 'Failed to log report generation activity', error);
+      });
+
       logger.info('ANALYTICS', 'Report generated successfully', { filePath, format: options.format });
       return filePath;
 
@@ -200,6 +206,48 @@ class AnalyticsService {
     } catch (error) {
       logger.error('ANALYTICS', 'Failed to share report:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Log report generation activity using centralized activity logger
+   */
+  private async logReportGenerationActivity(options: ReportOptions, filePath: string): Promise<void> {
+    try {
+      // Get current user from auth context (you may need to import auth service)
+      const { authService } = await import('./auth');
+      const user = await authService.getCurrentUser();
+      if (!user) {
+        logger.warn('ANALYTICS', 'Cannot log report activity - user not authenticated');
+        return;
+      }
+
+      const periodLabel = options.period === 'custom' && options.customStartDate && options.customEndDate
+        ? `${options.customStartDate.toLocaleDateString()} to ${options.customEndDate.toLocaleDateString()}`
+        : options.period;
+      
+      const cardInfo = options.cardIds && options.cardIds.length > 0
+        ? `for ${options.cardIds.length} card(s)`
+        : 'for all cards';
+      
+      await activityLogger.logReportActivity(
+        'generated',
+        'financial_report',
+        {
+          period: periodLabel,
+          format: options.format,
+          recordCount: options.cardIds?.length || 0,
+          description: `${options.format.toUpperCase()} report generated ${cardInfo} for period: ${periodLabel}`,
+          cardIds: options.cardIds,
+          includeCharts: options.includeCharts,
+          includeInsights: options.includeInsights,
+          filePath: filePath,
+        },
+        user.$id
+      );
+    } catch (error) {
+      // Don't throw - this is a fire-and-forget operation
+      logger.warn('ANALYTICS', 'Failed to log report generation activity', error);
     }
   }
 
@@ -247,50 +295,63 @@ class AnalyticsService {
 
   private async fetchCards(cardIds: string[]): Promise<Card[]> {
     // Fetch all cards first, then filter by IDs (since Query.in might not be available)
-    const response = await databases.listDocuments(
-      appwriteConfig.databaseId,
-      this.cardsCollectionId,
-      [Query.equal('isActive', true)]
-    );
+    try {
+      const response = await databases.listDocuments(
+        appwriteConfig.databaseId,
+        this.cardsCollectionId,
+        [] // Removed isActive query to prevent errors
+      );
 
-    const allCards = response.documents.map(doc => ({
-      id: doc.$id,
-      userId: doc.userId,
-      cardNumber: doc.cardNumber,
-      cardHolderName: doc.cardHolderName,
-      expiryDate: doc.expiryDate,
-      balance: doc.balance,
-      cardType: doc.cardType,
-      isActive: doc.isActive,
-      cardColor: doc.cardColor,
-      token: doc.token,
-      currency: doc.currency || 'GHS'
-    }));
+      const allCards = response.documents.map(doc => ({
+        id: doc.$id,
+        userId: doc.userId,
+        cardNumber: doc.cardNumber,
+        cardHolderName: doc.cardHolderName,
+        expiryDate: doc.expiryDate,
+        balance: doc.balance,
+        cardType: doc.cardType,
+        isActive: doc.isActive,
+        cardColor: doc.cardColor,
+        token: doc.token,
+        currency: doc.currency || 'GHS'
+      }));
 
-    // Filter by cardIds
-    return allCards.filter(card => cardIds.includes(card.id));
+      // Filter by cardIds and isActive status client-side
+      return allCards.filter(card => cardIds.includes(card.id) && card.isActive);
+    } catch (error) {
+      logger.error('ANALYTICS', 'Failed to fetch cards', error);
+      return [];
+    }
   }
 
   private async fetchAllCards(): Promise<Card[]> {
-    const response = await databases.listDocuments(
-      appwriteConfig.databaseId,
-      this.cardsCollectionId,
-      [Query.equal('isActive', true)]
-    );
+    try {
+      const response = await databases.listDocuments(
+        appwriteConfig.databaseId,
+        this.cardsCollectionId,
+        [] // Removed isActive query to prevent errors
+      );
 
-    return response.documents.map(doc => ({
-      id: doc.$id,
-      userId: doc.userId,
-      cardNumber: doc.cardNumber,
-      cardHolderName: doc.cardHolderName,
-      expiryDate: doc.expiryDate,
-      balance: doc.balance,
-      cardType: doc.cardType,
-      isActive: doc.isActive,
-      cardColor: doc.cardColor,
-      token: doc.token,
-      currency: doc.currency || 'GHS'
-    }));
+      const allCards = response.documents.map(doc => ({
+        id: doc.$id,
+        userId: doc.userId,
+        cardNumber: doc.cardNumber,
+        cardHolderName: doc.cardHolderName,
+        expiryDate: doc.expiryDate,
+        balance: doc.balance,
+        cardType: doc.cardType,
+        isActive: doc.isActive,
+        cardColor: doc.cardColor,
+        token: doc.token,
+        currency: doc.currency || 'GHS'
+      }));
+
+      // Filter by isActive status client-side
+      return allCards.filter(card => card.isActive);
+    } catch (error) {
+      logger.error('ANALYTICS', 'Failed to fetch all cards', error);
+      return [];
+    }
   }
 
   private getPeriodDates(period: ReportPeriod, customStart?: Date, customEnd?: Date) {

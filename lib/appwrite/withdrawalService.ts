@@ -9,6 +9,7 @@
 import { databaseService, Query, ID, collections } from './database';
 import { authService } from './auth';
 import { logger } from '../logger';
+import { activityLogger } from '../activityLogger';
 import type { Card } from '@/types';
 
 // Ghana-specific mobile networks
@@ -436,6 +437,29 @@ export class AppwriteWithdrawalService {
         withdrawalId
       );
 
+      // Log activity to centralized logger (fire-and-forget)
+      activityLogger.logTransactionActivity(
+        document.$id,
+        'created',
+        'withdrawal',
+        {
+          amount: withdrawalRequest.amount,
+          cardId: withdrawalRequest.cardId,
+          withdrawalMethod: withdrawalRequest.withdrawalMethod,
+          fees: fees,
+          netAmount: netAmount,
+          currency: withdrawalRequest.currency || 'GHS',
+          recipient: withdrawalRequest.recipientName || withdrawalRequest.accountName || withdrawalRequest.receiverName,
+          status: 'pending',
+        },
+        `Withdrawal request created: ${withdrawalRequest.withdrawalMethod.replace('_', ' ')}`,
+        userId
+      ).catch(error => {
+        logger.warn('WITHDRAWAL_SERVICE', 'Failed to log withdrawal activity', error);
+      });
+
+      // Withdrawal request has been logged to centralized activity logger above
+
       logger.info('WITHDRAWAL_SERVICE', 'Withdrawal request created successfully', {
         withdrawalId: document.$id,
         amount: withdrawalRequest.amount,
@@ -465,6 +489,22 @@ export class AppwriteWithdrawalService {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to initiate withdrawal'
       };
+    }
+  }
+
+  /**
+   * Get estimated completion time for withdrawal method
+   */
+  private getEstimatedCompletionTime(method: WithdrawalMethod): string {
+    switch (method) {
+      case 'mobile_money':
+        return '5-15 minutes';
+      case 'bank_transfer':
+        return '1-3 business hours';
+      case 'cash_pickup':
+        return '15-30 minutes';
+      default:
+        return '1-2 hours';
     }
   }
 
@@ -688,7 +728,12 @@ export class AppwriteWithdrawalService {
    */
   async updateWithdrawalStatus(withdrawalId: string, status: string, metadata?: Record<string, any>): Promise<any> {
     try {
+      const userId = await this.getCurrentUserId();
+      
       logger.info('WITHDRAWAL_SERVICE', 'Updating withdrawal status', { withdrawalId, status });
+
+      // Get existing withdrawal for context
+      const existingWithdrawal = await this.getWithdrawal(withdrawalId);
 
       const updateData: any = {
         status,
@@ -710,6 +755,27 @@ export class AppwriteWithdrawalService {
         withdrawalId,
         updateData
       );
+
+      // Log status change activity to centralized logger (fire-and-forget)
+      activityLogger.logTransactionActivity(
+        withdrawalId,
+        'status_updated',
+        'withdrawal',
+        {
+          amount: existingWithdrawal.amount,
+          cardId: existingWithdrawal.cardId,
+          oldStatus: existingWithdrawal.status,
+          newStatus: status,
+          withdrawalMethod: existingWithdrawal.withdrawalMethod,
+          updatedAt: updateData.updatedAt,
+        },
+        `Withdrawal status changed from ${existingWithdrawal.status} to ${status}`,
+        userId
+      ).catch(error => {
+        logger.warn('WITHDRAWAL_SERVICE', 'Failed to log withdrawal status update activity', error);
+      });
+
+      // Withdrawal status change has been logged to centralized activity logger above
 
       logger.info('WITHDRAWAL_SERVICE', 'Withdrawal status updated successfully', { withdrawalId, status });
       

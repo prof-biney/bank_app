@@ -26,6 +26,8 @@ export interface LoginAttemptData {
 
 export interface LoginAttemptResult {
   isLocked: boolean;
+  isLockedOut: boolean; // Alias for isLocked for backward compatibility
+  attempts: number;
   remainingAttempts: number;
   lockoutTimeRemaining?: number; // in milliseconds
   canAttempt: boolean;
@@ -45,23 +47,33 @@ class LoginAttemptsService {
       // Clean up expired lockouts
       const now = Date.now();
       const cleanedData: Record<string, LoginAttemptData> = {};
+      let hasChanges = false;
       
       for (const [email, attemptData] of Object.entries(data as Record<string, LoginAttemptData>)) {
         if (attemptData.lockoutUntil && attemptData.lockoutUntil <= now) {
           // Lockout has expired, reset attempts
+          logger.info('LOGIN_ATTEMPTS', `Lockout expired for ${email}, resetting attempts`, {
+            email,
+            previousAttempts: attemptData.attempts,
+            lockoutUntil: new Date(attemptData.lockoutUntil).toISOString(),
+            now: new Date(now).toISOString()
+          });
+          
           cleanedData[email] = {
             ...attemptData,
             attempts: 0,
             lockoutUntil: undefined,
           };
+          hasChanges = true;
         } else {
           cleanedData[email] = attemptData;
         }
       }
       
       // Save cleaned data back if changes were made
-      if (JSON.stringify(cleanedData) !== JSON.stringify(data)) {
+      if (hasChanges) {
         await this.saveData(cleanedData);
+        logger.info('LOGIN_ATTEMPTS', 'Cleaned expired lockouts from storage');
       }
       
       return cleanedData;
@@ -87,7 +99,7 @@ class LoginAttemptsService {
    */
   async checkLoginAttempts(email: string): Promise<LoginAttemptResult> {
     try {
-      const data = await this.getStoredData();
+      const data = await this.getStoredData(); // This automatically cleans expired lockouts
       const normalizedEmail = email.toLowerCase().trim();
       const attemptData = data[normalizedEmail];
       
@@ -97,6 +109,27 @@ class LoginAttemptsService {
         // First time attempting login
         return {
           isLocked: false,
+          isLockedOut: false,
+          attempts: 0,
+          remainingAttempts: MAX_ATTEMPTS,
+          canAttempt: true,
+        };
+      }
+      
+      // Double-check lockout expiry even if getStoredData didn't catch it
+      if (attemptData.lockoutUntil && attemptData.lockoutUntil <= now) {
+        // Lockout has expired, reset immediately
+        logger.info('LOGIN_ATTEMPTS', `Lockout expired during check for ${normalizedEmail}, resetting now`);
+        
+        attemptData.attempts = 0;
+        attemptData.lockoutUntil = undefined;
+        data[normalizedEmail] = attemptData;
+        await this.saveData(data);
+        
+        return {
+          isLocked: false,
+          isLockedOut: false,
+          attempts: 0,
           remainingAttempts: MAX_ATTEMPTS,
           canAttempt: true,
         };
@@ -108,6 +141,8 @@ class LoginAttemptsService {
         logger.info('LOGIN_ATTEMPTS', `Account locked for ${normalizedEmail}`, {
           timeRemaining,
           attempts: attemptData.attempts,
+          lockoutUntil: new Date(attemptData.lockoutUntil).toISOString(),
+          currentTime: new Date(now).toISOString()
         });
         
         return {
@@ -118,8 +153,9 @@ class LoginAttemptsService {
         };
       }
       
-      // Calculate remaining attempts
-      const remainingAttempts = Math.max(0, MAX_ATTEMPTS - attemptData.attempts);
+      // If we have attempts but no valid lockout, user can try again
+      // Calculate remaining attempts (reset if lockout expired)
+      const remainingAttempts = attemptData.lockoutUntil ? MAX_ATTEMPTS : Math.max(0, MAX_ATTEMPTS - attemptData.attempts);
       
       return {
         isLocked: false,
@@ -335,6 +371,61 @@ class LoginAttemptsService {
       await AsyncStorage.removeItem(LAST_EMAIL_KEY);
     } catch (error) {
       logger.error('LOGIN_ATTEMPTS', 'Error clearing last attempted email:', error);
+    }
+  }
+
+  /**
+   * Manually check and unlock expired lockouts for a specific email
+   * This ensures lockouts are properly cleared even if automatic cleanup missed them
+   */
+  async unlockExpiredAccount(email: string): Promise<boolean> {
+    try {
+      const data = await this.getStoredData(); // This already handles expired lockout cleanup
+      const normalizedEmail = email.toLowerCase().trim();
+      const attemptData = data[normalizedEmail];
+      
+      if (!attemptData || !attemptData.lockoutUntil) {
+        // No lockout data or not locked out
+        return false;
+      }
+      
+      const now = Date.now();
+      if (attemptData.lockoutUntil <= now) {
+        // Lockout has expired, manually clear it
+        logger.info('LOGIN_ATTEMPTS', `Manually unlocking expired account for ${normalizedEmail}`);
+        
+        attemptData.attempts = 0;
+        attemptData.lockoutUntil = undefined;
+        data[normalizedEmail] = attemptData;
+        await this.saveData(data);
+        
+        return true; // Account was unlocked
+      }
+      
+      return false; // Still locked out
+    } catch (error) {
+      logger.error('LOGIN_ATTEMPTS', 'Error unlocking expired account:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Force unlock an account (for admin/debug purposes)
+   */
+  async forceUnlockAccount(email: string): Promise<void> {
+    try {
+      const data = await this.getStoredData();
+      const normalizedEmail = email.toLowerCase().trim();
+      
+      if (data[normalizedEmail]) {
+        logger.info('LOGIN_ATTEMPTS', `Force unlocking account for ${normalizedEmail}`);
+        
+        data[normalizedEmail].attempts = 0;
+        data[normalizedEmail].lockoutUntil = undefined;
+        await this.saveData(data);
+      }
+    } catch (error) {
+      logger.error('LOGIN_ATTEMPTS', 'Error force unlocking account:', error);
     }
   }
 

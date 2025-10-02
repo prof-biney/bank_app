@@ -17,6 +17,8 @@ import { getChipStyles } from "@/theme/variants";
 import CustomButton from "@/components/CustomButton";
 import { getBadgeVisuals } from "@/theme/badge-utils";
 import { useApp } from "@/context/AppContext";
+import { useAlert } from "@/context/AlertContext";
+import { useBiometricToast } from "@/context/BiometricToastContext";
 import LoadingAnimation from '@/components/LoadingAnimation';
 import { useLoading, LOADING_CONFIGS } from '@/hooks/useLoading';
 
@@ -30,6 +32,8 @@ export function NotificationModal({
   onClose,
 }: NotificationModalProps) {
   const { colors } = useTheme();
+  const { showAlert } = useAlert();
+  const { showSuccess, showError, showInfo } = useBiometricToast();
   const { loading, withLoading } = useLoading();
   const { 
     notifications, 
@@ -111,6 +115,8 @@ export function NotificationModal({
                       await withLoading(
                         async () => {
                           await markAllNotificationsRead();
+                          showSuccess('Marked as Read', 'All notifications have been marked as read.');
+                          showAlert('success', 'All notifications have been marked as read.', 'Marked as Read');
                           setConfirm(null);
                         },
                         {
@@ -136,6 +142,8 @@ export function NotificationModal({
                       await withLoading(
                         async () => {
                           await markAllNotificationsUnread();
+                          showInfo('Marked as Unread', 'All notifications have been marked as unread.');
+                          showAlert('success', 'All notifications have been marked as unread.', 'Marked as Unread');
                           setConfirm(null);
                         },
                         {
@@ -161,6 +169,8 @@ export function NotificationModal({
                       await withLoading(
                         async () => {
                           await archiveAllReadNotifications();
+                          showSuccess('Notifications Archived', 'All read notifications have been archived.');
+                          showAlert('success', 'All read notifications have been archived.', 'Notifications Archived');
                           setConfirm(null);
                         },
                         {
@@ -187,6 +197,8 @@ export function NotificationModal({
                       await withLoading(
                         async () => {
                           await clearAllNotifications();
+                          showSuccess('Notifications Cleared', 'All notifications have been permanently cleared.');
+                          showAlert('success', 'All notifications have been permanently cleared.', 'Notifications Cleared');
                           setConfirm(null);
                         },
                         {
@@ -265,7 +277,10 @@ export function NotificationModal({
                   onPress={async () => { 
                     if (notification.unread) {
                       await withLoading(
-                        async () => await markNotificationRead(notification.id),
+                        async () => {
+                          await markNotificationRead(notification.id);
+                          showInfo('Marked as Read', 'Notification marked as read.');
+                        },
                         { ...LOADING_CONFIGS.SAVING, message: 'Marking as read...' }
                       );
                     }
@@ -304,6 +319,18 @@ export function NotificationModal({
                               await withLoading(
                                 async () => {
                                   await toggleNotificationArchive(notification.id);
+                                  if (notification.archived) {
+                                    showSuccess('Notification Restored', 'Notification has been restored to your active notifications.');
+                                  } else {
+                                    showInfo('Notification Archived', 'Notification has been archived.');
+                                  }
+                                  showAlert(
+                                    'success', 
+                                    notification.archived 
+                                      ? 'Notification has been restored to your active notifications.' 
+                                      : 'Notification has been archived.',
+                                    notification.archived ? 'Notification Restored' : 'Notification Archived'
+                                  );
                                   setConfirm(null);
                                 },
                                 {
@@ -330,6 +357,8 @@ export function NotificationModal({
                               await withLoading(
                                 async () => {
                                   await deleteNotification(notification.id);
+                                  showSuccess('Notification Deleted', 'Notification has been deleted permanently.');
+                                  showAlert('success', 'Notification has been deleted permanently.', 'Notification Deleted');
                                   setConfirm(null);
                                 },
                                 {

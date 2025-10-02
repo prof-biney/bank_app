@@ -5,7 +5,7 @@ export interface User {
   avatar: string;
 }
 
-interface CustomInputProps {
+export interface CustomInputProps {
   placeholder?: string;
   value?: string;
   onChangeText?: (text: string) => void;

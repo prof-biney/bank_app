@@ -33,8 +33,11 @@ export const appwriteConfig = {
   usersCollectionId: getEnvVar(['EXPO_PUBLIC_APPWRITE_USER_COLLECTION_ID', 'APPWRITE_USER_COLLECTION_ID']),
   cardsCollectionId: getEnvVar(['EXPO_PUBLIC_APPWRITE_CARDS_COLLECTION_ID', 'APPWRITE_CARDS_COLLECTION_ID']),
   transactionsCollectionId: getEnvVar(['EXPO_PUBLIC_APPWRITE_TRANSACTIONS_COLLECTION_ID', 'APPWRITE_TRANSACTIONS_COLLECTION_ID']),
-  accountUpdatesCollectionId: getEnvVar(['EXPO_PUBLIC_APPWRITE_ACCOUNT_UPDATES_COLLECTION_ID', 'APPWRITE_ACCOUNT_UPDATES_COLLECTION_ID'], 'account_updates'),
+  // Removed accountUpdatesCollectionId - using users collection for activity logging instead
   notificationsCollectionId: getEnvVar(['EXPO_PUBLIC_APPWRITE_NOTIFICATIONS_COLLECTION_ID', 'APPWRITE_NOTIFICATIONS_COLLECTION_ID']),
+  
+  // Analytics collection (optional)
+  analyticsCollectionId: getEnvVar(['EXPO_PUBLIC_APPWRITE_ANALYTICS_COLLECTION_ID', 'APPWRITE_ANALYTICS_COLLECTION_ID'], 'analytics_events'),
   
   // Biometric collections (optional - will use fallback names if not configured)
   biometricTokensCollectionId: getEnvVar(['EXPO_PUBLIC_APPWRITE_BIOMETRIC_TOKENS_COLLECTION_ID', 'APPWRITE_BIOMETRIC_TOKENS_COLLECTION_ID'], 'biometric_tokens'),
@@ -159,12 +162,13 @@ export const collections = {
     id: appwriteConfig.transactionsCollectionId,
     databaseId: appwriteConfig.databaseId,
   },
-  accountUpdates: {
-    id: appwriteConfig.accountUpdatesCollectionId,
-    databaseId: appwriteConfig.databaseId,
-  },
+  // Removed accountUpdates - using users collection for activity logging instead
   notifications: {
     id: appwriteConfig.notificationsCollectionId,
+    databaseId: appwriteConfig.databaseId,
+  },
+  analytics: {
+    id: appwriteConfig.analyticsCollectionId,
     databaseId: appwriteConfig.databaseId,
   },
   biometricTokens: {

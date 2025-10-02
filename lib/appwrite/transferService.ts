@@ -6,10 +6,11 @@
  */
 
 import { databaseService, Query, collections } from './database';
-import { AppwriteCardService } from './cardService';
+import { AppwriteCardService, updateCardSystem } from './cardService';
 import { AppwriteTransactionService } from './transactionService';
 import { AppwriteActivityService } from './activityService';
 import { logger } from '../logger';
+import { activityLogger } from '../activityLogger';
 import { Card, Transaction } from '@/types';
 
 // Transfer interfaces
@@ -233,8 +234,8 @@ export class AppwriteTransferService {
           balance: sourceNewBalance
         });
         
-        // Update recipient card balance
-        await cardService.updateCard(recipientCard.id, {
+        // Update recipient card balance (using system update since it may belong to different user)
+        await updateCardSystem(recipientCard.id, {
           balance: recipientNewBalance
         });
         
@@ -314,7 +315,7 @@ export class AppwriteTransferService {
   }
   
   /**
-   * Log transfer activity events (fire-and-forget)
+   * Log transfer activity events using centralized logger (fire-and-forget)
    */
   private async logTransferActivity(
     sourceCard: Card, 
@@ -323,45 +324,48 @@ export class AppwriteTransferService {
     transactionId?: string
   ): Promise<void> {
     try {
-      // Activity for sender
-      await activityService.logActivity({
-        userId: sourceCard.userId,
-        category: 'transfer',
-        type: 'transfer.sent',
-        title: 'Transfer sent',
-        description: `Sent ${sourceCard.currency || 'GHS'} ${amount.toFixed(2)} to ${recipientCard.cardHolderName}`,
-        amount: -amount,
-        currency: sourceCard.currency || 'GHS',
-        status: 'completed',
-        cardId: sourceCard.id,
-        transactionId: transactionId,
-        metadata: {
-          recipientName: recipientCard.cardHolderName,
-          recipientCardLast4: recipientCard.cardNumber.slice(-4)
-        }
-      });
+      // Log outgoing transfer activity for sender using centralized logger
+      await activityLogger.logTransactionActivity(
+        transactionId || `transfer_${Date.now()}`,
+        'completed',
+        'transfer',
+        {
+          amount: amount,
+          cardId: sourceCard.id,
+          recipient: `${recipientCard.cardHolderName} (${recipientCard.cardNumber.slice(-4)})`,
+          currency: sourceCard.currency || 'GHS',
+          status: 'completed',
+          transferType: 'outgoing',
+          recipientCardId: recipientCard.id,
+        },
+        `Transfer sent to ${recipientCard.cardHolderName}`,
+        sourceCard.userId
+      );
       
-      // Activity for recipient
-      await activityService.logActivity({
-        userId: recipientCard.userId,
-        category: 'transfer',
-        type: 'transfer.received',
-        title: 'Transfer received',
-        description: `Received ${recipientCard.currency || 'GHS'} ${amount.toFixed(2)} from ${sourceCard.cardHolderName}`,
-        amount: amount,
-        currency: recipientCard.currency || 'GHS',
-        status: 'completed',
-        cardId: recipientCard.id,
-        transactionId: transactionId,
-        metadata: {
-          senderName: sourceCard.cardHolderName,
-          senderCardLast4: sourceCard.cardNumber.slice(-4)
-        }
-      });
+      // Log incoming transfer activity for recipient using centralized logger
+      await activityLogger.logTransactionActivity(
+        transactionId || `transfer_${Date.now()}`,
+        'completed',
+        'transfer',
+        {
+          amount: amount,
+          cardId: recipientCard.id,
+          recipient: `from ${sourceCard.cardHolderName} (${sourceCard.cardNumber.slice(-4)})`,
+          currency: recipientCard.currency || 'GHS',
+          status: 'completed',
+          transferType: 'incoming',
+          senderCardId: sourceCard.id,
+        },
+        `Transfer received from ${sourceCard.cardHolderName}`,
+        recipientCard.userId
+      );
+
+      // Transfer activities have been logged using the centralized activity logger above
+      // No additional notifications needed as activity logging handles user notifications
       
     } catch (error) {
-      logger.warn('TRANSFER_SERVICE', 'Failed to log transfer activity', error);
-      // Don't fail the transfer for activity logging issues
+      logger.warn('TRANSFER_SERVICE', 'Failed to log transfer activity or create notifications', error);
+      // Don't fail the transfer for activity logging/notification issues
     }
   }
   

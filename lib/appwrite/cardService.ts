@@ -189,7 +189,11 @@ export class AppwriteCardService {
       const card = this.transformAppwriteToCard(document);
 
       // Log activity (fire-and-forget)
-      this.logCardActivity(card.id, 'created', `Card ${card.cardHolderName} created`);
+      this.logCardActivity(card.id, 'created', `Card ${card.cardHolderName} created`, {
+        cardName: card.cardHolderName,
+        cardNumber: card.cardNumber,
+        amount: card.balance,
+      });
 
       logger.info('CARD_SERVICE', 'Card created successfully', { cardId: card.id });
       return card;
@@ -203,14 +207,30 @@ export class AppwriteCardService {
    * Update an existing card
    */
   async updateCard(cardId: string, updateData: UpdateCardData): Promise<Card> {
+    return this.updateCardInternal(cardId, updateData, false);
+  }
+
+  /**
+   * System-level card update (for transfers between different users)
+   */
+  async updateCardSystem(cardId: string, updateData: UpdateCardData): Promise<Card> {
+    return this.updateCardInternal(cardId, updateData, true);
+  }
+
+  /**
+   * Internal card update method
+   */
+  private async updateCardInternal(cardId: string, updateData: UpdateCardData, isSystemUpdate: boolean = false): Promise<Card> {
     try {
       const userId = await this.getCurrentUserId();
 
-      logger.info('CARD_SERVICE', 'Updating card', { cardId, userId, updateData });
+      logger.info('CARD_SERVICE', 'Updating card', { cardId, userId, updateData, isSystemUpdate });
 
-      // First verify the card belongs to the current user (get directly to avoid circular call)
+      // Get the existing document
       const existingDocument = await databaseService.getDocument(collections.cards.id, cardId);
-      if (existingDocument.userId !== userId) {
+      
+      // For non-system updates, verify ownership
+      if (!isSystemUpdate && existingDocument.userId !== userId) {
         throw new Error('Unauthorized: Card does not belong to current user');
       }
 
@@ -250,7 +270,36 @@ export class AppwriteCardService {
 
       // Log activity for significant changes
       if (updateData.balance !== undefined) {
-        this.logCardActivity(card.id, 'balance_updated', `Balance updated to ${card.currency} ${card.balance}`);
+        this.logCardActivity(card.id, 'balance_updated', `Balance updated to ${card.currency} ${card.balance}`, {
+          cardName: card.cardHolderName,
+          cardNumber: card.cardNumber,
+          newBalance: card.balance,
+          previousBalance: existingDocument.balance,
+        });
+      }
+      
+      if (updateData.isActive !== undefined) {
+        const wasActive = existingDocument.status !== 'inactive';
+        const isNowActive = updateData.isActive;
+        
+        if (wasActive !== isNowActive) {
+          this.logCardActivity(
+            card.id, 
+            isNowActive ? 'activated' : 'deactivated', 
+            `Card ${card.cardHolderName} ${isNowActive ? 'activated' : 'deactivated'}`, 
+            {
+              cardName: card.cardHolderName,
+              cardNumber: card.cardNumber,
+            }
+          );
+        }
+      }
+      
+      if (updateData.cardHolderName !== undefined || updateData.expiryDate !== undefined || updateData.cardColor !== undefined) {
+        this.logCardActivity(card.id, 'updated', `Card ${card.cardHolderName} details updated`, {
+          cardName: card.cardHolderName,
+          cardNumber: card.cardNumber,
+        });
       }
 
       logger.info('CARD_SERVICE', 'Card updated successfully', { cardId });
@@ -284,7 +333,10 @@ export class AppwriteCardService {
       );
 
       // Log activity
-      this.logCardActivity(cardId, 'deleted', `Card ${existingCard.cardHolderName} deleted`);
+      this.logCardActivity(cardId, 'deleted', `Card ${existingCard.cardHolderName} deleted`, {
+        cardName: existingCard.cardHolderName,
+        cardNumber: existingCard.cardNumber,
+      });
 
       logger.info('CARD_SERVICE', 'Card deleted successfully', { cardId });
     } catch (error) {
@@ -307,6 +359,12 @@ export class AppwriteCardService {
       if (existingCard.userId !== userId) {
         throw new Error('Unauthorized: Card does not belong to current user');
       }
+
+      // Log activity before permanent deletion
+      this.logCardActivity(cardId, 'deleted', `Card ${existingCard.cardHolderName} permanently deleted`, {
+        cardName: existingCard.cardHolderName,
+        cardNumber: existingCard.cardNumber,
+      });
 
       // Permanently delete from database
       await databaseService.deleteDocument(collections.cards.id, cardId);
@@ -783,32 +841,35 @@ export class AppwriteCardService {
   }
 
   /**
-   * Log card activity (fire-and-forget)
+   * Log card activity using centralized activity logger
    */
-  private async logCardActivity(cardId: string, action: string, description: string): Promise<void> {
+  private async logCardActivity(
+    cardId: string, 
+    action: 'created' | 'updated' | 'deleted' | 'balance_updated' | 'activated' | 'deactivated', 
+    description: string,
+    details?: {
+      cardName?: string;
+      cardNumber?: string;
+      amount?: number;
+      previousBalance?: number;
+      newBalance?: number;
+    }
+  ): Promise<void> {
     try {
+      // Import activity logger to avoid circular dependencies
+      const { activityLogger } = await import('../activityLogger');
+      
       const userId = await this.getCurrentUserId();
       
-      // Import activity service to avoid circular dependencies
-      const { databaseService: db } = await import('./database');
+      await activityLogger.logCardActivity(action, cardId, {
+        ...details,
+        description,
+      }, userId);
       
-      await db.createDocument(
-        collections.accountUpdates.id,
-        {
-          userId,
-          type: 'card_activity',
-          description,
-          metadata: {
-            cardId,
-            action,
-            timestamp: new Date().toISOString(),
-          },
-          createdAt: new Date().toISOString(),
-        }
-      );
+      logger.info('CARD_SERVICE', 'Card activity logged to centralized logger', { cardId, action });
     } catch (error) {
       // Don't throw - this is a fire-and-forget operation
-      logger.warn('CARD_SERVICE', 'Failed to log card activity', { cardId, action, error });
+      logger.warn('CARD_SERVICE', 'Failed to log card activity to centralized logger', { cardId, action, error });
     }
   }
 
@@ -842,6 +903,7 @@ export const cardService = new AppwriteCardService();
 // Export commonly used functions with proper binding
 export const createCard = cardService.createCard.bind(cardService);
 export const updateCard = cardService.updateCard.bind(cardService);
+export const updateCardSystem = cardService.updateCardSystem.bind(cardService);
 export const deleteCard = cardService.deleteCard.bind(cardService);
 export const permanentlyDeleteCard = cardService.permanentlyDeleteCard.bind(cardService);
 export const getCard = cardService.getCard.bind(cardService);

@@ -125,25 +125,41 @@ export async function trackEvent(eventName: string, eventData: any): Promise<voi
 async function storeAnalyticsEvent(eventName: string, eventData: any): Promise<void> {
   try {
     // Store analytics data for internal reporting
-    // This could be sent to Appwrite analytics collection
     const { databaseService } = await import('./appwrite/database');
+    const appwriteConfig = await import('./appwrite/config');
+    
+    // Check if analytics collection is configured
+    const analyticsCollectionId = 'analytics_events';
+    if (!appwriteConfig.default.databaseId) {
+      logger.debug('ANALYTICS', 'Database not configured, skipping analytics storage');
+      return;
+    }
     
     await databaseService.createDocument(
-      'analytics_events', // You might need to create this collection
+      analyticsCollectionId,
       {
         eventName,
-        eventData,
+        eventData: JSON.stringify(eventData), // Store as JSON string
         timestamp: new Date().toISOString(),
-        userId: eventData.userId,
+        userId: eventData.userId || null,
+        transactionId: eventData.transactionId || null,
+        type: eventData.type || null,
+        category: eventData.category || null,
+        amount: eventData.amount || 0,
+        currency: eventData.currency || 'GHS',
+        status: eventData.status || null,
+        isCredit: eventData.isCredit || false,
+        isDebit: eventData.isDebit || false,
       }
-    ).catch(() => {
-      // If analytics collection doesn't exist, that's okay
-      logger.debug('ANALYTICS', 'Analytics collection not available, skipping storage');
-    });
+    );
     
-  } catch (error) {
-    // Don't fail if analytics storage fails
-    logger.debug('ANALYTICS', 'Failed to store analytics event:', error);
+  } catch (error: any) {
+    // Silently handle missing collection or other analytics errors
+    if (error?.message?.includes('Collection with the requested ID could not be found')) {
+      logger.debug('ANALYTICS', 'Analytics collection not available, skipping storage');
+    } else {
+      logger.debug('ANALYTICS', 'Failed to store analytics event:', error);
+    }
   }
 }
 

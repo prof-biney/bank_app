@@ -196,7 +196,40 @@ export class AppwriteAuthService {
     try {
       logger.info('AUTH', 'Starting login process', { email });
 
-      // Create email session
+      // Check if there's already an active session
+      let existingSession: UserSession | null = null;
+      try {
+        existingSession = await account.getSession('current');
+        if (existingSession) {
+          logger.info('AUTH', 'Found existing active session', { sessionId: existingSession.$id });
+          
+          // If session exists, try to use it instead of creating a new one
+          try {
+            const currentUser = await account.get();
+            logger.info('AUTH', 'Using existing session for login', { userId: currentUser.$id });
+            
+            // Store session locally and update internal state
+            await sessionHelpers.saveSession(existingSession);
+            this.currentUser = currentUser;
+            this.currentSession = existingSession;
+            
+            return { user: currentUser, session: existingSession };
+          } catch (userError) {
+            logger.warn('AUTH', 'Existing session invalid, deleting it', userError);
+            // If we can't get user with existing session, delete it
+            try {
+              await account.deleteSession('current');
+            } catch (deleteError) {
+              logger.warn('AUTH', 'Failed to delete invalid session', deleteError);
+            }
+          }
+        }
+      } catch (sessionError) {
+        // No existing session or session check failed, proceed with new login
+        logger.info('AUTH', 'No existing session found, proceeding with new login');
+      }
+
+      // Create email session only if no valid existing session
       const session = await account.createEmailPasswordSession(email, password);
       
       logger.info('AUTH', 'Session created', { 

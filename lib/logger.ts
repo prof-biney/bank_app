@@ -25,7 +25,22 @@ export type LogCategory =
   | 'JWT'
   | 'CONNECTION'
   | 'GENERAL'
-  | 'SCREEN';
+  | 'SCREEN'
+  | 'CONTEXT'
+  | 'TRANSFERS'
+  | 'TRANSFER'
+  | 'DEPOSITS'
+  | 'APPROVALS'
+  | 'APPROVAL_UI'
+  | 'APPROVAL_BADGE'
+  | 'ANALYTICS_MODAL'
+  | 'USE_APPWRITE_CARDS'
+  | 'BIOMETRIC'
+  | 'LOADING'
+  | 'SPLASH'
+  | 'THEME'
+  | 'MODAL'
+  | 'APP';
 
 interface LogConfig {
   enabled: boolean;

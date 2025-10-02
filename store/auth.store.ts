@@ -322,17 +322,66 @@ const useAuthStore = create<AuthState>((set, get) => ({
         logger.info('AUTH', 'Starting login process', { email });
       }
 
-      // Check login attempts before proceeding
-      const attemptStatus = await loginAttemptsService.checkLoginAttempts(email);
+      // Check login attempts with multiple safety checks to ensure expired lockouts are cleared
+      logger.info('AUTH', 'Performing lockout safety checks', { email });
+      
+      // Step 1: Try to unlock any expired accounts
+      const unlockResult = await loginAttemptsService.unlockExpiredAccount(email);
+      if (unlockResult) {
+        logger.info('AUTH', 'Account was unlocked due to expired lockout', { email });
+      }
+      
+      // Step 2: Check current attempt status
+      let attemptStatus = await loginAttemptsService.checkLoginAttempts(email);
       set({ loginAttempts: attemptStatus });
       
+      // Step 3: If blocked, perform additional verification
       if (!attemptStatus.canAttempt) {
-        throw new Error(
-          attemptStatus.isLocked 
-            ? `Account temporarily locked. Too many failed attempts. Try again in ${loginAttemptsService.formatTimeRemaining(attemptStatus.lockoutTimeRemaining || 0)}.`
-            : 'Login attempts exceeded. Please try again later.'
-        );
+        logger.info('AUTH', 'Login blocked, performing additional lockout verification', { 
+          email, 
+          isLocked: attemptStatus.isLocked,
+          timeRemaining: attemptStatus.lockoutTimeRemaining 
+        });
+        
+        // Get precise time left
+        const timeLeft = await loginAttemptsService.getLockoutTimeLeft(email);
+        logger.info('AUTH', 'Precise lockout time check', { email, timeLeftSeconds: timeLeft });
+        
+        if (timeLeft <= 0) {
+          // Lockout has definitely expired, force unlock and re-check
+          logger.info('AUTH', 'Forcing account unlock due to expired lockout', { email });
+          await loginAttemptsService.forceUnlockAccount(email);
+          
+          // Re-check status after forced unlock
+          attemptStatus = await loginAttemptsService.checkLoginAttempts(email);
+          set({ loginAttempts: attemptStatus });
+          
+          if (!attemptStatus.canAttempt) {
+            logger.error('AUTH', 'Account still blocked after forced unlock - this should not happen', { email });
+            throw new Error('Login system error. Please contact support.');
+          } else {
+            logger.info('AUTH', 'Account successfully unlocked and ready for login', { email });
+          }
+        } else {
+          // Still within lockout period
+          const timeRemainingFormatted = loginAttemptsService.formatTimeRemaining(attemptStatus.lockoutTimeRemaining || 0);
+          logger.info('AUTH', 'Account still locked, showing lockout message', { 
+            email, 
+            timeRemaining: timeRemainingFormatted 
+          });
+          
+          throw new Error(
+            attemptStatus.isLocked 
+              ? `Account temporarily locked. Too many failed attempts. Try again in ${timeRemainingFormatted}.`
+              : 'Login attempts exceeded. Please try again later.'
+          );
+        }
       }
+      
+      logger.info('AUTH', 'Lockout safety checks passed, proceeding with login', { 
+        email, 
+        remainingAttempts: attemptStatus.remainingAttempts 
+      });
 
       // Login with Appwrite
       const { user: authUser } = await appwriteLogin({ email, password });
@@ -609,6 +658,34 @@ const useAuthStore = create<AuthState>((set, get) => ({
    */
   authenticateWithBiometric: async (): Promise<BiometricAuthResult> => {
     try {
+      // Check if there's already an active session before proceeding
+      try {
+        const currentUser = await getCurrentUser();
+        if (currentUser) {
+          logger.info('AUTH', 'User already has active session, biometric auth skipped');
+          set({
+            isAuthenticated: true,
+            user: {
+              $id: currentUser.$id,
+              id: currentUser.$id,
+              email: currentUser.email,
+              name: currentUser.name,
+              createdAt: currentUser.registration,
+              avatar: null,
+              avatarFileId: null,
+            } as User,
+          });
+          
+          return {
+            success: true,
+            biometricType: get().biometricType || 'fingerprint',
+            token: 'existing_session', // Indicate existing session was used
+          };
+        }
+      } catch (sessionError) {
+        logger.info('AUTH', 'No existing session found, proceeding with biometric auth');
+      }
+      
       const result = await authenticateWithBiometrics();
       
       if (result.success && result.token) {
@@ -622,6 +699,27 @@ const useAuthStore = create<AuthState>((set, get) => ({
           });
           
           logger.info('AUTH', 'Biometric authentication successful');
+        } else {
+          // If no user in state, try to get current user from session
+          try {
+            const currentUser = await getCurrentUser();
+            if (currentUser) {
+              set({
+                isAuthenticated: true,
+                user: {
+                  $id: currentUser.$id,
+                  id: currentUser.$id,
+                  email: currentUser.email,
+                  name: currentUser.name,
+                  createdAt: currentUser.registration,
+                  avatar: null,
+                  avatarFileId: null,
+                } as User,
+              });
+            }
+          } catch (userError) {
+            logger.warn('AUTH', 'Failed to get user after biometric auth', userError);
+          }
         }
       }
       

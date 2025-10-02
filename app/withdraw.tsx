@@ -163,7 +163,7 @@ export default function WithdrawScreen() {
         );
         // Navigate after showing success
         resetForm();
-        router.push('/(root)/(tabs)/home');
+        router.push('/(tabs)');
       } else {
         showAlert('error', result.error || 'Unable to process withdrawal', 'Withdrawal Failed');
       }

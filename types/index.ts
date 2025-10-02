@@ -1,8 +1,8 @@
 export interface User {
   // Appwrite documents use $id; some parts of the app expect `id`.
   // Include both to ease migration: $id is primary, id is optional alias.
-  $id?: string;
-  id?: string;
+  $id: string;
+  id: string;
   email: string;
   name: string;
   createdAt: string;
@@ -28,13 +28,17 @@ export interface Transaction {
   id: string;
   userId: string;
   cardId: string;
-  type: "deposit" | "transfer" | "withdraw" | "payment";
+  type: "deposit" | "transfer" | "withdraw" | "withdrawal" | "payment";
   amount: number;
   description: string;
   recipient?: string;
   category: string;
   date: string;
-  status: "completed" | "pending" | "failed";
+  status: "completed" | "pending" | "failed" | "rejected";
+  fee?: number;
+  // Mobile money details for deposits
+  mobileNumber?: string;
+  mobileNetwork?: string;
 }
 
 export interface Recipient {
@@ -54,3 +58,6 @@ export interface Notification {
   archived?: boolean;
   createdAt?: string; // ISO timestamp
 }
+
+// Re-export activity types
+export type { ActivityEvent, ActivityCategory, ActivityStatus } from './activity';

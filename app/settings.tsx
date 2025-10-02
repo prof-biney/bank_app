@@ -151,7 +151,7 @@ export default function SettingsScreen() {
         const result = await setupBiometric();
         
         if (result.success) {
-          biometricMessages.setupSuccess(result.biometricType);
+          biometricMessages.setupSuccess(result.biometricType || undefined);
         } else {
           // Setup failed or was canceled
           biometricMessages.setupFailed(result.error);

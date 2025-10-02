@@ -1,6 +1,6 @@
-export type ActivityCategory = 'transaction' | 'account' | 'card';
+export type ActivityCategory = 'transaction' | 'account' | 'card' | 'approval';
 
-export type ActivityStatus = 'pending' | 'completed' | 'failed' | 'reversed' | 'info';
+export type ActivityStatus = 'pending' | 'completed' | 'failed' | 'reversed' | 'info' | 'success' | 'error';
 
 export interface ActivityEvent {
   id: string;
@@ -17,5 +17,13 @@ export interface ActivityEvent {
   cardId?: string;
   transactionId?: string;
   tags?: string[];
+  // Mobile money details for deposits
+  mobileNumber?: string;
+  mobileNetwork?: string;
+  // Additional metadata from centralized activities
+  metadata?: Record<string, any>;
+  userId?: string;
+  source?: string;
+  severity?: string;
 }
 

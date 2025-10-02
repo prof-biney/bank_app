@@ -64,6 +64,7 @@ export interface BiometricToken {
 export interface BiometricAuthResult {
   success: boolean;
   token?: BiometricToken;
+  biometricType?: BiometricType;
   error?: string;
   requiresPasswordLogin?: boolean;
 }
@@ -459,6 +460,7 @@ export async function authenticateWithBiometrics(): Promise<BiometricAuthResult>
       return {
         success: true,
         token: storedToken,
+        biometricType: availability.biometricType,
       };
     } else {
       // Increment failed attempts
@@ -505,6 +507,7 @@ export async function authenticateWithBiometrics(): Promise<BiometricAuthResult>
 
       return {
         success: false,
+        biometricType: availability.biometricType,
         error,
         requiresPasswordLogin,
       };
@@ -623,6 +626,7 @@ export async function setupBiometricAuthentication(userId: string): Promise<Biom
     return {
       success: true,
       token: localToken,
+      biometricType: availability.biometricType,
     };
   } catch (error) {
     logger.error('BIOMETRIC', 'Biometric setup error:', error);

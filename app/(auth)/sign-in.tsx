@@ -62,7 +62,7 @@ export default function SignInScreen() {
   const [showLoginError, setShowLoginError] = useState(false);
   
   const biometricMessages = useBiometricMessages();
-  const navigationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const navigationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [form, setForm] = useState({
     email: "",
@@ -217,7 +217,7 @@ export default function SignInScreen() {
   
   // Update lockout timer
   useEffect(() => {
-    let timer: NodeJS.Timeout;
+    let timer: ReturnType<typeof setTimeout>;
     
     if (loginAttempts?.isLockedOut) {
       const updateTimer = async () => {
@@ -325,7 +325,7 @@ export default function SignInScreen() {
       
       if (result.success) {
         setBiometricStage('success');
-        biometricMessages.authSuccess(biometricType);
+        biometricMessages.authSuccess(biometricType || undefined);
         setShowSuccessAlert(true);
         
         // Hide loading after success animation
@@ -348,7 +348,7 @@ export default function SignInScreen() {
           biometricMessages.fallbackToPassword(result.error);
         } else {
           // Show error but allow retry
-          biometricMessages.authFailed(biometricType, result.error);
+          biometricMessages.authFailed(biometricType || undefined, result.error);
         }
       }
     } catch (error) {
@@ -782,7 +782,7 @@ export default function SignInScreen() {
       <BiometricLoadingIndicator
         visible={loadingVisible}
         biometricType={biometricType}
-        stage={biometricStage}
+        stage={biometricStage === 'idle' ? 'checking' : biometricStage}
         message={biometricStage === 'checking' ? 'Checking biometric availability...' : 
                 biometricStage === 'authenticating' ? `Authenticate with ${biometricType === 'faceId' ? 'Face ID' : biometricType === 'touchId' ? 'Touch ID' : 'fingerprint'}` : 
                 undefined}
