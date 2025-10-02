@@ -1,5 +1,5 @@
 import { logger } from '@/lib/logger';
-import { Filter, ArrowDownLeft, ArrowUpRight, User, CreditCard as CardIcon, CreditCard } from "lucide-react-native";
+import { Filter, ArrowDownLeft, ArrowUpRight, User, CreditCard as CardIcon, CreditCard, RefreshCw } from "lucide-react-native";
 import { MaterialIcons } from '@expo/vector-icons';
 import React, { useMemo, useState } from "react";
 import { 
@@ -18,6 +18,8 @@ import ActivityLogItem from "@/components/activity/ActivityLogItem";
 import ActivityDetailModal from "@/components/activity/ActivityDetailModal";
 import { ClearDataModal } from "@/components/ClearDataModal";
 import { useTheme } from "@/context/ThemeContext";
+import { useAlert } from "@/context/AlertContext";
+import { useBiometricToast } from "@/context/BiometricToastContext";
 import CustomButton from "@/components/CustomButton";
 import { getBadgeVisuals } from "@/theme/badge-utils";
 import { TransactionItem } from "@/components/TransactionItem";
@@ -25,20 +27,25 @@ import { useApp } from "@/context/AppContext";
 import { ActivityEvent } from "@/types/activity";
 import { Transaction } from "@/constants/index";
 import { activityService } from '@/lib/appwrite';
+import { activityLogger } from '@/lib/activityLogger';
 import LoadingAnimation from '@/components/LoadingAnimation';
 import { useLoading, LOADING_CONFIGS } from '@/hooks/useLoading';
 import { getApiBase } from '@/lib/api';
+import { useFocusEffect } from '@react-navigation/native';
 
 type Payment = { id: string; status: string; amount?: number; currency?: string; created?: string };
 
 export default function ActivityScreen() {
 
-	const { transactions, activity, clearAllActivity } = useApp();
+	const { transactions, activity, clearAllActivity, deleteActivity } = useApp();
+	const { showAlert } = useAlert();
+	const { showSuccess, showError } = useBiometricToast();
 	const { loading, withLoading, showLoading, hideLoading } = useLoading();
 	
-	// No mock data - use real data only
+	// State for centralized activities from activityLogger
+	const [centralizedActivities, setCentralizedActivities] = React.useState<any[]>([]);
 	
-	// No mock activity data - use real data only
+	// No mock data - use real data only
 	const [suppressAllLogs, setSuppressAllLogs] = useState(false);
 	const [activitySuppressed, setActivitySuppressed] = useState(false);
 	const [payments, setPayments] = React.useState<Payment[]>([]);
@@ -46,6 +53,11 @@ export default function ActivityScreen() {
 	const [error, setError] = React.useState<string | null>(null);
 	const [showClearActivity, setShowClearActivity] = React.useState(false);
 	const [isClearingActivity, setIsClearingActivity] = React.useState(false);
+	
+	// Auto-refresh state
+	const [autoRefreshEnabled, setAutoRefreshEnabled] = React.useState(true);
+	const [lastRefreshTime, setLastRefreshTime] = React.useState<Date>(new Date());
+	const refreshIntervalRef = React.useRef<NodeJS.Timeout | null>(null);
 	const PAY_PAGE_SIZE = 10;
 	const [nextPaymentsCursor, setNextPaymentsCursor] = React.useState<string | null>(null);
 
@@ -60,6 +72,82 @@ export default function ActivityScreen() {
     
 
     
+
+	// Function to load centralized activities
+	const loadCentralizedActivities = async (showLogs = true) => {
+		try {
+			const activities = await activityLogger.getActivities({ limit: 100 });
+			setCentralizedActivities(activities);
+			if (showLogs) {
+				logger.info('ACTIVITY', 'Loaded centralized activities', { count: activities.length });
+			}
+		} catch (error) {
+			logger.error('ACTIVITY', 'Failed to load centralized activities:', error);
+		}
+	};
+
+	// Refresh activities (called when user navigates to screen)
+	const refreshActivities = async (showLogs: boolean = false) => {
+		if (showLogs) {
+			logger.info('ACTIVITY', 'Refreshing activities manually');
+		}
+		await loadCentralizedActivities(showLogs);
+		setLastRefreshTime(new Date());
+		// Note: fetchPayments will be called later, we just refresh centralized activities here
+	};
+	
+	// Auto-refresh function
+	const performAutoRefresh = React.useCallback(async () => {
+		if (!autoRefreshEnabled) return;
+		
+		try {
+			logger.info('ACTIVITY', 'Auto-refreshing activity data');
+			await loadCentralizedActivities(false);
+			// Also refresh payments to ensure consistency
+			await fetchPayments(false);
+			setLastRefreshTime(new Date());
+		} catch (error) {
+			logger.error('ACTIVITY', 'Auto-refresh failed:', error);
+		}
+	}, [autoRefreshEnabled]);
+	
+	// Setup auto-refresh timer
+	const setupAutoRefresh = React.useCallback(() => {
+		if (refreshIntervalRef.current) {
+			clearInterval(refreshIntervalRef.current);
+		}
+		
+		if (autoRefreshEnabled) {
+			refreshIntervalRef.current = setInterval(performAutoRefresh, 30000); // Refresh every 30 seconds
+			logger.info('ACTIVITY', 'Auto-refresh enabled: 30-second interval');
+		} else {
+			logger.info('ACTIVITY', 'Auto-refresh disabled');
+		}
+	}, [autoRefreshEnabled, performAutoRefresh]);
+	
+	// Cleanup auto-refresh on unmount
+	React.useEffect(() => {
+		return () => {
+			if (refreshIntervalRef.current) {
+				clearInterval(refreshIntervalRef.current);
+				refreshIntervalRef.current = null;
+			}
+		};
+	}, []);
+	
+	// Toggle auto-refresh
+	const toggleAutoRefresh = () => {
+		setAutoRefreshEnabled(prev => {
+			const newState = !prev;
+			logger.info('ACTIVITY', 'Auto-refresh toggled:', newState ? 'enabled' : 'disabled');
+			return newState;
+		});
+	};
+	
+	// Setup auto-refresh whenever the enabled state changes
+	React.useEffect(() => {
+		setupAutoRefresh();
+	}, [setupAutoRefresh]);
 
 	React.useEffect(() => {
 		// Check if activity was manually cleared and suppress if needed
@@ -76,8 +164,18 @@ export default function ActivityScreen() {
 			}
 		})();
 
+		// Load centralized activities
+		loadCentralizedActivities();
+
 		// initial load will be triggered by fetchPayments below
 	}, []);
+
+	// Refresh activities when screen comes into focus
+	useFocusEffect(
+		React.useCallback(() => {
+			refreshActivities();
+		}, [])
+	);
 
     
 	const { colors } = useTheme();
@@ -149,15 +247,38 @@ export default function ActivityScreen() {
 	const handleClearActivity = async () => {
 		try {
 			setShowClearActivity(false);
+			
+			// Use withLoading to handle the loading state properly
 			await withLoading(async () => {
-				await clearAllActivity();
-				// Also suppress any locally loaded logs (payments/transactions) for this session
-				setPayments([]);
-				setSuppressAllLogs(true);
-				setActivitySuppressed(true);
+				try {
+					logger.info('ACTIVITY', 'Starting clear all activity operation...');
+					
+					// Clear activity data
+					await clearAllActivity();
+					
+					// Also suppress any locally loaded logs (payments/transactions) for this session
+					setPayments([]);
+					setSuppressAllLogs(true);
+					setActivitySuppressed(true);
+					
+					// Clear centralized activities as well
+					setCentralizedActivities([]);
+					
+					logger.info('ACTIVITY', 'Activity cleared successfully');
+				} catch (innerError) {
+					logger.error('ACTIVITY', 'Error during clear operation:', innerError);
+					throw innerError; // Re-throw to be caught by outer catch
+				}
 			}, LOADING_CONFIGS.SYNC_DATA);
+			
+			// Show success toast notification
+			showSuccess('Activity Cleared', 'All activity has been cleared from this session.');
+			showAlert('success', 'All activity has been cleared from this session.', 'Activity Cleared');
+			
 		} catch (error) {
 			logger.error('ACTIVITY', 'Failed to clear activity:', error);
+			showError('Clear Failed', 'Failed to clear activity. Please try again.');
+			showAlert('error', 'Failed to clear activity. Please try again.', 'Clear Failed');
 		}
 	};
 
@@ -172,12 +293,17 @@ export default function ActivityScreen() {
 			// Remove suppression flag
 			await AsyncStorage.removeItem('activity_manually_cleared');
 			setSuppressAllLogs(false);
+			setActivitySuppressed(false);
 
-			// Reload payments
+			// Reload payments and activities
 			await fetchPayments(true);
+			await refreshActivities();
+			
 			logger.info('UI', 'Activity restored successfully');
+			showAlert('success', 'Activity has been restored successfully.', 'Activity Restored');
 		} catch (error) {
 			logger.error('UI', 'Failed to restore activity:', error);
+			showAlert('error', 'Failed to restore activity. Please try again.', 'Restore Failed');
 		}
 	};
 
@@ -409,29 +535,49 @@ export default function ActivityScreen() {
 		if (suppressAllLogs) return [];
 		const items: {
 			id: string;
-			type: 'activity' | 'transaction' | 'payment';
+			type: 'activity' | 'transaction' | 'payment' | 'centralized';
 			timestamp: string;
 			data: any;
 		}[] = [];
 
-		// Add activity cards
-		activityCards.forEach(evt => {
+		// Add centralized activities from activityLogger (highest priority)
+		centralizedActivities.forEach(activity => {
 			items.push({
-				id: `activity_${evt.id}`,
-				type: 'activity',
-				timestamp: evt.timestamp,
-				data: evt
+				id: `centralized_${activity.id}`,
+				type: 'centralized',
+				timestamp: activity.timestamp,
+				data: activity
 			});
 		});
 
-		// Add filtered transactions from real data only (only if not already represented in activity)
+		// Add activity cards (legacy system - lower priority)
+		activityCards.forEach(evt => {
+			// Don't add if we already have this from centralized activities
+			const alreadyExists = items.some(item => 
+				item.type === 'centralized' && 
+				(item.data.transactionId === evt.transactionId || item.data.cardId === evt.cardId)
+			);
+			if (!alreadyExists) {
+				items.push({
+					id: `activity_${evt.id}`,
+					type: 'activity',
+					timestamp: evt.timestamp,
+					data: evt
+				});
+			}
+		});
+
+		// Add filtered transactions from real data only (only if not already represented)
 		filteredTransactions.forEach(tx => {
-			// Check if this transaction is already represented in activity
+			// Check if this transaction is already represented in centralized activities
+			const hasInCentralized = items.some(item => 
+				item.type === 'centralized' && item.data.transactionId === tx.id
+			);
 			const hasActivity = activityCards.some(evt => 
 				evt.transactionId === tx.id || 
 				(evt.category === 'transaction' && evt.title.includes(tx.description))
 			);
-			if (!hasActivity) {
+			if (!hasInCentralized && !hasActivity) {
 				items.push({
 					id: `transaction_${tx.id}`,
 					type: 'transaction',
@@ -443,13 +589,16 @@ export default function ActivityScreen() {
 
 		// Add payments (only if not already represented in activity or transactions)
 		payments.forEach(payment => {
+			const hasInCentralized = items.some(item => 
+				item.type === 'centralized' && item.data.transactionId === payment.id
+			);
 			const hasActivity = activityCards.some(evt => 
 				evt.transactionId === payment.id ||
 				(evt.type && evt.type.includes('payment') && evt.title.includes(payment.id.slice(-6)))
 			);
 			const hasTransaction = filteredTransactions.some(tx => tx.id === payment.id);
 			
-			if (!hasActivity && !hasTransaction) {
+			if (!hasInCentralized && !hasActivity && !hasTransaction) {
 				items.push({
 					id: `payment_${payment.id}`,
 					type: 'payment',
@@ -467,7 +616,7 @@ export default function ActivityScreen() {
 		return uniqueItems.sort((a, b) => 
 			new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
 		);
-	}, [activityCards, filteredTransactions, payments, suppressAllLogs]);
+	}, [activityCards, filteredTransactions, payments, suppressAllLogs, centralizedActivities]);
 
 	return (
 		<SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -477,7 +626,23 @@ export default function ActivityScreen() {
 			>
 				<View style={styles.header}>
 					<Text style={[styles.title, { color: colors.textPrimary }]}>Activity</Text>
-					<View style={{ flexDirection: 'row', alignItems: 'center' }}>
+					<View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+						{/* Auto-refresh toggle */}
+						<TouchableOpacity
+							style={[styles.filterButton, { 
+								backgroundColor: autoRefreshEnabled ? colors.tintPrimary : colors.card,
+								borderWidth: 1,
+								borderColor: autoRefreshEnabled ? colors.tintPrimary : colors.border
+							}]}
+							onPress={toggleAutoRefresh}
+						>
+							<RefreshCw 
+								color={autoRefreshEnabled ? '#fff' : colors.textSecondary} 
+								size={18} 
+							/>
+						</TouchableOpacity>
+						
+						{/* Filter button */}
 						<TouchableOpacity
 							style={[styles.filterButton, { backgroundColor: colors.card }]}
 							onPress={() => setShowDateFilter(true)}
@@ -631,6 +796,33 @@ export default function ActivityScreen() {
 					</ScrollView>
 				</View>
 				</View>
+				
+				{/* Auto-refresh status */}
+				{autoRefreshEnabled && (
+					<View style={{ 
+						flexDirection: 'row', 
+						alignItems: 'center', 
+						justifyContent: 'center', 
+						paddingHorizontal: 16, 
+						paddingVertical: 8,
+						marginBottom: 8
+					}}>
+						<View style={{
+							width: 6,
+							height: 6,
+							borderRadius: 3,
+							backgroundColor: colors.tintPrimary,
+							marginRight: 6
+						}} />
+						<Text style={{ 
+							color: colors.textSecondary, 
+							fontSize: 12, 
+							fontWeight: '500'
+						}}>
+							Auto-refresh enabled • Last: {lastRefreshTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+						</Text>
+					</View>
+				)}
 
 				<View style={[styles.transactionsContainer, { backgroundColor: colors.background }]}>
 					{/* Sticky Header with Clear All Button */}
@@ -639,7 +831,7 @@ export default function ActivityScreen() {
 						<View style={[styles.horizontalBar, { backgroundColor: colors.border }]} />
 						
 					{/* Clear All Button */}
-					{(allActivities.length > 0 || activity.length > 0 || payments.length > 0) && (
+					{(!suppressAllLogs && (allActivities.length > 0 || activity.length > 0 || payments.length > 0 || centralizedActivities.length > 0)) && (
 						<View style={styles.clearAllContainer}>
 								<TouchableOpacity onPress={() => setShowClearActivity(true)}>
 									<Text style={[styles.clearAllText, { color: colors.negative }]}>Clear All</Text>
@@ -709,6 +901,38 @@ export default function ActivityScreen() {
 										onPress={(e) => { setSelected(e); setShowDetail(true); }} 
 									/>
 								);
+							} else if (item.type === 'centralized') {
+				// Convert centralized activity to ActivityEvent format for ActivityLogItem
+				const centralizedEvent = {
+					id: item.data.id,
+					category: item.data.category,
+					type: item.data.type,
+					title: item.data.title,
+					subtitle: item.data.subtitle,
+					description: item.data.description,
+					amount: item.data.amount,
+					currency: item.data.currency,
+					status: item.data.status,
+					timestamp: item.data.timestamp,
+					cardId: item.data.cardId,
+					transactionId: item.data.transactionId,
+					tags: item.data.tags,
+					userId: item.data.userId,
+					source: item.data.source,
+					severity: item.data.severity,
+					metadata: item.data.metadata,
+					// Extract mobile fields from metadata for easier access
+					mobileNumber: item.data.metadata?.mobileNumber,
+					mobileNetwork: item.data.metadata?.mobileNetwork
+				};
+								return (
+									<ActivityLogItem 
+										key={item.id} 
+										event={centralizedEvent} 
+										themeColors={colors} 
+										onPress={(e) => { setSelected(e); setShowDetail(true); }} 
+									/>
+								);
 							} else if (item.type === 'transaction') {
 								return (
 									<TransactionItem key={item.id} transaction={item.data} />
@@ -763,15 +987,44 @@ export default function ActivityScreen() {
 					onFilterSelect={setDateFilter}
 				/>
 
-				<ActivityDetailModal visible={showDetail} event={selected} onClose={() => setShowDetail(false)} />
+				<ActivityDetailModal 
+					visible={showDetail} 
+					event={selected} 
+					onClose={() => setShowDetail(false)}
+					onDelete={async (deletedEvent) => {
+						try {
+							// Use AppContext's deleteActivity for enhanced deletion with database cleanup
+							const result = await deleteActivity(deletedEvent.id);
+							
+							if (result.success) {
+								// Remove from local centralized activities state
+								setCentralizedActivities(prev => 
+									prev.filter(activity => activity.id !== deletedEvent.id)
+								);
+								// Refresh the activity list to ensure consistency
+								loadCentralizedActivities(false);
+								
+								showSuccess('Activity Deleted', 'Activity has been deleted successfully.');
+							} else {
+								showError('Delete Failed', result.error || 'Failed to delete activity.');
+							}
+						} catch (error) {
+							logger.error('ACTIVITY', 'Error deleting activity from modal:', error);
+							showError('Delete Failed', 'An unexpected error occurred while deleting the activity.');
+						}
+					}}
+				/>
 
 				<ClearDataModal
 					visible={showClearActivity}
 					onClose={handleCancelClearActivity}
 					onConfirm={handleClearActivity}
+					onRestore={handleRestoreActivity}
 					dataType="activity"
-					count={activity.length}
+					count={activity.length + centralizedActivities.length + payments.length}
 					isLoading={false}
+					useDelayedDeletion={true}
+					delayMinutes={2}
 				/>
 				
 				<LoadingAnimation
