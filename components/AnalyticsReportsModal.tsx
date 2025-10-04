@@ -31,6 +31,7 @@ import {
   type ReportPeriod 
 } from '@/lib/appwrite';
 import { logger } from '@/lib/logger';
+import ReportStatusModal from '@/components/ReportStatusModal';
 
 const { width } = Dimensions.get('window');
 
@@ -65,6 +66,16 @@ export default function AnalyticsReportsModal({ visible, onClose }: AnalyticsRep
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  
+  // Report Status Modal state
+  const [reportStatusModal, setReportStatusModal] = useState({
+    visible: false,
+    status: 'idle' as 'loading' | 'success' | 'error' | 'idle',
+    reportFormat: '',
+    fileName: '',
+    filePath: '',
+    errorMessage: ''
+  });
 
   // Initialize with active card selected
   useEffect(() => {
@@ -121,6 +132,16 @@ export default function AnalyticsReportsModal({ visible, onClose }: AnalyticsRep
     }
 
     setIsGeneratingReport(true);
+    // Show loading status in modal
+    setReportStatusModal({
+      visible: true,
+      status: 'loading',
+      reportFormat: selectedFormat,
+      fileName: '',
+      filePath: '',
+      errorMessage: ''
+    });
+
     try {
       const reportOptions: ReportOptions = {
         cardIds: selectedCards.length > 0 ? selectedCards : undefined,
@@ -131,34 +152,59 @@ export default function AnalyticsReportsModal({ visible, onClose }: AnalyticsRep
       };
 
       const filePath = await analyticsService.generateReport(reportOptions);
+      const fileName = filePath.split('/').pop(); // Extract filename from path
       
-      Alert.alert(
-        'Report Generated',
-        'Your financial report has been generated successfully. Would you like to share it?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { 
-            text: 'Share', 
-            onPress: () => shareReport(filePath)
-          }
-        ]
-      );
+      // Show success status
+      setReportStatusModal({
+        visible: true,
+        status: 'success',
+        reportFormat: selectedFormat,
+        fileName: fileName || '',
+        filePath,
+        errorMessage: ''
+      });
 
     } catch (error) {
       logger.error('ANALYTICS_MODAL', 'Failed to generate report:', error);
-      Alert.alert('Error', 'Failed to generate report. Please try again.');
+      
+      // Show error status
+      setReportStatusModal({
+        visible: true,
+        status: 'error',
+        reportFormat: selectedFormat,
+        fileName: '',
+        filePath: '',
+        errorMessage: error instanceof Error ? error.message : 'Failed to generate report. Please try again.'
+      });
     } finally {
       setIsGeneratingReport(false);
     }
   };
 
-  const shareReport = async (filePath: string) => {
+  const shareReport = async (filePath?: string) => {
+    const pathToShare = filePath || reportStatusModal.filePath;
+    if (!pathToShare) {
+      Alert.alert('Error', 'No report file available to share.');
+      return;
+    }
+    
     try {
-      await analyticsService.shareReport(filePath);
+      await analyticsService.shareReport(pathToShare);
+      // Close the status modal after sharing
+      setReportStatusModal(prev => ({ ...prev, visible: false }));
     } catch (error) {
       logger.error('ANALYTICS_MODAL', 'Failed to share report:', error);
       Alert.alert('Error', 'Failed to share report. Please try again.');
     }
+  };
+
+  const closeReportStatusModal = () => {
+    setReportStatusModal(prev => ({ ...prev, visible: false }));
+  };
+
+  const retryReportGeneration = () => {
+    closeReportStatusModal();
+    generateReport();
   };
 
   const renderAnalyticsTab = () => {
@@ -366,44 +412,87 @@ export default function AnalyticsReportsModal({ visible, onClose }: AnalyticsRep
           </Text>
           
           <View style={styles.cardSelectionHeader}>
-            <TouchableOpacity onPress={selectAllCards} style={styles.selectionButton}>
-              <Text style={[styles.selectionButtonText, { color: colors.tintPrimary }]}>
+            <TouchableOpacity 
+              onPress={selectAllCards} 
+              style={[
+                styles.selectionButton,
+                {
+                  backgroundColor: colors.tintPrimary,
+                  borderColor: colors.tintPrimary,
+                }
+              ]}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="checkmark-done" size={16} color="#fff" />
+              <Text style={[styles.selectionButtonText, { color: '#fff' }]}>
                 All Cards
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={clearCardSelection} style={styles.selectionButton}>
+            <TouchableOpacity 
+              onPress={clearCardSelection} 
+              style={[
+                styles.selectionButton,
+                {
+                  backgroundColor: colors.background,
+                  borderColor: colors.border,
+                }
+              ]}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="close-circle-outline" size={16} color={colors.textSecondary} />
               <Text style={[styles.selectionButtonText, { color: colors.textSecondary }]}>
                 Clear
               </Text>
             </TouchableOpacity>
           </View>
 
-          {cards.map(card => (
-            <TouchableOpacity
-              key={card.id}
-              style={[
-                styles.cardSelectionItem,
-                { backgroundColor: colors.background }
-              ]}
-              onPress={() => handleCardSelection(card.id)}
-            >
-              <View style={styles.cardSelectionContent}>
-                <View>
-                  <Text style={[styles.cardName, { color: colors.textPrimary }]}>
-                    {card.cardHolderName}
-                  </Text>
-                  <Text style={[styles.cardDetails, { color: colors.textSecondary }]}>
-                    {card.cardHolderName} • ****{card.cardNumber.slice(-4)}
-                  </Text>
+          {cards.map(card => {
+            const isSelected = selectedCards.includes(card.id);
+            return (
+              <TouchableOpacity
+                key={card.id}
+                style={[
+                  styles.cardSelectionItem,
+                  {
+                    backgroundColor: isSelected ? colors.tintSoftBg : colors.background,
+                    borderColor: isSelected ? colors.tintPrimary : colors.border,
+                    borderWidth: 2,
+                    shadowColor: isSelected ? colors.tintPrimary : 'transparent',
+                    shadowOpacity: isSelected ? 0.2 : 0,
+                    shadowRadius: 4,
+                    elevation: isSelected ? 2 : 0,
+                  }
+                ]}
+                onPress={() => handleCardSelection(card.id)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.cardSelectionContent}>
+                  <View style={styles.cardInfo}>
+                    <Text style={[styles.cardName, { color: colors.textPrimary, fontWeight: isSelected ? '600' : '500' }]}>
+                      {card.cardHolderName}
+                    </Text>
+                    <Text style={[styles.cardDetails, { color: colors.textSecondary }]}>
+                      {card.cardHolderName} • ****{card.cardNumber.slice(-4)}
+                    </Text>
+                    <Text style={[styles.cardBalance, { color: colors.positive, fontWeight: '600' }]}>
+                      GH₵{card.balance.toFixed(2)}
+                    </Text>
+                  </View>
+                  <View style={[
+                    styles.radioButton,
+                    {
+                      backgroundColor: isSelected ? colors.tintPrimary : colors.background,
+                      borderColor: isSelected ? colors.tintPrimary : colors.border,
+                    }
+                  ]}>
+                    {isSelected && (
+                      <Ionicons name="checkmark" size={16} color="#fff" />
+                    )}
+                  </View>
                 </View>
-                <Ionicons
-                  name={selectedCards.includes(card.id) ? 'checkbox' : 'square-outline'}
-                  size={24}
-                  color={selectedCards.includes(card.id) ? colors.tintPrimary : colors.textSecondary}
-                />
-              </View>
-            </TouchableOpacity>
-          ))}
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         {/* Period Selection */}
@@ -412,28 +501,41 @@ export default function AnalyticsReportsModal({ visible, onClose }: AnalyticsRep
             Time Period
           </Text>
           <View style={styles.periodOptions}>
-            {PERIOD_OPTIONS.map(option => (
-              <TouchableOpacity
-                key={option.value}
-                style={[
-                  styles.periodOption,
-                  {
-                    backgroundColor: selectedPeriod === option.value ? colors.tintPrimary : colors.background,
-                    borderColor: colors.border
-                  }
-                ]}
-                onPress={() => setSelectedPeriod(option.value)}
-              >
-                <Text style={[
-                  styles.periodOptionText,
-                  {
-                    color: selectedPeriod === option.value ? '#fff' : colors.textPrimary
-                  }
-                ]}>
-                  {option.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            {PERIOD_OPTIONS.map(option => {
+              const isSelected = selectedPeriod === option.value;
+              return (
+                <TouchableOpacity
+                  key={option.value}
+                  style={[
+                    styles.periodOption,
+                    {
+                      backgroundColor: isSelected ? colors.tintPrimary : colors.background,
+                      borderColor: isSelected ? colors.tintPrimary : colors.border,
+                      borderWidth: 2,
+                      shadowColor: isSelected ? colors.tintPrimary : 'transparent',
+                      shadowOpacity: isSelected ? 0.2 : 0,
+                      shadowRadius: 4,
+                      elevation: isSelected ? 2 : 0,
+                    }
+                  ]}
+                  onPress={() => setSelectedPeriod(option.value)}
+                  activeOpacity={0.8}
+                >
+                  {isSelected && (
+                    <Ionicons name="checkmark-circle" size={16} color="#fff" style={{ marginRight: 4 }} />
+                  )}
+                  <Text style={[
+                    styles.periodOptionText,
+                    {
+                      color: isSelected ? '#fff' : colors.textPrimary,
+                      fontWeight: isSelected ? '600' : '500'
+                    }
+                  ]}>
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
 
@@ -497,18 +599,35 @@ export default function AnalyticsReportsModal({ visible, onClose }: AnalyticsRep
           </Text>
           
           <TouchableOpacity
-            style={[styles.optionItem, { backgroundColor: colors.background }]}
+            style={[
+              styles.optionItem,
+              {
+                backgroundColor: includeInsights ? colors.tintSoftBg : colors.background,
+                borderColor: includeInsights ? colors.tintPrimary : colors.border,
+                borderWidth: 2,
+              }
+            ]}
             onPress={() => setIncludeInsights(!includeInsights)}
+            activeOpacity={0.8}
           >
             <View style={styles.optionContent}>
-              <Text style={[styles.optionLabel, { color: colors.textPrimary }]}>
-                Financial Insights
-              </Text>
-              <Ionicons
-                name={includeInsights ? 'checkbox' : 'square-outline'}
-                size={24}
-                color={includeInsights ? colors.tintPrimary : colors.textSecondary}
-              />
+              <View style={styles.optionLabelWithIcon}>
+                <Ionicons name="bulb" size={20} color={colors.tintPrimary} style={{ marginRight: 8 }} />
+                <Text style={[styles.optionLabel, { color: colors.textPrimary, fontWeight: includeInsights ? '600' : '500' }]}>
+                  Financial Insights
+                </Text>
+              </View>
+              <View style={[
+                styles.customCheckbox,
+                {
+                  backgroundColor: includeInsights ? colors.tintPrimary : colors.background,
+                  borderColor: includeInsights ? colors.tintPrimary : colors.border,
+                }
+              ]}>
+                {includeInsights && (
+                  <Ionicons name="checkmark" size={16} color="#fff" />
+                )}
+              </View>
             </View>
             <Text style={[styles.optionDescription, { color: colors.textSecondary }]}>
               Include AI-generated insights and recommendations
@@ -516,18 +635,35 @@ export default function AnalyticsReportsModal({ visible, onClose }: AnalyticsRep
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.optionItem, { backgroundColor: colors.background }]}
+            style={[
+              styles.optionItem,
+              {
+                backgroundColor: includeCharts ? colors.tintSoftBg : colors.background,
+                borderColor: includeCharts ? colors.tintPrimary : colors.border,
+                borderWidth: 2,
+              }
+            ]}
             onPress={() => setIncludeCharts(!includeCharts)}
+            activeOpacity={0.8}
           >
             <View style={styles.optionContent}>
-              <Text style={[styles.optionLabel, { color: colors.textPrimary }]}>
-                Charts & Graphs
-              </Text>
-              <Ionicons
-                name={includeCharts ? 'checkbox' : 'square-outline'}
-                size={24}
-                color={includeCharts ? colors.tintPrimary : colors.textSecondary}
-              />
+              <View style={styles.optionLabelWithIcon}>
+                <Ionicons name="bar-chart" size={20} color={colors.tintPrimary} style={{ marginRight: 8 }} />
+                <Text style={[styles.optionLabel, { color: colors.textPrimary, fontWeight: includeCharts ? '600' : '500' }]}>
+                  Charts & Graphs
+                </Text>
+              </View>
+              <View style={[
+                styles.customCheckbox,
+                {
+                  backgroundColor: includeCharts ? colors.tintPrimary : colors.background,
+                  borderColor: includeCharts ? colors.tintPrimary : colors.border,
+                }
+              ]}>
+                {includeCharts && (
+                  <Ionicons name="checkmark" size={16} color="#fff" />
+                )}
+              </View>
             </View>
             <Text style={[styles.optionDescription, { color: colors.textSecondary }]}>
               Include visual charts and graphs (PDF format only)
@@ -537,19 +673,39 @@ export default function AnalyticsReportsModal({ visible, onClose }: AnalyticsRep
 
         {/* Generate Button */}
         <TouchableOpacity
-          style={[styles.generateButton, { backgroundColor: colors.tintPrimary }]}
+          style={[
+            styles.generateButton,
+            {
+              backgroundColor: isGeneratingReport ? colors.textSecondary : colors.tintPrimary,
+              opacity: isGeneratingReport ? 0.7 : 1,
+              shadowColor: colors.tintPrimary,
+              shadowOpacity: isGeneratingReport ? 0 : 0.3,
+              shadowRadius: 8,
+              elevation: isGeneratingReport ? 0 : 4,
+            }
+          ]}
           onPress={generateReport}
-          disabled={isGeneratingReport}
+          disabled={isGeneratingReport || selectedCards.length === 0}
+          activeOpacity={0.8}
         >
           {isGeneratingReport ? (
-            <ActivityIndicator color="#fff" />
+            <>
+              <ActivityIndicator color="#fff" size="small" />
+              <Text style={[styles.generateButtonText, { marginLeft: 8 }]}>Generating...</Text>
+            </>
           ) : (
             <>
-              <Ionicons name="document-text" size={20} color="#fff" />
+              <Ionicons name="download" size={20} color="#fff" />
               <Text style={styles.generateButtonText}>Generate Report</Text>
             </>
           )}
         </TouchableOpacity>
+        
+        {selectedCards.length === 0 && (
+          <Text style={[styles.generateHint, { color: colors.textSecondary }]}>
+            💡 Select at least one card to generate a report
+          </Text>
+        )}
       </ScrollView>
     );
   };
@@ -579,7 +735,11 @@ export default function AnalyticsReportsModal({ visible, onClose }: AnalyticsRep
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         {/* Header */}
         <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+          <TouchableOpacity 
+            onPress={onClose} 
+            style={[styles.closeButton, { backgroundColor: colors.background }]}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
             <Ionicons name="close" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
@@ -630,6 +790,18 @@ export default function AnalyticsReportsModal({ visible, onClose }: AnalyticsRep
           {activeTab === 'analytics' ? renderAnalyticsTab() : renderReportsTab()}
         </View>
       </SafeAreaView>
+      
+      {/* Report Status Modal */}
+      <ReportStatusModal
+        visible={reportStatusModal.visible}
+        status={reportStatusModal.status}
+        reportFormat={reportStatusModal.reportFormat}
+        fileName={reportStatusModal.fileName}
+        errorMessage={reportStatusModal.errorMessage}
+        onClose={closeReportStatusModal}
+        onShare={shareReport}
+        onRetry={retryReportGeneration}
+      />
     </Modal>
   );
 }
@@ -647,8 +819,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   closeButton: {
-    padding: 4,
-    width: 32,
+    padding: 8,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
   },
   headerTitle: {
     fontSize: 18,
@@ -812,8 +989,15 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   selectionButton: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 6,
+    minWidth: 80,
+    justifyContent: 'center',
   },
   selectionButtonText: {
     fontSize: 14,
@@ -837,16 +1021,37 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 2,
   },
+  cardInfo: {
+    flex: 1,
+  },
+  cardBalance: {
+    fontSize: 14,
+    marginTop: 4,
+  },
+  radioButton: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 12,
+  },
   periodOptions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
   periodOption: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 25,
     borderWidth: 1,
+    minWidth: 100,
+    justifyContent: 'center',
+    marginBottom: 8,
   },
   periodOptionText: {
     fontSize: 14,
@@ -888,6 +1093,20 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
+  optionLabelWithIcon: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  customCheckbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 12,
+  },
   generateButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -902,5 +1121,11 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  generateHint: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 12,
+    fontStyle: 'italic',
   },
 });
