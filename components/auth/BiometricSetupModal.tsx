@@ -29,6 +29,7 @@ import {
   checkBiometricAvailability,
   BiometricAuthResult 
 } from '@/lib/biometric/biometric.service';
+import { logger } from '@/lib/logger';
 
 const { width, height } = Dimensions.get('window');
 
@@ -81,7 +82,7 @@ const BiometricSetupModal: React.FC<BiometricSetupModalProps> = ({
       const availability = await checkBiometricAvailability();
       setBiometricAvailability(availability);
     } catch (error) {
-      console.error('Error checking biometric availability:', error);
+      logger.error('BIOMETRIC', 'Error checking biometric availability:', error);
     }
   };
 
@@ -258,7 +259,7 @@ const BiometricSetupModal: React.FC<BiometricSetupModalProps> = ({
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       }
     } catch (error) {
-      console.error('Biometric setup error:', error);
+      logger.error('BIOMETRIC', 'Biometric setup error:', error);
       setSetupError('An unexpected error occurred during setup');
       setCurrentStep('error');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);

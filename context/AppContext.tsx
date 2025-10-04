@@ -29,7 +29,15 @@ import {
   createAppwriteActivityEvent
 } from "@/lib/appwrite/activityService";
 import { initConnectionMonitoring, getConnectionStatus } from "@/lib/connectionService";
+import { activityLogger } from "@/lib/activityLogger";
 import useAuthStore from "@/store/auth.store";
+import appStateService from "@/lib/appState.service";
+import { 
+  useTransactionLoading, 
+  useCardLoading, 
+  useDataLoading, 
+  useNotificationLoading 
+} from "@/hooks/useEnhancedLoading";
 
 interface AppContextType {
   cards: Card[];
@@ -41,7 +49,8 @@ interface AppContextType {
   addTransaction: (transaction: Omit<Transaction, "id" | "date">) => void;
   updateCardBalance: (cardId: string, newBalance: number) => void;
   makeTransfer: (cardId: string, amount: number, recipientCardNumber: string, description?: string) => Promise<{ success: boolean; error?: string; newBalance?: number; recipientNewBalance?: number }>;
-  makeDeposit: (params: { cardId?: string; amount?: number; currency?: string; escrowMethod?: string; description?: string; depositId?: string; action?: string; mobileNetwork?: string; mobileNumber?: string; reference?: string }) => Promise<{ success: boolean; error?: string; data?: any }>;
+  makeWithdrawal: (cardId: string, amount: number, withdrawalMethod: string, withdrawalDetails: any, description?: string) => Promise<{ success: boolean; error?: string; newBalance?: number; transactionId?: string; reference?: string; instructions?: any }>;
+  makeDeposit: (params: { cardId?: string; amount?: number; currency?: string; escrowMethod?: string; description?: string; depositId?: string; action?: string; mobileNetwork?: string; mobileNumber?: string; reference?: string }, onSuccess?: (data: any) => void) => Promise<{ success: boolean; error?: string; data?: any }>;
   makeTransaction: (params: { type: 'withdrawal' | 'deposit' | 'transfer' | 'payment'; amount: number; fromCardId?: string; toCardId?: string; description?: string; fee?: number }) => Promise<{ success: boolean; error?: string }>;
   refreshCardBalances: () => Promise<void>;
   isLoadingCards: boolean;
@@ -56,6 +65,7 @@ interface AppContextType {
   pushActivity: (evt: ActivityEvent) => void;
   setActivity: React.Dispatch<React.SetStateAction<ActivityEvent[]>>;
   clearAllActivity: () => Promise<void>;
+  deleteActivity: (activityId: string) => Promise<{ success: boolean; error?: string }>;
   // Notifications
   notifications: Notification[];
   setNotifications: React.Dispatch<React.SetStateAction<Notification[]>>;
@@ -70,6 +80,7 @@ interface AppContextType {
   unarchiveNotification: (id: string) => Promise<void>;
   toggleNotificationArchive: (id: string) => Promise<void>;
   archiveAllReadNotifications: () => Promise<void>;
+  refreshNotifications: () => Promise<void>;
   // Transaction approvals
   handleApprovalStatusChange: (approvalId: string, approved: boolean, transactionId?: string) => Promise<void>;
   refreshPendingApprovals: () => Promise<void>;
@@ -91,8 +102,57 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [pendingApprovalsCount, setPendingApprovalsCount] = useState<number>(0);
   
+  // Store original unfiltered data
+  const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
+  const [allActivity, setAllActivity] = useState<ActivityEvent[]>([]);
+  
   // Get auth state reactively
   const { isAuthenticated, isLoading: authLoading, user } = useAuthStore();
+  
+  // Enhanced setActiveCard function that filters data by selected card
+  const setActiveCardWithFilter = (card: Card | null) => {
+    logger.info('CONTEXT', '[setActiveCardWithFilter] Card selection changed', {
+      previousCardId: activeCard?.id,
+      newCardId: card?.id,
+      cardHolder: card?.cardHolderName
+    });
+    
+    // Update the active card
+    setActiveCard(card);
+    
+    if (card) {
+      // Filter transactions for the selected card
+      const filteredTransactions = allTransactions.filter(tx => tx.cardId === card.id);
+      setTransactions(filteredTransactions);
+      
+      // Filter activity events for the selected card
+      const filteredActivity = allActivity.filter(activity => 
+        activity.cardId === card.id || 
+        // Include transaction-related activities
+        (activity.transactionId && allTransactions.find(tx => tx.id === activity.transactionId && tx.cardId === card.id))
+      );
+      setActivity(filteredActivity);
+      
+      // Keep all notifications (no filtering for notifications)
+      // Notifications are typically system-wide and don't need card-specific filtering
+      
+      logger.info('CONTEXT', '[setActiveCardWithFilter] Data filtered for card', {
+        cardId: card.id,
+        filteredTransactions: filteredTransactions.length,
+        totalTransactions: allTransactions.length,
+        filteredActivity: filteredActivity.length,
+        totalActivity: allActivity.length,
+        totalNotifications: notifications.length
+      });
+    } else {
+      // No card selected - show all data
+      setTransactions(allTransactions);
+      setActivity(allActivity);
+      // Don't filter notifications - keep them as they are
+      
+      logger.info('CONTEXT', '[setActiveCardWithFilter] No card selected, showing all data');
+    }
+  };
   
   // Function to refresh card balances from database with smart balance calculation
   const refreshCardBalances = async () => {
@@ -116,9 +176,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const { recalculateAndUpdateCardBalance } = await import('@/lib/appwrite/cardService');
           
           // Recalculate balance for each card in parallel
+          // Note: Only recalculate for cards that belong to the current user
           const updatedCards = await Promise.all(
             freshCards.map(async (card) => {
               try {
+                // Check if this card belongs to the current user before recalculating
+                const currentUserId = user.$id || user.id || '';
+                if (card.userId !== currentUserId) {
+                  logger.info('CONTEXT', `[refreshCardBalances] Skipping recalculation for card ${card.id} - belongs to different user`);
+                  return card; // Return original card data for other users' cards
+                }
+                
                 const updatedCard = await recalculateAndUpdateCardBalance(card.id);
                 logger.info('CONTEXT', `[refreshCardBalances] Smart balance calculated for card ${card.id}`, {
                   oldBalance: card.balance,
@@ -205,13 +273,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Initialize notification service with AppContext functions
+  // Initialize services
   useEffect(() => {
+    // Initialize notification service with AppContext functions
     initNotificationService({ setNotifications });
+    
+    // Initialize app state monitoring for session management
+    appStateService.initialize();
+    
+    // Cleanup on unmount
+    return () => {
+      appStateService.cleanup();
+    };
   }, []);
 
 const pushActivity: AppContextType["pushActivity"] = (evt) => {
-    setActivity((prev) => [evt, ...prev]);
+    // Add to all activities
+    setAllActivity((prev) => [evt, ...prev]);
+    
+    // Add to filtered activities if it matches the active card
+    if (!activeCard || evt.cardId === activeCard.id || 
+        (evt.transactionId && allTransactions.find(tx => tx.id === evt.transactionId && tx.cardId === activeCard.id))) {
+      setActivity((prev) => [evt, ...prev]);
+    }
   };
 
   const addTransaction = (
@@ -223,11 +307,31 @@ const pushActivity: AppContextType["pushActivity"] = (evt) => {
       date: new Date().toISOString(),
     };
     
-    // Optimistically add to local state
-    setTransactions((prev) => [newTransaction, ...prev]);
+    // Optimistically add to all transactions
+    setAllTransactions((prev) => [newTransaction, ...prev]);
+    
+    // Add to filtered transactions if it matches the active card
+    if (!activeCard || newTransaction.cardId === activeCard.id) {
+      setTransactions((prev) => [newTransaction, ...prev]);
+    }
 
-    // Push activity event
-    // For transfers, use the description directly to avoid duplication ("Transfer: Transfer To: Name")
+    // Log activity to centralized logger
+    const transactionType = newTransaction.type === 'withdraw' ? 'withdrawal' : newTransaction.type;
+    activityLogger.logTransactionActivity(
+      'created',
+      newTransaction.id,
+      {
+        type: transactionType as 'deposit' | 'withdrawal' | 'transfer' | 'payment',
+        amount: Math.abs(newTransaction.amount),
+        cardId: newTransaction.cardId,
+        description: newTransaction.description,
+      },
+      newTransaction.userId
+    ).catch(error => {
+      logger.warn('CONTEXT', 'Failed to log transaction activity to centralized logger', error);
+    });
+    
+    // Keep legacy activity event for backward compatibility (until migration is complete)
     const activityTitle = newTransaction.type === 'transfer' ? 
       newTransaction.description : 
       `${newTransaction.type.charAt(0).toUpperCase()}${newTransaction.type.slice(1)}: ${newTransaction.description}`;
@@ -245,6 +349,12 @@ const pushActivity: AppContextType["pushActivity"] = (evt) => {
       transactionId: newTransaction.id,
       cardId: newTransaction.cardId,
       tags: [newTransaction.category],
+      mobileNumber: newTransaction.mobileNumber,
+      mobileNetwork: newTransaction.mobileNetwork,
+      metadata: {
+        mobileNumber: newTransaction.mobileNumber,
+        mobileNetwork: newTransaction.mobileNetwork
+      }
     };
     
     pushActivity(activityEvent);
@@ -531,7 +641,7 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
   };
 
   const makeTransfer: AppContextType["makeTransfer"] = async (cardId, amount, recipientCardNumber, description) => {
-    logger.info('TRANSFERS', 'Function called', { 
+    logger.info('TRANSFERS', '[Enhanced] Function called', { 
       cardId, 
       amount, 
       recipientCardNumber: recipientCardNumber?.substring(0, 10) + '...', 
@@ -548,274 +658,146 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
       };
     }
     
-    // Get source card details
-    const sourceCard = cards.find(card => card.id === cardId);
-    if (!sourceCard) {
-      logger.error('TRANSFERS', 'Source card not found');
-      return {
-        success: false,
-        error: 'Source card not found. Please try again.'
-      };
-    }
-    
-    // Check if sufficient funds
-    if (sourceCard.balance < amount) {
-      return {
-        success: false,
-        error: 'Insufficient funds for this transfer.'
-      };
-    }
-    
-    // Check if recipient is one of user's own cards (internal transfer)
-    // Use last4 matching since cards are stored with masked numbers
-    const recipientCardNumberClean = recipientCardNumber.replace(/\s/g, ''); // Remove spaces for comparison
-    const recipientLast4 = recipientCardNumberClean.slice(-4); // Get last 4 digits
-    
-    const recipientCard = cards.find(card => {
-      const cardLast4 = card.cardNumber.replace(/[^\d]/g, '').slice(-4);
-      return cardLast4 === recipientLast4;
-    });
-    
-    // Prevent self-transfers (same card to same card)
-    if (recipientCard && recipientCard.id === cardId) {
-      return {
-        success: false,
-        error: 'Cannot transfer to the same card. Please select a different recipient.'
-      };
-    }
-    
-    // Handle internal transfer (between user's own cards) - local only
-    if (recipientCard && sourceCard) {
-      logger.info('TRANSFERS', 'Internal transfer detected - handling locally');
-      
-      try {
-        const newSourceBalance = sourceCard.balance - amount;
-        const newRecipientBalance = recipientCard.balance + amount;
-        
-        // Update both card balances locally
-        updateCardBalance(sourceCard.id, newSourceBalance);
-        updateCardBalance(recipientCard.id, newRecipientBalance);
-        
-        // Add outgoing transaction for source card
-        addTransaction({
-          userId: user.$id || user.id || '',
-          cardId: sourceCard.id,
-          amount: -amount, // Negative for outgoing transfer
-          type: 'transfer',
-          category: 'transfer',
-          description: description || `Internal Transfer To: ${recipientCard.cardHolderName}`,
-          recipient: `${recipientCard.cardHolderName} (${recipientCardNumber})`,
-          status: 'completed'
-        });
-        
-        // Add incoming transaction for recipient card
-        addTransaction({
-          userId: user.$id || user.id || '',
-          cardId: recipientCard.id,
-          amount: amount, // Positive for incoming transfer
-          type: 'transfer',
-          category: 'transfer',
-          description: description || `Internal Transfer From: ${sourceCard.cardHolderName}`,
-          recipient: `${sourceCard.cardHolderName} (${sourceCard.cardNumber})`,
-          status: 'completed'
-        });
-        
-        // Send notification for recipient (internal transfer)
-        const { pushTransferNotification } = require('../lib/appwrite/notificationService');
-        pushTransferNotification('received', amount, sourceCard.cardHolderName, newRecipientBalance);
-        
-        // Refresh card balances from database after successful transfer
-        setTimeout(() => refreshCardBalances(), 1000); // Small delay to ensure DB updates are complete
-        
-        logger.info('TRANSFERS', 'Internal transfer completed successfully');
-        
-        return {
-          success: true,
-          newBalance: newSourceBalance,
-          recipientNewBalance: newRecipientBalance
-        };
-      } catch (error) {
-        logger.error('TRANSFERS', 'Internal transfer error', error);
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Internal transfer failed'
-        };
-      }
-    }
-    
-    // Handle external transfer (to external card/recipient)
-    logger.info('TRANSFERS', 'Attempting external transfer');
-    
-    if (!sourceCard) {
-      logger.error('TRANSFERS', 'Source card not found');
-      return {
-        success: false,
-        error: 'Source card not found. Please try again.'
-      };
-    }
-    
-    // Check if sufficient funds
-    if (sourceCard.balance < amount) {
-      return {
-        success: false,
-        error: 'Insufficient funds for this transfer.'
-      };
-    }
-    
-    // Try Appwrite function first, fall back to local simulation
     try {
-      const { executeFunction } = require('../lib/api');
+      // Use the enhanced transfer service
+      const { transferService } = await import('@/lib/appwrite/transferService');
       
-      logger.info('TRANSFERS', 'Using Appwrite function for external transfer');
-      
-      const requestData = {
-        cardId,
+      const transferRequest = {
+        sourceCardId: cardId,
+        recipientCardNumber,
         amount,
         currency: 'GHS',
-        recipient: recipientCardNumber,
-        recipientName: undefined, // TODO: Extract recipient name from transfer form
-        description: description || `Transfer To: ${recipientCardNumber}`
+        description: description || `Transfer to ${recipientCardNumber}`,
+        recipientName: undefined // Will be resolved by the service
       };
       
-      logger.info('TRANSFERS', 'Request details', {
-        cardId,
-        amount,
-        recipient: recipientCardNumber
-      });
+      logger.info('TRANSFERS', '[Enhanced] Executing transfer with enhanced service');
       
-      // Execute Appwrite function for transfer
-      const result = await executeFunction('transfers', requestData);
-      
-      logger.info('TRANSFERS', 'Function result:', result);
+      const result = await transferService.executeTransfer(transferRequest);
       
       if (result.success) {
-        // Server transfer successful
-        const data = result.data;
-        const newBalance = data.newBalance;
-        
-        logger.info('TRANSFERS', 'Server transfer successful', { newBalance });
-        
-        // Create approval request for external transfers
-        const { createApprovalRequest, autoApprove } = await import('@/lib/appwrite/transactionApprovalService');
-        
-        // For large external transfers, require approval; for smaller amounts, auto-approve
-        const requiresApproval = amount > 1000; // Amounts over 1000 GHS require approval
-        
-        // Add pending transaction locally to show in history
-        const newTransaction = {
-          userId: user.$id || user.id || '',
-          cardId,
-          amount: -amount, // Negative for outgoing transfer
-          type: 'transfer',
-          category: 'transfer',
-          description: description || `Transfer To: ${recipientCardNumber}`,
-          recipient: recipientCardNumber,
-          status: requiresApproval ? 'pending_approval' : 'completed'
-        };
-        
-        addTransaction(newTransaction);
-        
-        let approvalData = null;
-        
-        if (requiresApproval) {
-          // Create approval request for large external transfers
-          try {
-            const approvalResponse = await createApprovalRequest({
-              transactionId: data.transferId || `transfer_${Date.now()}`,
-              approvalType: 'pin', // Require PIN for transfers
-              expiryMinutes: 20, // 20 minutes to approve
-              metadata: {
-                amount: amount,
-                currency: 'GHS',
-                recipient: recipientCardNumber,
-                description: description
-              }
-            });
-            
-            approvalData = approvalResponse;
-            
-            logger.info('TRANSFERS', 'Approval request created for external transfer', {
-              transferId: data.transferId,
-              approvalId: approvalResponse.approvalId
-            });
-          } catch (approvalError) {
-            logger.warn('TRANSFERS', 'Failed to create approval request, proceeding without approval', approvalError);
-          }
-        } else {
-          // Auto-approve small transfers and update balance
-          try {
-            await autoApprove(data.transferId || `transfer_${Date.now()}`, `Small transfer amount (${amount} GHS)`);
-            
-            // Update local card balance for auto-approved transfers
-            updateCardBalance(cardId, newBalance);
-            
-            logger.info('TRANSFERS', 'Small external transfer auto-approved', { transferId: data.transferId });
-          } catch (approvalError) {
-            logger.warn('TRANSFERS', 'Failed to auto-approve transfer', approvalError);
-            // Still update balance for small transfers
-            updateCardBalance(cardId, newBalance);
-          }
+        // Update local card balance optimistically
+        if (result.sourceNewBalance !== undefined) {
+          updateCardBalance(cardId, result.sourceNewBalance);
         }
         
-        // Refresh card balances from database after successful transfer
-        setTimeout(() => refreshCardBalances(), 1000);
+        // Refresh data with slight delay to ensure database consistency
+        setTimeout(() => {
+          refreshCardBalances();
+          refreshTransactions();
+        }, 1000);
+        
+        logger.info('TRANSFERS', '[Enhanced] Transfer completed successfully', {
+          transactionId: result.transactionId,
+          sourceNewBalance: result.sourceNewBalance,
+          recipientNewBalance: result.recipientNewBalance
+        });
         
         return {
           success: true,
-          newBalance,
-          requiresApproval,
-          approval: approvalData
+          error: undefined,
+          newBalance: result.sourceNewBalance,
+          recipientNewBalance: result.recipientNewBalance,
+          transactionId: result.transactionId,
+          recipientCard: result.recipientCard
         };
       } else {
-        // Server transfer failed, fall back to local simulation
-        logger.warn('TRANSFERS', 'Server transfer failed, falling back to local simulation', result.error);
-        
-        // Fall through to local simulation below
+        logger.error('TRANSFERS', '[Enhanced] Transfer failed', result.error);
+        return {
+          success: false,
+          error: result.error || 'Transfer failed'
+        };
       }
+      
     } catch (error) {
-      logger.warn('TRANSFERS', 'Server transfer error, falling back to local simulation', error);
-      // Fall through to local simulation below
-    }
-    
-    // Local simulation fallback
-    try {
-      logger.info('TRANSFERS', 'Using local simulation for external transfer');
-      const newSourceBalance = sourceCard.balance - amount;
-      
-      // Update source card balance locally
-      updateCardBalance(sourceCard.id, newSourceBalance);
-      
-      // Add outgoing transaction for source card
-      addTransaction({
-        userId: user.$id || user.id || '',
-        cardId: sourceCard.id,
-        amount: -amount, // Negative for outgoing transfer
-        type: 'transfer',
-        category: 'transfer',
-        description: description || `External Transfer To: ${recipientCardNumber}`,
-        recipient: recipientCardNumber,
-        status: 'completed'
-      });
-      
-      // Refresh card balances from database after successful local transfer
-      setTimeout(() => refreshCardBalances(), 1000);
-      
-      logger.info('TRANSFERS', 'External transfer simulated locally');
-      
-      return {
-        success: true,
-        newBalance: newSourceBalance
-      };
-    } catch (error) {
-      logger.error('TRANSFERS', 'Local simulation error', error);
+      logger.error('TRANSFERS', '[Enhanced] Transfer service error', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'External transfer failed'
+        error: error instanceof Error ? error.message : 'Transfer service unavailable'
       };
     }
   };
 
-  const makeDeposit: AppContextType["makeDeposit"] = async (params) => {
+  const makeWithdrawal: AppContextType["makeWithdrawal"] = async (cardId, amount, withdrawalMethod, withdrawalDetails, description) => {
+    logger.info('WITHDRAWALS', '[Enhanced] Function called', {
+      cardId,
+      amount,
+      withdrawalMethod,
+      description
+    });
+    
+    // Validate user session is active before initiating withdrawal
+    const { isAuthenticated, user } = useAuthStore.getState();
+    if (!isAuthenticated || !user) {
+      logger.error('WITHDRAWALS', 'User not authenticated');
+      return {
+        success: false,
+        error: 'User not authenticated. Please sign in again.'
+      };
+    }
+    
+    try {
+      // Use the enhanced withdrawal service
+      const { processWithdrawal } = await import('@/lib/appwrite/withdrawalService');
+      
+      // Build withdrawal request based on method and details
+      const withdrawalRequest = {
+        cardId,
+        amount,
+        currency: 'GHS',
+        withdrawalMethod: withdrawalMethod as any,
+        description: description || `Withdrawal via ${withdrawalMethod.replace('_', ' ')}`,
+        ...withdrawalDetails // Spread method-specific details
+      };
+      
+      logger.info('WITHDRAWALS', '[Enhanced] Executing withdrawal with enhanced service');
+      
+      const result = await processWithdrawal(withdrawalRequest);
+      
+      if (result.success) {
+        // Update local card balance optimistically
+        if (result.newBalance !== undefined) {
+          updateCardBalance(cardId, result.newBalance);
+        }
+        
+        // Refresh data with slight delay to ensure database consistency
+        setTimeout(() => {
+          refreshCardBalances();
+          refreshTransactions();
+        }, 1000);
+        
+        logger.info('WITHDRAWALS', '[Enhanced] Withdrawal completed successfully', {
+          transactionId: result.transactionId,
+          newBalance: result.newBalance,
+          reference: result.data?.reference
+        });
+        
+        return {
+          success: true,
+          error: undefined,
+          newBalance: result.newBalance,
+          transactionId: result.transactionId,
+          reference: result.data?.reference,
+          instructions: result.data?.instructions
+        };
+      } else {
+        logger.error('WITHDRAWALS', '[Enhanced] Withdrawal failed', result.error);
+        return {
+          success: false,
+          error: result.error || 'Withdrawal failed'
+        };
+      }
+      
+    } catch (error) {
+      logger.error('WITHDRAWALS', '[Enhanced] Withdrawal service error', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Withdrawal service unavailable'
+      };
+    }
+  };
+
+  const makeDeposit: AppContextType["makeDeposit"] = async (params, onSuccess) => {
     logger.info('DEPOSITS', 'Function called', params);
     
     // Validate user session is active
@@ -831,19 +813,62 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
     // Handle deposit confirmation
     if (params.depositId && params.action === 'confirm') {
       try {
-        const { executeFunction } = require('../lib/api');
+        logger.info('DEPOSITS', '[MakeDeposit] Confirming deposit directly');
         
-        logger.info('DEPOSITS', '[MakeDeposit] Using Appwrite function for deposit confirmation');
-        
-        const requestData = {
-          action: 'confirm',
-          depositId: params.depositId
-        };
+        // Update transaction status to completed
+        const { transactionService } = await import('@/lib/appwrite');
         
         logger.info('DEPOSITS', 'Confirming deposit', { depositId: params.depositId });
         
-        // Execute Appwrite function for deposit confirmation
-        const result = await executeFunction('deposits', requestData);
+        // Get the pending transaction first
+        const pendingTransaction = await transactionService.getTransaction(params.depositId);
+        
+        if (!pendingTransaction) {
+          return {
+            success: false,
+            error: 'Deposit transaction not found.'
+          };
+        }
+        
+        if (pendingTransaction.status !== 'pending') {
+          return {
+            success: false,
+            error: 'Deposit transaction is not in pending state.'
+          };
+        }
+        
+        // Update transaction status to completed
+        const transaction = await transactionService.updateTransaction(params.depositId, {
+          status: 'completed'
+        });
+        
+        // Update card balance only now when user confirms payment
+        const { cardService } = await import('@/lib/appwrite');
+        const currentCard = await cardService.getCard(pendingTransaction.cardId);
+        const newBalance = currentCard.balance + pendingTransaction.amount;
+        
+        await cardService.updateCard(pendingTransaction.cardId, {
+          balance: newBalance
+        });
+        
+        logger.info('CONTEXT', '[MakeDeposit] Card balance updated after confirmation:', { 
+          cardId: pendingTransaction.cardId,
+          oldBalance: currentCard.balance,
+          depositAmount: pendingTransaction.amount,
+          newBalance 
+        });
+        
+        const result = {
+          success: true,
+          data: {
+            confirmationId: params.depositId,
+            transactionId: params.depositId,
+            amount: transaction.amount,
+            cardId: transaction.cardId,
+            newBalance: newBalance,
+            status: 'completed'
+          }
+        };
         
         logger.info('CONTEXT', '[MakeDeposit] Confirmation result:', result);
         
@@ -851,26 +876,48 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
           const data = result.data;
           logger.info('CONTEXT', '[MakeDeposit] Deposit confirmed successfully:', data);
           
-          // Update local card balance
+          // Update local card balance immediately
           if (data.cardId && data.newBalance !== undefined) {
             updateCardBalance(data.cardId, data.newBalance);
           }
           
-          // Add the deposit transaction locally
-          if (data.cardId && data.amount) {
-            addTransaction({
+          // Create success notification
+          try {
+            const { notificationService } = await import('@/lib/appwrite');
+            await notificationService.createNotification({
               userId: user.$id || user.id || '',
-              cardId: data.cardId,
-              amount: data.amount, // Positive for deposit
-              type: 'deposit',
-              category: 'deposit',
-              description: `Deposit confirmed - ${data.confirmationId || 'Success'}`,
-              status: 'completed'
+              type: 'transaction',
+              title: 'Deposit Completed',
+              message: `Successfully deposited GHS ${data.amount.toFixed(2)} to your card`,
+              metadata: {
+                transactionId: data.transactionId,
+                cardId: data.cardId,
+                amount: data.amount,
+                type: 'deposit'
+              }
             });
+          } catch (notifError) {
+            logger.warn('CONTEXT', 'Failed to create deposit completion notification:', notifError);
           }
           
-          // Refresh card balances from database after successful deposit
-          setTimeout(() => refreshCardBalances(), 1000);
+          // Refresh data after successful deposit
+          setTimeout(() => {
+            refreshCardBalances();
+            refreshNotifications();
+          }, 500);
+          
+          // Call success callback if provided
+          if (onSuccess) {
+            onSuccess({
+              amount: data.amount,
+              currency: 'GHS',
+              cardId: data.cardId,
+              transactionId: data.transactionId,
+              newBalance: data.newBalance,
+              reference: params.reference,
+              method: params.mobileNetwork ? `${params.mobileNetwork.toUpperCase()} Mobile Money` : 'Mobile Money'
+            });
+          }
           
           return {
             success: true,
@@ -926,120 +973,91 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
     }
     
     try {
-      const { executeFunction } = require('../lib/api');
+      logger.info('CONTEXT', '[MakeDeposit] Creating pending deposit request');
       
-      logger.info('CONTEXT', '[MakeDeposit] Using Appwrite function for deposit creation');
+      // Create pending transaction using transaction service
+      const { transactionService } = await import('@/lib/appwrite');
       
-      const requestData = {
+      const transactionData = {
         cardId: params.cardId,
+        type: 'deposit' as const,
         amount: params.amount,
-        currency: params.currency || 'GHS',
-        escrowMethod: params.escrowMethod || 'mobile_money',
         description: params.description || `${(params.escrowMethod || 'mobile_money').replace('_', ' ')} deposit`,
-        ...(params.mobileNetwork && { mobileNetwork: params.mobileNetwork }),
-        ...(params.mobileNumber && { mobileNumber: params.mobileNumber }),
-        ...(params.reference && { reference: params.reference })
+        category: 'deposit',
+        status: 'pending' as const, // Create as pending until user confirms payment
+        mobileNumber: params.mobileNumber,
+        mobileNetwork: params.mobileNetwork,
       };
       
-      logger.info('CONTEXT', '[MakeDeposit] Request details:', {
+      logger.info('CONTEXT', '[MakeDeposit] Creating pending transaction:', {
         cardId: params.cardId,
         amount: params.amount,
-        escrowMethod: params.escrowMethod
+        type: 'deposit',
+        status: 'pending'
       });
       
-      // Execute Appwrite function for deposit creation
-      const result = await executeFunction('deposits', requestData);
+      // Create the pending transaction (no balance update yet) - ensure userId is included
+      const transactionDataWithUserId = {
+        ...transactionData,
+        userId: user.$id || user.id || ''
+      };
+      const transaction = await createAppwriteTransaction(transactionDataWithUserId);
       
-      logger.info('CONTEXT', '[MakeDeposit] Function result:', result);
+      logger.info('CONTEXT', '[MakeDeposit] Pending transaction created:', { transactionId: transaction.id });
       
-      if (result.success) {
-        // Create approval request for deposit
-        const { createApprovalRequest, autoApprove } = await import('@/lib/appwrite/transactionApprovalService');
-        
-        // For small amounts, auto-approve; for larger amounts, require manual approval
-        const requiresApproval = params.amount > 1000; // Amounts over 1000 GHS require approval
-        
-        // Add pending transaction locally to show in history
-        const newTransaction = {
-          userId: user.$id || user.id || '',
-          cardId: params.cardId,
-          amount: params.amount, // Positive for deposit
-          type: 'deposit',
-          category: 'deposit',
-          description: params.description || `${(params.escrowMethod || 'mobile_money').replace('_', ' ')} deposit`,
-          status: requiresApproval ? 'pending_approval' : 'pending'
-        };
-        
-        addTransaction(newTransaction);
-        
-        let approvalData = null;
-        
-        if (requiresApproval) {
-          // Create approval request for large deposits
-          try {
-            const approvalResponse = await createApprovalRequest({
-              transactionId: result.data.depositId,
-              approvalType: 'pin', // Require PIN for deposits
-              expiryMinutes: 30, // 30 minutes to approve
-              metadata: {
-                amount: params.amount,
-                currency: params.currency || 'GHS',
-                depositMethod: params.escrowMethod
-              }
-            });
-            
-            approvalData = approvalResponse;
-            
-            logger.info('DEPOSITS', 'Approval request created for deposit', {
-              depositId: result.data.depositId,
-              approvalId: approvalResponse.approvalId
-            });
-          } catch (approvalError) {
-            logger.warn('DEPOSITS', 'Failed to create approval request, proceeding without approval', approvalError);
-          }
-        } else {
-          // Auto-approve small deposits
-          try {
-            await autoApprove(result.data.depositId, `Small deposit amount (${params.amount} GHS)`);
-            logger.info('DEPOSITS', 'Small deposit auto-approved', { depositId: result.data.depositId });
-          } catch (approvalError) {
-            logger.warn('DEPOSITS', 'Failed to auto-approve deposit', approvalError);
+      // Return deposit request details without updating balance
+      const result = {
+        success: true,
+        data: {
+          depositId: transaction.id,
+          transactionId: transaction.id,
+          amount: params.amount,
+          status: 'pending',
+          instructions: {
+            method: `${params.mobileNetwork?.toUpperCase()} Mobile Money`,
+            steps: [
+              `Dial the mobile money code for ${params.mobileNetwork}`,
+              `Send GHS ${params.amount.toFixed(2)} to merchant`,
+              'Complete the payment on your phone',
+              'Return to the app and tap "I have paid" to confirm'
+            ],
+            reference: `DEP-${Date.now().toString().slice(-8)}`,
+            estimatedTime: '2-5 minutes'
           }
         }
-        
-        // Push notification for pending deposit
-        const { pushTransactionNotification } = require('../lib/appwrite/notificationService');
-        const notificationMessage = requiresApproval 
-          ? `Your deposit request has been created and requires approval. Check your pending approvals to complete the transaction.`
-          : `Your deposit request has been created. Follow the payment instructions to complete your deposit.`;
-          
-        pushTransactionNotification(
-          'success',
-          'Deposit Initiated',
-          notificationMessage,
-          params.amount
-        );
-        
-        return {
-          success: true,
-          data: {
-            ...result.data,
-            requiresApproval,
-            approval: approvalData
+      };
+      
+      // Create notification for deposit request created
+      try {
+        const { notificationService } = await import('@/lib/appwrite');
+        await notificationService.createNotification({
+          userId: user.$id || user.id || '',
+          type: 'system',
+          title: 'Deposit Request Created',
+          message: 'Deposit request created successfully. Please follow the instructions to complete your payment.',
+          metadata: {
+            transactionId: transaction.id,
+            cardId: params.cardId,
+            amount: params.amount,
+            type: 'deposit'
           }
-        };
-      } else {
-        logger.error('CONTEXT', '[MakeDeposit] Function failed:', result.error);
-        return {
-          success: false,
-          error: result.error || 'Deposit creation failed'
-        };
+        });
+        
+        // Refresh notifications to show the new one
+        setTimeout(() => refreshNotifications(), 500);
+      } catch (notifError) {
+        logger.warn('CONTEXT', 'Failed to create deposit request notification:', notifError);
       }
+      
+      return {
+        success: true,
+        data: result.data
+      };
     } catch (error) {
-      logger.error('CONTEXT', '[MakeDeposit] Deposit creation error:', error);
+      logger.error('CONTEXT', '[MakeDeposit] Deposit request creation error:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Deposit creation failed'
+        error: error instanceof Error ? error.message : 'Deposit request creation failed'
       };
     }
   };
@@ -1049,23 +1067,32 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
     setIsLoadingTransactions(true);
     try {
       logger.info('CONTEXT', '[loadTransactionsWithCache] Attempting to load transactions with cache');
+      logger.info('CONTEXT', '[loadTransactionsWithCache] Current user state:', {
+        isAuthenticated,
+        userId: user?.$id || user?.id || 'NO_ID',
+        userEmail: user?.email || 'NO_EMAIL',
+        hasUser: !!user
+      });
       
       // Use Appwrite transaction service
       let result = { success: false, data: null, error: null };
       try {
         const response = await queryAppwriteTransactions({ limit: 20 });
-        const documents = response?.documents || [];
-        const transactions = documents.map((doc: any) => ({
-          id: doc.$id,
-          userId: doc.userId || user.$id || user.id || '',
-          cardId: doc.cardId,
-          amount: doc.amount,
-          type: doc.type,
-          category: doc.category,
-          description: doc.description,
-          status: doc.status,
-          date: doc.date || doc.$createdAt,
-        }));
+        
+        logger.info('CONTEXT', '[loadTransactionsWithCache] Raw query response:', {
+          total: response?.total || 0,
+          transactionsLength: response?.transactions?.length || 0,
+          firstTransaction: response?.transactions?.[0] || null,
+          responseType: typeof response
+        });
+        
+        // The AppwriteTransactionService returns { transactions, total }
+        const transactions = response?.transactions || [];
+        
+        logger.info('CONTEXT', '[loadTransactionsWithCache] Processed transactions:', {
+          transactionsLength: transactions.length,
+          firstTransaction: transactions[0] || null
+        });
         
         result = {
           success: true,
@@ -1093,17 +1120,34 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
           logger.info('CONTEXT', '[loadTransactionsWithCache] No transactions found', dataSource);
         } else {
           logger.info('CONTEXT', '[loadTransactionsWithCache] Successfully loaded', transactionCount, 'transactions', dataSource);
+          logger.info('CONTEXT', '[loadTransactionsWithCache] Transaction samples:', result.data.transactions.slice(0, 2));
         }
         
         if (append) {
-          setTransactions(prev => {
-            // Avoid duplicates when appending
+          // Update both all transactions and filtered transactions
+          setAllTransactions(prev => {
             const existingIds = new Set(prev.map(tx => tx.id));
             const newTransactions = result.data.transactions.filter(tx => !existingIds.has(tx.id));
             return [...prev, ...newTransactions];
           });
+          setTransactions(prev => {
+            // Avoid duplicates when appending
+            const existingIds = new Set(prev.map(tx => tx.id));
+            const newTransactions = result.data.transactions.filter(tx => 
+              !existingIds.has(tx.id) && 
+              (activeCard ? tx.cardId === activeCard.id : true)
+            );
+            return [...prev, ...newTransactions];
+          });
         } else {
-          setTransactions(result.data.transactions);
+          logger.info('CONTEXT', '[loadTransactionsWithCache] Setting transactions in state:', result.data.transactions.length, 'items');
+          // Store all transactions
+          setAllTransactions(result.data.transactions);
+          // Filter transactions for active card
+          const filteredTransactions = activeCard 
+            ? result.data.transactions.filter(tx => tx.cardId === activeCard.id)
+            : result.data.transactions;
+          setTransactions(filteredTransactions);
         }
         setTransactionsCursor(result.data.nextCursor || null);
         
@@ -1125,18 +1169,38 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
           tags: [tx.category],
         }));
         
+        logger.info('CONTEXT', '[loadTransactionsWithCache] Created', activities.length, 'activity events from transactions');
+        
         if (append) {
-          setActivity(prev => {
-            // Avoid duplicates when appending activity
+          // Update both all activity and filtered activity
+          setAllActivity(prev => {
             const existingIds = new Set(prev.map(a => a.id));
             const newActivities = activities.filter(a => !existingIds.has(a.id));
             return [...prev, ...newActivities];
           });
+          setActivity(prev => {
+            // Avoid duplicates when appending activity
+            const existingIds = new Set(prev.map(a => a.id));
+            const newActivities = activities.filter(a => 
+              !existingIds.has(a.id) && 
+              (activeCard ? a.cardId === activeCard.id : true)
+            );
+            return [...prev, ...newActivities];
+          });
         } else {
+          // Store all activities
+          setAllActivity(prev => {
+            const nonTxActivities = prev.filter(a => a.category !== 'transaction');
+            return [...activities, ...nonTxActivities];
+          });
+          // Filter activities for active card
           setActivity(prev => {
             // Only add transaction activities, keep other activities
             const nonTxActivities = prev.filter(a => a.category !== 'transaction');
-            return [...activities, ...nonTxActivities];
+            const filteredActivities = activeCard 
+              ? activities.filter(a => a.cardId === activeCard.id)
+              : activities;
+            return [...filteredActivities, ...nonTxActivities];
           });
         }
         
@@ -1175,6 +1239,22 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
     }
   };
 
+  // Clear cards, transactions, and activity when user logs out or changes
+  useEffect(() => {
+    if (!isAuthenticated || !user) {
+      // User logged out or changed - clear all data to prevent cross-user data leakage
+      logger.info('CONTEXT', '[AuthChange] User logged out or changed, clearing all data');
+      setCards([]);
+      setActiveCard(null);
+      setTransactions([]);
+      setAllTransactions([]);
+      setActivity([]);
+      setAllActivity([]);
+      setNotifications([]);
+      setPendingApprovalsCount(0);
+    }
+  }, [isAuthenticated, user?.id || user?.$id]); // React to user ID changes, not user object changes
+
   // Load cards when authentication is ready
   useEffect(() => {
     // Don't load cards if authentication is still loading
@@ -1202,18 +1282,54 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
       try {
         // Try to load from Appwrite first since user is authenticated
         try {
-          if (__DEV__) {
-            logger.info('CONTEXT', '[LoadCards] Attempting to load cards from Appwrite for user:', user.$id || user.id);
-          }
+          const currentUserId = user.$id || user.id;
+          logger.info('CONTEXT', '[LoadCards] Attempting to load cards from Appwrite', {
+            currentUserId,
+            userEmail: user.email,
+            userObject: { id: user.id, $id: user.$id, email: user.email },
+            timestamp: new Date().toISOString()
+          });
+          
           const appwriteCards = await getAppwriteActiveCards();
+          
           if (appwriteCards.length > 0) {
-            if (__DEV__) {
-              logger.info('CONTEXT', '[LoadCards] Loaded', appwriteCards.length, 'cards from Appwrite with fresh balances');
+            // CRITICAL: Validate that all cards belong to the current user to prevent cross-user data leakage
+            const currentUserId = user.$id || user.id;
+            const invalidCards = appwriteCards.filter(card => card.userId !== currentUserId);
+            
+            if (invalidCards.length > 0) {
+              logger.error('CONTEXT', '[LoadCards] SECURITY ISSUE: Cards from other users detected!', {
+                currentUserId,
+                currentUserEmail: user.email,
+                invalidCards: invalidCards.map(c => ({ 
+                  cardId: c.id, 
+                  cardUserId: c.userId, 
+                  holderName: c.cardHolderName 
+                })),
+                totalCards: appwriteCards.length,
+                validCards: appwriteCards.length - invalidCards.length
+              });
+              
+              // Filter out invalid cards to prevent security issue
+              const validCards = appwriteCards.filter(card => card.userId === currentUserId);
+              logger.warn('CONTEXT', '[LoadCards] Filtered out invalid cards, using only valid ones', {
+                originalCount: appwriteCards.length,
+                validCount: validCards.length
+              });
+              
+              setCards(validCards);
+              setActiveCard(validCards[0] || null);
+            } else {
+              logger.info('CONTEXT', '[LoadCards] All cards validated - belong to current user', {
+                cardCount: appwriteCards.length,
+                currentUserId,
+                cardUserIds: appwriteCards.map(c => c.userId)
+              });
+              
+              // Cards from Appwrite already have fresh balances from database
+              setCards(appwriteCards);
+              setActiveCard(appwriteCards[0] || null);
             }
-            // Cards from Appwrite already have fresh balances from database
-            // No need to map - the service already returns proper Card objects with current balances
-            setCards(appwriteCards);
-            setActiveCard(appwriteCards[0] || null);
             
             if (__DEV__) {
               logger.info('CONTEXT', '[LoadCards] Cards set with current balances:', 
@@ -1358,13 +1474,13 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
     const dbId = appwriteConfig.databaseId;
     const txCol = appwriteConfig.transactionsCollectionId;
     const cardCol = appwriteConfig.cardsCollectionId;
-    const acctCol = appwriteConfig.accountUpdatesCollectionId;
+    // Removed acctCol - account_updates collection no longer used
     const notifCol = (appwriteConfig as any).notificationsCollectionId as string | undefined;
 
     const channels: string[] = [];
     if (dbId && txCol) channels.push(`databases.${dbId}.collections.${txCol}.documents`);
     if (dbId && cardCol) channels.push(`databases.${dbId}.collections.${cardCol}.documents`);
-    if (dbId && acctCol) channels.push(`databases.${dbId}.collections.${acctCol}.documents`);
+    // Removed account_updates channel
     if (dbId && notifCol) channels.push(`databases.${dbId}.collections.${notifCol}.documents`);
 
     if (channels.length === 0) return;
@@ -1376,6 +1492,48 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
     // No-op unsubscribe
     return () => {};
   }, []);
+
+  // Function to refresh notifications from database
+  const refreshNotifications = async () => {
+    try {
+      const dbId = appwriteConfig.databaseId;
+      const notifCol = (appwriteConfig as any).notificationsCollectionId as string | undefined;
+      if (!dbId || !notifCol) return;
+      
+      // Get current user ID
+      const { user } = useAuthStore.getState();
+      const userId = user?.id || user?.$id;
+      if (!userId) {
+        logger.info('CONTEXT', '[refreshNotifications] No user ID available, skipping refresh');
+        return;
+      }
+      
+      // User-scoped query for notifications
+      const resp: any = await databases.listDocuments(dbId, notifCol, [
+        Query.equal('userId', userId),
+        Query.orderDesc('$createdAt'),
+        Query.limit(50)
+      ]);
+      
+      const docs = Array.isArray(resp?.documents) ? resp.documents : [];
+      const fetched: Notification[] = docs.map((d: any) => ({
+        id: d.$id,
+        userId: d.userId,
+        title: d.title,
+        message: d.message,
+        type: d.type,
+        unread: d.unread,
+        archived: d.archived || false,
+        createdAt: d.$createdAt || d.createdAt,
+      }));
+      
+      // Update notifications state
+      setNotifications(fetched);
+      logger.info('CONTEXT', '[refreshNotifications] Refreshed notifications', { count: fetched.length });
+    } catch (error) {
+      logger.error('CONTEXT', '[refreshNotifications] Failed to refresh notifications:', error);
+    }
+  };
 
   const markNotificationRead: AppContextType['markNotificationRead'] = async (id) => {
     const dbId = appwriteConfig.databaseId;
@@ -1400,8 +1558,7 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
   };
 
   const deleteNotification: AppContextType['deleteNotification'] = async (id) => {
-    const dbId = appwriteConfig.databaseId;
-    const notifCol = (appwriteConfig as any).notificationsCollectionId as string | undefined;
+    logger.info('CONTEXT', '[deleteNotification] Starting notification deletion with cache cleanup', { id });
     
     // Optimistic update (always perform for local state)
     let prev: Notification[] | null = null;
@@ -1410,14 +1567,67 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
       return cur.filter(n => n.id !== id);
     });
     
-    // Only try database update if configured
-    if (!dbId || !notifCol) return;
-    
+    // Use enhanced notification service with proper cache cleanup
     try {
-      await databases.deleteDocument(dbId, notifCol, id);
-    } catch (e) {
-      // Revert on failure
-      if (prev) setNotifications(prev);
+      const { AppwriteNotificationService } = await import('@/lib/appwrite/notificationService');
+      const notificationService = new AppwriteNotificationService();
+      
+      // This will delete from database and clean up local cache
+      await notificationService.deleteNotification(id);
+      
+      logger.info('CONTEXT', '[deleteNotification] Successfully deleted notification with cache cleanup', { id });
+    } catch (error) {
+      logger.error('CONTEXT', '[deleteNotification] Failed to delete notification from database/cache:', error);
+      
+      // If enhanced service fails, try fallback database deletion
+      try {
+        const dbId = appwriteConfig.databaseId;
+        const notifCol = (appwriteConfig as any).notificationsCollectionId as string | undefined;
+        
+        if (dbId && notifCol) {
+          await databases.deleteDocument(dbId, notifCol, id);
+          
+          // Manually clean up cache since fallback doesn't do it
+          try {
+            const cacheRaw = await AsyncStorage.getItem('notification_pages_cache');
+            if (cacheRaw) {
+              const cache = JSON.parse(cacheRaw);
+              let cacheUpdated = false;
+              
+              Object.keys(cache.pages || {}).forEach(pageKey => {
+                const page = cache.pages[pageKey];
+                const originalLength = page.notifications ? page.notifications.length : 0;
+                
+                if (page.notifications) {
+                  page.notifications = page.notifications.filter((n: any) => n.id !== id);
+                  
+                  if (page.notifications.length !== originalLength) {
+                    cacheUpdated = true;
+                  }
+                }
+              });
+              
+              if (cacheUpdated) {
+                await AsyncStorage.setItem('notification_pages_cache', JSON.stringify(cache));
+                logger.info('CONTEXT', '[deleteNotification] Manually cleaned up notification cache');
+              }
+            }
+          } catch (cacheError) {
+            logger.warn('CONTEXT', '[deleteNotification] Failed to manually clean up cache:', cacheError);
+          }
+          
+          logger.info('CONTEXT', '[deleteNotification] Successfully deleted via fallback method');
+        }
+      } catch (fallbackError) {
+        logger.error('CONTEXT', '[deleteNotification] Fallback deletion also failed:', fallbackError);
+        
+        // Revert optimistic update on complete failure
+        if (prev) {
+          setNotifications(prev);
+          logger.info('CONTEXT', '[deleteNotification] Reverted optimistic update due to deletion failure');
+        }
+        throw fallbackError;
+      }
     }
   };
 
@@ -1654,40 +1864,63 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
   };
 
   const clearAllNotifications: AppContextType['clearAllNotifications'] = async () => {
+    logger.info('CONTEXT', '[clearAllNotifications] Starting clear all notifications with cache cleanup');
+    
     // Optimistic update (always clear local state first)
     const prev = notifications;
     setNotifications([]);
     
-    // Try server clear if API is available, but don't fail if it's not
+    // Use enhanced notification service with proper cache cleanup
     try {
-      const { getApiBase } = require('../lib/api');
-      const { getValidJWT, refreshAppwriteJWT } = require('../lib/jwt');
-      const url = `${getApiBase()}/v1/notifications/clear`;
+      const { AppwriteNotificationService } = await import('@/lib/appwrite/notificationService');
+      const notificationService = new AppwriteNotificationService();
       
-      let jwt = await getValidJWT();
+      // This will delete from database and clean up local cache
+      await notificationService.clearAllNotifications();
       
-      const makeRequest = async (token: string | undefined) => {
-        const headers: any = { 'Content-Type': 'application/json' };
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-        return await fetch(url, { method: 'POST', headers });
-      };
+      logger.info('CONTEXT', '[clearAllNotifications] Successfully cleared all notifications with cache cleanup');
+    } catch (error) {
+      logger.error('CONTEXT', '[clearAllNotifications] Failed to clear notifications from database/cache:', error);
       
-      let res = await makeRequest(jwt);
-      
-      // If we get a 401, try refreshing the token once
-      if (res.status === 401 && jwt) {
-        logger.info('CONTEXT', '[ClearNotifications] Got 401, refreshing JWT and retrying...');
-        jwt = await refreshAppwriteJWT();
-        if (jwt) {
-          res = await makeRequest(jwt);
+      // If database/cache cleanup fails, try the fallback REST API approach
+      try {
+        const { getApiBase } = require('../lib/api');
+        const { getValidJWT, refreshAppwriteJWT } = require('../lib/jwt');
+        const url = `${getApiBase()}/v1/notifications/clear`;
+        
+        let jwt = await getValidJWT();
+        
+        const makeRequest = async (token: string | undefined) => {
+          const headers: any = { 'Content-Type': 'application/json' };
+          if (token) headers['Authorization'] = `Bearer ${token}`;
+          return await fetch(url, { method: 'POST', headers });
+        };
+        
+        let res = await makeRequest(jwt);
+        
+        // If we get a 401, try refreshing the token once
+        if (res.status === 401 && jwt) {
+          logger.info('CONTEXT', '[clearAllNotifications] Got 401, refreshing JWT and retrying...');
+          jwt = await refreshAppwriteJWT();
+          if (jwt) {
+            res = await makeRequest(jwt);
+          }
         }
+        
+        if (!res.ok) {
+          logger.warn('CONTEXT', 'Failed to clear notifications via REST API, but local state has been cleared');
+        } else {
+          // Manually clean up cache since REST API doesn't do it
+          try {
+            await AsyncStorage.removeItem('notification_pages_cache');
+            logger.info('CONTEXT', 'Manually cleared notification cache after REST API call');
+          } catch (cacheError) {
+            logger.warn('CONTEXT', 'Failed to manually clear notification cache:', cacheError);
+          }
+        }
+      } catch (restError) {
+        logger.warn('CONTEXT', 'clearAllNotifications REST API fallback also failed (local state cleared):', restError);
       }
-      
-      if (!res.ok) {
-        logger.warn('CONTEXT', 'Failed to clear notifications (server), but local state has been cleared');
-      }
-    } catch (e) {
-      logger.warn('CONTEXT', 'clearAllNotifications server error (local state cleared):', e);
     }
   };
 
@@ -1833,15 +2066,66 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
     // The user can refresh to reload transactions from server if needed
   };
 
-  const clearAllActivity: AppContextType['clearAllActivity'] = async () => {
-    const { logger } = require('@/lib/logger');
+  const deleteActivity: AppContextType['deleteActivity'] = async (activityId: string) => {
+    logger.info('ACTIVITY', '[deleteActivity] Starting activity deletion', { activityId });
     
-    logger.info('ACTIVITY', 'Starting clear all activity operation');
+    try {
+      // Validate user session is active
+      const { isAuthenticated, user } = useAuthStore.getState();
+      if (!isAuthenticated || !user) {
+        logger.error('ACTIVITY', 'User not authenticated');
+        return {
+          success: false,
+          error: 'User not authenticated. Please sign in again.'
+        };
+      }
+      
+      // Remove from local state first (optimistic update)
+      let prevActivity: ActivityEvent[] | null = null;
+      setActivity(prev => {
+        prevActivity = prev;
+        return prev.filter(activity => activity.id !== activityId);
+      });
+      
+      // Try to delete from activityLogger (centralized activities)
+      try {
+        await activityLogger.deleteActivity(activityId);
+        logger.info('ACTIVITY', '[deleteActivity] Successfully deleted from activityLogger');
+      } catch (activityLoggerError) {
+        logger.warn('ACTIVITY', '[deleteActivity] Failed to delete from activityLogger:', activityLoggerError);
+      }
+      
+      // Try to delete from Appwrite database if available
+      try {
+        const { deleteActivity: deleteAppwriteActivity } = await import('@/lib/appwrite/activityService');
+        await deleteAppwriteActivity(activityId);
+        logger.info('ACTIVITY', '[deleteActivity] Successfully deleted from Appwrite database');
+      } catch (dbError) {
+        logger.warn('ACTIVITY', '[deleteActivity] Failed to delete from database (might not exist there):', dbError);
+      }
+      
+      logger.info('ACTIVITY', '[deleteActivity] Activity deletion completed successfully', { activityId });
+      return { success: true };
+      
+    } catch (error) {
+      logger.error('ACTIVITY', '[deleteActivity] Failed to delete activity:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to delete activity'
+      };
+    }
+  };
+  
+  const clearAllActivity: AppContextType['clearAllActivity'] = async () => {
+    logger.info('ACTIVITY', 'Starting clear all activity operation with database cleanup');
     
     // Clear local activity state
     setActivity([]);
     
     try {
+      // Clear from activityLogger with proper cache cleanup
+      await activityLogger.clearActivities();
+      
       // Clear cached activity events
       await StorageManager.clearActivityCache();
       
@@ -1849,14 +2133,11 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
       const AsyncStorage = require('@react-native-async-storage/async-storage').default;
       await AsyncStorage.setItem('activity_manually_cleared', Date.now().toString());
       
-      logger.info('ACTIVITY', 'Activity data cleared successfully');
+      logger.info('ACTIVITY', 'Activity data cleared successfully with database cleanup');
     } catch (error) {
-      logger.error('ACTIVITY', 'Failed to clear cached activity:', error);
+      logger.error('ACTIVITY', 'Failed to clear activity with database cleanup:', error);
       throw error;
     }
-    
-    // Note: We don't delete activity from Appwrite server as this would be destructive
-    // The user can refresh to reload activity from server if needed
   };
 
   const updateTransaction: AppContextType['updateTransaction'] = async (id, updateData) => {
@@ -2327,12 +2608,13 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
         cards,
         transactions,
         activeCard,
-        setActiveCard,
+        setActiveCard: setActiveCardWithFilter,
         addCard,
         removeCard,
         addTransaction,
         updateCardBalance,
         makeTransfer,
+        makeWithdrawal,
         makeDeposit,
         makeTransaction,
         refreshCardBalances,
@@ -2347,6 +2629,7 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
         pushActivity,
         setActivity,
         clearAllActivity,
+        deleteActivity,
         notifications,
         setNotifications,
         markNotificationRead,
@@ -2359,11 +2642,11 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
         archiveNotification,
         unarchiveNotification,
         toggleNotificationArchive,
-        archiveAllReadNotifications,
-        // Transaction approvals
-        handleApprovalStatusChange,
-        refreshPendingApprovals,
-        pendingApprovalsCount,
+    archiveAllReadNotifications,
+    refreshNotifications,
+    handleApprovalStatusChange,
+    refreshPendingApprovals,
+    pendingApprovalsCount,
       }}
     >
       {children}
@@ -2378,3 +2661,4 @@ export function useApp() {
   }
   return context;
 }
+

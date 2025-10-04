@@ -1,0 +1,25 @@
+Financial Report
+
+SUMMARY
+Period,"Test Period - Last 30 Days"
+Total Transactions,25
+Total Income,"GH₵5000.00"
+Total Expenses,"GH₵3500.00"
+Net Balance,"GH₵1500.00"
+Current Balance,"GH₵8500.00"
+
+TRANSACTION TYPES
+Type,Count,Amount,Percentage
+"Purchase",18,"GH₵3200.00","91.4%"
+"Withdrawal",2,"GH₵300.00","8.6%"
+
+CATEGORIES
+Category,Count,Amount,Percentage
+"Groceries",8,"GH₵1200.00","34.3%"
+"Transportation",5,"GH₵800.00","22.9%"
+"Entertainment",3,"GH₵450.00","12.9%"
+
+INSIGHTS
+Type,Title,Description
+"income_trend","Positive Cash Flow","Great job! You saved GH₵1,500.00 during this period"
+"category_alert","Category Concentration","34.3% of your spending is in Groceries. Consider diversifying your expenses."

@@ -8,6 +8,7 @@ import { databases, appwriteConfig, Query, ID } from './config';
 import { databaseService } from './database';
 import { authService } from './auth';
 import { logger } from '../logger';
+import { activityLogger } from '../activityLogger';
 import { Transaction } from '@/constants/index';
 
 export interface TransactionApproval {
@@ -173,12 +174,24 @@ export class TransactionApprovalService {
         // Approve the transaction
         await this.updateTransactionStatus(request.approvalId, 'completed');
 
-        // Log approval activity
-        await this.logApprovalActivity(
-          request.approvalId, 
-          'approved', 
-          `Transaction approved via ${request.verificationMethod}`
-        );
+        // Log approval activity to centralized logger (fire-and-forget)
+        activityLogger.logTransactionActivity(
+          request.approvalId,
+          'approved',
+          transaction.type === 'withdraw' ? 'withdrawal' : transaction.type,
+          {
+            amount: transaction.amount / 100, // Convert from cents
+            cardId: transaction.cardId,
+            approvalMethod: request.verificationMethod,
+            verifiedAt: new Date().toISOString(),
+          },
+          `Transaction approved via ${request.verificationMethod}`,
+          userId
+        ).catch(error => {
+          logger.warn('APPROVAL_SERVICE', 'Failed to log approval activity', error);
+        });
+
+        // Transaction approval has been logged to centralized activity logger above
 
         return {
           approvalId: request.approvalId,
@@ -190,6 +203,25 @@ export class TransactionApprovalService {
       } else {
         // Reject the approval
         await this.updateTransactionStatus(request.approvalId, 'failed', 'Verification failed');
+
+        // Log rejection activity to centralized logger (fire-and-forget)
+        activityLogger.logTransactionActivity(
+          request.approvalId,
+          'rejected',
+          transaction.type === 'withdraw' ? 'withdrawal' : transaction.type,
+          {
+            amount: transaction.amount / 100, // Convert from cents
+            cardId: transaction.cardId,
+            rejectionReason: 'Verification failed',
+            rejectedAt: new Date().toISOString(),
+          },
+          `Transaction rejected due to verification failure`,
+          userId
+        ).catch(error => {
+          logger.warn('APPROVAL_SERVICE', 'Failed to log rejection activity', error);
+        });
+
+        // Transaction rejection has been logged to centralized activity logger above
 
         return {
           approvalId: request.approvalId,
@@ -284,11 +316,22 @@ export class TransactionApprovalService {
 
       await this.updateTransactionStatus(approvalId, 'failed', reason || 'Cancelled by user');
 
-      await this.logApprovalActivity(
-        approvalId, 
-        'cancelled', 
-        reason || 'Approval cancelled by user'
-      );
+      // Log cancellation activity to centralized logger (fire-and-forget)
+      activityLogger.logTransactionActivity(
+        approvalId,
+        'cancelled',
+        approval.metadata?.type === 'withdraw' ? 'withdrawal' : approval.metadata?.type || 'unknown',
+        {
+          amount: approval.metadata?.amount || 0,
+          cardId: undefined,
+          cancellationReason: reason || 'Cancelled by user',
+          cancelledAt: new Date().toISOString(),
+        },
+        reason || 'Approval cancelled by user',
+        userId
+      ).catch(error => {
+        logger.warn('APPROVAL_SERVICE', 'Failed to log cancellation activity', error);
+      });
 
       logger.info('APPROVAL_SERVICE', 'Approval cancelled successfully', { approvalId });
 
@@ -320,11 +363,27 @@ export class TransactionApprovalService {
       // Immediately approve it by updating transaction status
       await this.updateTransactionStatus(transactionId, 'completed');
 
-      await this.logApprovalActivity(
-        approval.approvalId, 
-        'auto_approved', 
-        `Auto-approved: ${reason}`
-      );
+      // Get transaction details for logging
+      const transaction = await this.getTransactionForApproval(transactionId);
+
+      // Log auto-approval activity to centralized logger (fire-and-forget)
+      activityLogger.logTransactionActivity(
+        transactionId,
+        'auto_approved',
+        transaction.type === 'withdraw' ? 'withdrawal' : transaction.type,
+        {
+          amount: transaction.amount / 100, // Convert from cents
+          cardId: transaction.cardId,
+          autoApprovalReason: reason,
+          approvedAt: new Date().toISOString(),
+        },
+        `Auto-approved: ${reason}`,
+        userId
+      ).catch(error => {
+        logger.warn('APPROVAL_SERVICE', 'Failed to log auto-approval activity', error);
+      });
+
+      // Auto-approval has been logged to centralized activity logger above
 
       return {
         approvalId: approval.approvalId,
@@ -495,35 +554,6 @@ export class TransactionApprovalService {
     };
   }
 
-  /**
-   * Log approval activity
-   */
-  private async logApprovalActivity(
-    approvalId: string, 
-    action: string, 
-    description: string
-  ): Promise<void> {
-    try {
-      const userId = await this.getCurrentUserId();
-      
-      await databaseService.createDocument(
-        appwriteConfig.accountUpdatesCollectionId,
-        {
-          userId,
-          type: 'approval_activity',
-          description,
-          metadata: {
-            approvalId,
-            action,
-            timestamp: new Date().toISOString(),
-          },
-          createdAt: new Date().toISOString(),
-        }
-      );
-    } catch (error) {
-      logger.warn('APPROVAL_SERVICE', 'Failed to log approval activity', error);
-    }
-  }
 
   /**
    * Handle and format approval-related errors

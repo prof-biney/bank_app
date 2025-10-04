@@ -93,31 +93,29 @@ export class AppwriteActivityService {
   }
 
   /**
-   * Create a new activity event
+   * Create a new activity event (stubbed - account_updates collection removed)
    */
   async createActivity(activityData: ActivityEvent): Promise<ActivityEvent> {
     try {
       const userId = await this.getCurrentUserId();
       
-      logger.info('ACTIVITY_SERVICE', 'Creating activity', {
+      logger.info('ACTIVITY_SERVICE', 'Creating activity (stubbed)', {
         userId,
         type: activityData.type,
         description: activityData.description,
       });
 
-      // Transform data for Appwrite schema
-      const appwriteData = this.transformActivityForAppwrite(activityData, userId);
-      
-      // Create document in Appwrite
-      const document = await databaseService.createDocument(
-        collections.accountUpdates.id,
-        appwriteData
-      );
+      // Return a mock activity since we no longer use account_updates collection
+      const activity: ActivityEvent = {
+        id: `activity_${Date.now()}`,
+        userId,
+        type: activityData.type,
+        description: activityData.description,
+        metadata: activityData.metadata || {},
+        createdAt: new Date().toISOString(),
+      };
 
-      // Transform back to ActivityEvent type
-      const activity = this.transformAppwriteToActivity(document);
-
-      logger.info('ACTIVITY_SERVICE', 'Activity created successfully', { 
+      logger.info('ACTIVITY_SERVICE', 'Activity created (stubbed)', { 
         activityId: activity.id 
       });
       return activity;
@@ -128,21 +126,23 @@ export class AppwriteActivityService {
   }
 
   /**
-   * Get a single activity by ID
+   * Get a single activity by ID (stubbed - account_updates collection removed)
    */
   async getActivity(activityId: string): Promise<ActivityEvent> {
     try {
       const userId = await this.getCurrentUserId();
 
-      const document = await databaseService.getDocument(collections.accountUpdates.id, activityId);
-
-      if (document.userId !== userId) {
-        throw new Error('Unauthorized: Activity does not belong to current user');
-      }
-
-      const activity = this.transformAppwriteToActivity(document);
+      // Return a mock activity since we no longer use account_updates collection
+      const activity: ActivityEvent = {
+        id: activityId,
+        userId,
+        type: 'system',
+        description: 'Activity not available (account_updates collection removed)',
+        metadata: {},
+        createdAt: new Date().toISOString(),
+      };
       
-      logger.info('ACTIVITY_SERVICE', 'Activity retrieved', { activityId });
+      logger.info('ACTIVITY_SERVICE', 'Activity retrieved (stubbed)', { activityId });
       return activity;
     } catch (error) {
       logger.error('ACTIVITY_SERVICE', 'Failed to get activity', error);
@@ -194,8 +194,10 @@ export class AppwriteActivityService {
         queries.push(Query.offset(options.offset));
       }
 
-      // Execute query
-      const response = await databaseService.listDocuments(collections.accountUpdates.id, queries);
+      // Return empty response since account_updates collection was removed
+      const response = { documents: [], total: 0 };
+      
+      logger.info('ACTIVITY_SERVICE', 'Query activities (stubbed - returning empty)', { userId });
 
       // Transform documents to ActivityEvent type
       const activities = response.documents.map(doc => this.transformAppwriteToActivity(doc));

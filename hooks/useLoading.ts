@@ -64,7 +64,7 @@ export const useLoading = (initialConfig?: Partial<LoadingState>): UseLoadingRet
     ...initialConfig,
   });
   
-  const timeoutRef = useRef<NodeJS.Timeout>();
+  const timeoutRef = useRef<ReturnType<typeof setTimeout>>();
   
   const showLoading = useCallback((config?: Partial<LoadingState>) => {
     // Clear any existing timeout

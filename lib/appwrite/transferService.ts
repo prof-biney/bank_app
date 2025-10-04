@@ -6,10 +6,11 @@
  */
 
 import { databaseService, Query, collections } from './database';
-import { AppwriteCardService } from './cardService';
+import { AppwriteCardService, updateCardSystem } from './cardService';
 import { AppwriteTransactionService } from './transactionService';
 import { AppwriteActivityService } from './activityService';
 import { logger } from '../logger';
+import { activityLogger } from '../activityLogger';
 import { Card, Transaction } from '@/types';
 
 // Transfer interfaces
@@ -233,8 +234,8 @@ export class AppwriteTransferService {
           balance: sourceNewBalance
         });
         
-        // Update recipient card balance
-        await cardService.updateCard(recipientCard.id, {
+        // Update recipient card balance (using system update since it may belong to different user)
+        await updateCardSystem(recipientCard.id, {
           balance: recipientNewBalance
         });
         
@@ -287,10 +288,16 @@ export class AppwriteTransferService {
         // In a production system, you might want to implement compensation logic
       }
       
-      // 5. Log activity events (fire-and-forget)
+      // 5. Clear transfer-related cache
+      await this.clearTransferCache(sourceCard.id, recipientCard.id);
+      
+      // 6. Log activity events (fire-and-forget)
       this.logTransferActivity(sourceCard, recipientCard, transferRequest.amount, sourceTransactionId);
       
-      logger.info('TRANSFER_SERVICE', 'Transfer completed successfully', {
+      // 7. Trigger auto-refresh of relevant data (fire-and-forget)
+      this.triggerAutoRefresh(sourceCard.id, recipientCard.id);
+      
+      logger.info('TRANSFER_SERVICE', 'Transfer completed successfully with cache cleanup and auto-refresh', {
         transactionId: sourceTransactionId,
         sourceNewBalance,
         recipientNewBalance
@@ -314,7 +321,52 @@ export class AppwriteTransferService {
   }
   
   /**
-   * Log transfer activity events (fire-and-forget)
+   * Clear transfer-related cache and refresh data
+   */
+  private async clearTransferCache(sourceCardId: string, recipientCardId: string): Promise<void> {
+    try {
+      // Import AsyncStorage for cache cleanup
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      
+      // Clear transaction cache that might be stale
+      await AsyncStorage.removeItem('cached_transactions');
+      await AsyncStorage.removeItem('transaction_cache');
+      
+      // Clear card balance cache
+      await AsyncStorage.removeItem(`card_balance_${sourceCardId}`);
+      await AsyncStorage.removeItem(`card_balance_${recipientCardId}`);
+      
+      // Clear any transfer history cache
+      await AsyncStorage.removeItem('transfer_history');
+      
+      logger.info('TRANSFER_SERVICE', 'Transfer cache cleared successfully');
+    } catch (error) {
+      logger.warn('TRANSFER_SERVICE', 'Failed to clear transfer cache', error);
+      // Non-critical error - don't fail the transfer
+    }
+  }
+  
+  /**
+   * Trigger auto-refresh of relevant data after successful transfer
+   */
+  private async triggerAutoRefresh(sourceCardId: string, recipientCardId: string): Promise<void> {
+    try {
+      logger.info('TRANSFER_SERVICE', 'Transfer completed, data refresh will be handled by calling component');
+      
+      // Note: Data refresh is now handled by the calling component (makeTransfer in AppContext)
+      // This avoids circular import issues and keeps the refresh logic where it belongs
+      
+      // The transfer service just focuses on the core transfer logic
+      // Refresh is triggered in AppContext after successful transfer
+      
+    } catch (error) {
+      logger.warn('TRANSFER_SERVICE', 'Failed to log refresh trigger', error);
+      // Non-critical error
+    }
+  }
+  
+  /**
+   * Log transfer activity events using centralized logger (fire-and-forget)
    */
   private async logTransferActivity(
     sourceCard: Card, 
@@ -323,41 +375,35 @@ export class AppwriteTransferService {
     transactionId?: string
   ): Promise<void> {
     try {
-      // Activity for sender
-      await activityService.logActivity({
-        userId: sourceCard.userId,
-        category: 'transfer',
-        type: 'transfer.sent',
-        title: 'Transfer sent',
-        description: `Sent ${sourceCard.currency || 'GHS'} ${amount.toFixed(2)} to ${recipientCard.cardHolderName}`,
-        amount: -amount,
-        currency: sourceCard.currency || 'GHS',
-        status: 'completed',
-        cardId: sourceCard.id,
-        transactionId: transactionId,
-        metadata: {
-          recipientName: recipientCard.cardHolderName,
-          recipientCardLast4: recipientCard.cardNumber.slice(-4)
-        }
-      });
+      // Log outgoing transfer activity for sender using centralized logger
+      await activityLogger.logTransactionActivity(
+        'completed',
+        transactionId || `transfer_${Date.now()}`,
+        {
+          type: 'transfer',
+          amount: amount,
+          cardId: sourceCard.id,
+          recipientCardId: recipientCard.id,
+          description: `Transfer sent to ${recipientCard.cardHolderName}`
+        },
+        sourceCard.userId
+      );
       
-      // Activity for recipient
-      await activityService.logActivity({
-        userId: recipientCard.userId,
-        category: 'transfer',
-        type: 'transfer.received',
-        title: 'Transfer received',
-        description: `Received ${recipientCard.currency || 'GHS'} ${amount.toFixed(2)} from ${sourceCard.cardHolderName}`,
-        amount: amount,
-        currency: recipientCard.currency || 'GHS',
-        status: 'completed',
-        cardId: recipientCard.id,
-        transactionId: transactionId,
-        metadata: {
-          senderName: sourceCard.cardHolderName,
-          senderCardLast4: sourceCard.cardNumber.slice(-4)
-        }
-      });
+      // Log incoming transfer activity for recipient using centralized logger
+      await activityLogger.logTransactionActivity(
+        'completed',
+        transactionId || `transfer_${Date.now()}_in`,
+        {
+          type: 'transfer',
+          amount: amount,
+          cardId: recipientCard.id,
+          recipientCardId: sourceCard.id,
+          description: `Transfer received from ${sourceCard.cardHolderName}`
+        },
+        recipientCard.userId
+      );
+
+      logger.info('TRANSFER_SERVICE', 'Transfer activity logged successfully');
       
     } catch (error) {
       logger.warn('TRANSFER_SERVICE', 'Failed to log transfer activity', error);

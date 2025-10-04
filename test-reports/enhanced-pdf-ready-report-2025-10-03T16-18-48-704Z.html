@@ -1,0 +1,380 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Financial Report - Last 30 Days Financial Report</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { 
+          font-family: 'Helvetica Neue', Arial, sans-serif; 
+          margin: 0; 
+          padding: 20px; 
+          line-height: 1.6; 
+          color: #333;
+          font-size: 12px;
+        }
+        .header { 
+          text-align: center; 
+          margin-bottom: 30px; 
+          page-break-after: avoid;
+          border-bottom: 3px solid #1976d2;
+          padding-bottom: 20px;
+        }
+        .header h1 {
+          color: #1976d2;
+          font-size: 24px;
+          margin: 0 0 10px 0;
+        }
+        .header p {
+          margin: 5px 0;
+          color: #666;
+        }
+        .summary { 
+          background: #f8f9fa; 
+          padding: 20px; 
+          border-radius: 8px; 
+          margin-bottom: 30px; 
+          page-break-inside: avoid;
+          border: 1px solid #e0e0e0;
+        }
+        .metrics-container {
+          display: flex;
+          flex-wrap: wrap;
+          justify-content: space-around;
+          gap: 10px;
+        }
+        .metric { 
+          flex: 1;
+          min-width: 120px;
+          text-align: center; 
+          padding: 10px;
+          border-radius: 4px;
+          background: white;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .metric-value { 
+          font-size: 18px; 
+          font-weight: bold; 
+          color: #1976d2;
+          display: block;
+          margin-bottom: 5px;
+        }
+        .metric-label { 
+          font-size: 11px; 
+          color: #666; 
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+        .section { 
+          margin-bottom: 30px; 
+          page-break-inside: avoid;
+        }
+        .section h2 { 
+          color: #1976d2; 
+          border-bottom: 2px solid #1976d2; 
+          padding-bottom: 10px;
+          font-size: 16px;
+          margin-top: 0;
+        }
+        table { 
+          width: 100%; 
+          border-collapse: collapse; 
+          margin-top: 15px;
+          border: 1px solid #ddd;
+        }
+        th, td { 
+          padding: 8px 12px; 
+          text-align: left; 
+          border-bottom: 1px solid #ddd;
+          font-size: 11px;
+        }
+        th { 
+          background-color: #1976d2;
+          color: white;
+          font-weight: bold;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+        tr:nth-child(even) {
+          background-color: #f9f9f9;
+        }
+        .insight { 
+          background: #e3f2fd; 
+          padding: 15px; 
+          border-left: 4px solid #1976d2; 
+          margin: 10px 0;
+          border-radius: 4px;
+          page-break-inside: avoid;
+        }
+        .insight strong {
+          color: #1976d2;
+          display: block;
+          margin-bottom: 5px;
+        }
+        .positive { color: #4caf50; font-weight: bold; }
+        .negative { color: #f44336; font-weight: bold; }
+        .warning { color: #ff9800; font-weight: bold; }
+        .footer {
+          margin-top: 40px;
+          text-align: center;
+          color: #666;
+          font-size: 10px;
+          border-top: 1px solid #e0e0e0;
+          padding-top: 20px;
+        }
+        .chart-placeholder {
+          background: linear-gradient(45deg, #f0f0f0, #e0e0e0);
+          height: 200px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 8px;
+          margin: 15px 0;
+          border: 2px dashed #ccc;
+        }
+        @media print {
+          body { margin: 0; }
+          .section { page-break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Financial Analytics Report</h1>
+        <p><strong>Period:</strong> Last 30 Days Financial Report</p>
+        <p><strong>Card:</strong> Premium Rewards Card</p>
+        <p><strong>Generated:</strong> Friday, October 3, 2025</p>
+    </div>
+
+    <div class="summary">
+        <h2>Executive Summary</h2>
+        <div class="metrics-container">
+            <div class="metric">
+                <span class="metric-value">GH₵15,200</span>
+                <span class="metric-label">Current Balance</span>
+            </div>
+            <div class="metric">
+                <span class="metric-value positive">GH₵12,500</span>
+                <span class="metric-label">Total Income</span>
+            </div>
+            <div class="metric">
+                <span class="metric-value negative">GH₵8,750.5</span>
+                <span class="metric-label">Total Expenses</span>
+            </div>
+            <div class="metric">
+                <span class="metric-value positive">GH₵3,749.5</span>
+                <span class="metric-label">Net Savings</span>
+            </div>
+            <div class="metric">
+                <span class="metric-value">45</span>
+                <span class="metric-label">Total Transactions</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Transaction Analysis</h2>
+        <table>
+            <tr>
+                <th>Transaction Type</th>
+                <th>Count</th>
+                <th>Total Amount</th>
+                <th>% of Total</th>
+                <th>Avg per Transaction</th>
+            </tr>
+            
+                <tr>
+                    <td><strong>Purchase</strong></td>
+                    <td>32</td>
+                    <td>GH₵7,200</td>
+                    <td>82.3%</td>
+                    <td>GH₵225.00</td>
+                </tr>
+            
+                <tr>
+                    <td><strong>Online Payment</strong></td>
+                    <td>8</td>
+                    <td>GH₵1,250.5</td>
+                    <td>14.3%</td>
+                    <td>GH₵156.31</td>
+                </tr>
+            
+                <tr>
+                    <td><strong>ATM Withdrawal</strong></td>
+                    <td>5</td>
+                    <td>GH₵300</td>
+                    <td>3.4%</td>
+                    <td>GH₵60.00</td>
+                </tr>
+            
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>Spending by Category</h2>
+        <table>
+            <tr>
+                <th>Category</th>
+                <th>Transactions</th>
+                <th>Amount Spent</th>
+                <th>% of Budget</th>
+                <th>Avg per Transaction</th>
+            </tr>
+            
+                <tr>
+                    <td><strong>Groceries & Food</strong></td>
+                    <td>12</td>
+                    <td>GH₵2,800</td>
+                    <td>32.0%</td>
+                    <td>GH₵233.33</td>
+                </tr>
+            
+                <tr>
+                    <td><strong>Transportation</strong></td>
+                    <td>8</td>
+                    <td>GH₵1,950</td>
+                    <td>22.3%</td>
+                    <td>GH₵243.75</td>
+                </tr>
+            
+                <tr>
+                    <td><strong>Entertainment</strong></td>
+                    <td>6</td>
+                    <td>GH₵1,200.5</td>
+                    <td>13.7%</td>
+                    <td>GH₵200.08</td>
+                </tr>
+            
+                <tr>
+                    <td><strong>Utilities</strong></td>
+                    <td>4</td>
+                    <td>GH₵980</td>
+                    <td>11.2%</td>
+                    <td>GH₵245.00</td>
+                </tr>
+            
+                <tr>
+                    <td><strong>Healthcare</strong></td>
+                    <td>3</td>
+                    <td>GH₵675</td>
+                    <td>7.7%</td>
+                    <td>GH₵225.00</td>
+                </tr>
+            
+                <tr>
+                    <td><strong>Shopping</strong></td>
+                    <td>12</td>
+                    <td>GH₵1,145</td>
+                    <td>13.1%</td>
+                    <td>GH₵95.42</td>
+                </tr>
+            
+        </table>
+    </div>
+
+    
+    <div class="section">
+        <h2>Visual Analytics</h2>
+        <div class="chart-placeholder">
+            <div style="text-align: center; color: #666;">
+                <p><strong>📊 Chart Visualization</strong></p>
+                <p>In the mobile app, this section would contain:</p>
+                <p>• Spending trend charts<br>• Category breakdown pie chart<br>• Monthly comparison graphs</p>
+            </div>
+        </div>
+    </div>
+    
+
+    
+    <div class="section">
+        <h2>AI-Powered Financial Insights</h2>
+        
+            <div class="insight">
+                <strong>Excellent Financial Health! 💰</strong>
+                <p>Outstanding! You saved GH₵3,749.50 this month, showing strong financial discipline and smart spending habits.</p>
+            </div>
+        
+            <div class="insight">
+                <strong>Food & Groceries Focus</strong>
+                <p>Your largest expense category is Groceries & Food at 32.0% of total spending. This is within a healthy range for most budgets.</p>
+            </div>
+        
+            <div class="insight">
+                <strong>Spending Pattern Analysis</strong>
+                <p>Your average daily spending of GH₵283.24 is well-controlled. Consider setting aside your surplus for long-term savings or investments.</p>
+            </div>
+        
+            <div class="insight">
+                <strong>Strong Account Balance</strong>
+                <p>Your current balance of GH₵15,200.00 provides excellent financial cushioning. Great work on maintaining healthy cash reserves!</p>
+            </div>
+        
+    </div>
+    
+
+    <div class="section">
+        <h2>Daily Activity Summary</h2>
+        <table>
+            <tr>
+                <th>Date</th>
+                <th>Transactions</th>
+                <th>Total Activity</th>
+                <th>Income</th>
+                <th>Expenses</th>
+            </tr>
+            
+                <tr>
+                    <td>1/1/2024</td>
+                    <td>4</td>
+                    <td>GH₵890</td>
+                    <td class="positive">GH₵1,200</td>
+                    <td class="negative">GH₵310</td>
+                </tr>
+            
+                <tr>
+                    <td>1/2/2024</td>
+                    <td>3</td>
+                    <td>GH₵650</td>
+                    <td class="positive">GH₵0</td>
+                    <td class="negative">GH₵650</td>
+                </tr>
+            
+                <tr>
+                    <td>1/3/2024</td>
+                    <td>2</td>
+                    <td>GH₵1,200</td>
+                    <td class="positive">GH₵1,200</td>
+                    <td class="negative">GH₵0</td>
+                </tr>
+            
+                <tr>
+                    <td>1/4/2024</td>
+                    <td>5</td>
+                    <td>GH₵420.75</td>
+                    <td class="positive">GH₵0</td>
+                    <td class="negative">GH₵420.75</td>
+                </tr>
+            
+                <tr>
+                    <td>1/5/2024</td>
+                    <td>1</td>
+                    <td>GH₵85</td>
+                    <td class="positive">GH₵0</td>
+                    <td class="negative">GH₵85</td>
+                </tr>
+            
+        </table>
+    </div>
+
+    <div class="footer">
+        <p><strong>🏦 Bank App Analytics Report</strong></p>
+        <p>Generated on 10/3/2025, 4:18:48 PM • Confidential Financial Document</p>
+        <p>This report contains sensitive financial information. Handle with care and maintain confidentiality.</p>
+        <p style="margin-top: 10px; font-style: italic;">
+            PDF generated using expo-print in React Native/Expo environment
+        </p>
+    </div>
+</body>
+</html>
+  

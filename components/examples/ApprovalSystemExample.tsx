@@ -268,15 +268,15 @@ const ApprovalSystemExample: React.FC = () => {
         <Text style={styles.sectionTitle}>Approval Thresholds</Text>
         <View style={styles.thresholdItem}>
           <Text style={styles.thresholdType}>Deposits</Text>
-          <Text style={styles.thresholdValue}>> ₵1,000 (PIN)</Text>
+          <Text style={styles.thresholdValue}>&gt; ₵1,000 (PIN)</Text>
         </View>
         <View style={styles.thresholdItem}>
           <Text style={styles.thresholdType}>Withdrawals</Text>
-          <Text style={styles.thresholdValue}>> ₵500 (Biometric)</Text>
+          <Text style={styles.thresholdValue}>&gt; ₵500 (Biometric)</Text>
         </View>
         <View style={styles.thresholdItem}>
           <Text style={styles.thresholdType}>Transfers</Text>
-          <Text style={styles.thresholdValue}>> ₵1,000 (PIN)</Text>
+          <Text style={styles.thresholdValue}>&gt; ₵1,000 (PIN)</Text>
         </View>
       </View>
 

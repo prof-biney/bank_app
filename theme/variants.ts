@@ -2,7 +2,7 @@ import { StyleSheet } from 'react-native';
 import { ThemeColors } from '@/context/ThemeContext';
 import { withAlpha, chooseReadableText, createMutedColor, createVibrancColor, getDisabledColors } from '@/theme/color-utils';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
 export function getButtonStyles(colors: ThemeColors, opts: { variant?: ButtonVariant; size?: ButtonSize; disabled?: boolean } = {}) {
@@ -35,6 +35,11 @@ export function getButtonStyles(colors: ThemeColors, opts: { variant?: ButtonVar
     case 'danger':
       backgroundColor = disabled ? createMutedColor(colors.negative, colors.background) : colors.negative;
       textColor = disabled ? createMutedColor('#FFFFFF', colors.background) : '#FFFFFF';
+      break;
+    case 'outline':
+      backgroundColor = 'transparent';
+      borderColor = disabled ? createMutedColor(colors.tintPrimary, colors.background) : colors.tintPrimary;
+      textColor = disabled ? createMutedColor(colors.tintPrimary, colors.background) : colors.tintPrimary;
       break;
   }
 

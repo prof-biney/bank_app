@@ -6,6 +6,7 @@ import { useApp } from '@/context/AppContext';
 import { Transaction } from '@/types';
 import { withAlpha } from '@/theme/color-utils';
 import CustomButton from '@/components/CustomButton';
+import { logger } from '@/lib/logger';
 
 type Period = 'week' | 'month' | 'year';
 
@@ -134,35 +135,88 @@ export function TransactionAnalytics({ cardId }: TransactionAnalyticsProps = {})
       .filter(t => t.amount < 0)
       .reduce((sum, t) => sum + Math.abs(t.amount), 0);
 
-    // Category breakdown for pie chart
+    // Category breakdown for pie chart - improved processing
     const categoryMap = new Map<string, number>();
-    filteredTransactions
-      .filter(t => t.amount < 0) // Only expenses for pie chart
-      .forEach(transaction => {
-        const category = transaction.category || 'Other';
-        const amount = Math.abs(transaction.amount);
-        categoryMap.set(category, (categoryMap.get(category) || 0) + amount);
-      });
+    
+    // Process all expense transactions (negative amounts)
+    const expenseTransactions = filteredTransactions.filter(t => {
+      // Handle both negative amounts and specific expense types
+      return t.amount < 0 || 
+             ['withdrawal', 'payment', 'purchase', 'fee', 'transfer'].includes(t.type?.toLowerCase());
+    });
+    
+    logger.info('ANALYTICS', 'Processing expense transactions for pie chart', {
+      totalTransactions: filteredTransactions.length,
+      expenseTransactions: expenseTransactions.length,
+      cardFilter: targetCardId
+    });
+    
+    expenseTransactions.forEach(transaction => {
+      // Normalize category names and provide meaningful defaults
+      let category = transaction.category || transaction.type || 'Other';
+      
+      // Standardize category names for better grouping
+      category = category.charAt(0).toUpperCase() + category.slice(1).toLowerCase();
+      
+      // Map common transaction types to expense categories
+      const categoryMapping: Record<string, string> = {
+        'withdrawal': 'Cash Withdrawal',
+        'transfer': 'Money Transfer',
+        'payment': 'Payment',
+        'purchase': 'Purchase',
+        'fee': 'Fees & Charges',
+        'subscription': 'Subscriptions',
+        'food': 'Food & Dining',
+        'transport': 'Transportation',
+        'entertainment': 'Entertainment',
+        'shopping': 'Shopping',
+        'utilities': 'Utilities',
+        'healthcare': 'Healthcare',
+        'education': 'Education',
+      };
+      
+      const mappedCategory = categoryMapping[category.toLowerCase()] || category;
+      const amount = Math.abs(transaction.amount);
+      
+      categoryMap.set(mappedCategory, (categoryMap.get(mappedCategory) || 0) + amount);
+    });
 
+    // Enhanced color palette for better visual distinction
     const categoryColors = [
-      colors.tintPrimary,
-      colors.positive,
-      colors.warning,
-      colors.negative,
-      colors.info,
-      withAlpha(colors.tintPrimary, 0.7),
-      withAlpha(colors.positive, 0.7),
-      withAlpha(colors.warning, 0.7),
+      colors.tintPrimary,     // Primary brand color
+      colors.negative,        // Red for major expenses
+      colors.warning,         // Orange/yellow for moderate expenses
+      colors.positive,        // Green for positive categories
+      colors.info,            // Blue for informational
+      '#FF6B6B',              // Coral red
+      '#4ECDC4',              // Teal
+      '#45B7D1',              // Sky blue
+      '#96CEB4',              // Mint green
+      '#FFEAA7',              // Light yellow
+      '#DDA0DD',              // Plum
+      '#98D8C8',              // Mint
     ];
 
+    // Create category breakdown with improved data structure
     const categoryBreakdown = Array.from(categoryMap.entries())
       .sort(([, a], [, b]) => b - a)
-      .slice(0, 8) // Limit to top 8 categories
-      .map(([name, amount], index) => ({
-        name,
-        amount,
-        color: categoryColors[index] || colors.textSecondary,
-      }));
+      .slice(0, 8) // Limit to top 8 categories to avoid overcrowding
+      .map(([name, amount], index) => {
+        const percentage = totalExpenses > 0 ? ((amount / totalExpenses) * 100) : 0;
+        return {
+          name: name.length > 15 ? name.substring(0, 15) + '...' : name, // Truncate long names
+          amount,
+          percentage: percentage.toFixed(1),
+          color: categoryColors[index] || colors.textSecondary,
+          displayName: `${name} (${percentage.toFixed(1)}%)`,
+        };
+      });
+    
+    logger.info('ANALYTICS', 'Category breakdown processed', {
+      categories: categoryBreakdown.length,
+      totalCategorizedAmount: categoryBreakdown.reduce((sum, cat) => sum + cat.amount, 0),
+      topCategory: categoryBreakdown[0]?.name,
+    });
 
     return {
       labels,

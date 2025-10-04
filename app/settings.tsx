@@ -13,6 +13,7 @@ import { useBiometricMessages } from "@/context/BiometricToastContext";
 import { checkBiometricAvailability, BiometricAvailability } from "@/lib/biometric/biometric.service";
 import { useAlert } from "@/context/AlertContext";
 import ConfirmDialog from "@/components/modals/ConfirmDialog";
+import { logger } from '@/lib/logger';
 
 export default function SettingsScreen() {
   const { colors, transitionStyle } = useTheme();
@@ -60,7 +61,7 @@ export default function SettingsScreen() {
         router.push('/(tabs)/profile');
       }
     } catch (error) {
-      console.error('Navigation error:', error);
+      logger.error('SCREEN', 'Navigation error:', error);
       // Last resort fallback to profile
       router.replace('/(tabs)/profile');
     }
@@ -86,7 +87,7 @@ export default function SettingsScreen() {
           setSelectedLanguage(languageValue);
         }
       } catch (error) {
-        console.error('Error loading settings:', error);
+        logger.error('SCREEN', 'Error loading settings:', error);
       }
     };
     
@@ -120,7 +121,7 @@ export default function SettingsScreen() {
       
       setBiometricAvailability(availability);
     } catch (error) {
-      console.error('Error initializing biometric state:', error);
+      logger.error('SCREEN', 'Error initializing biometric state:', error);
       // Don't show error immediately on screen load
       setTimeout(() => {
         biometricMessages.genericError('check biometric availability');
@@ -151,13 +152,13 @@ export default function SettingsScreen() {
         const result = await setupBiometric();
         
         if (result.success) {
-          biometricMessages.setupSuccess(result.biometricType);
+          biometricMessages.setupSuccess(result.biometricType || undefined);
         } else {
           // Setup failed or was canceled
           biometricMessages.setupFailed(result.error);
         }
       } catch (error) {
-        console.error('Error setting up biometrics:', error);
+        logger.error('SCREEN', 'Error setting up biometrics:', error);
         biometricMessages.setupFailed('An unexpected error occurred during setup');
       } finally {
         setIsSettingUpBiometric(false);
@@ -175,7 +176,7 @@ export default function SettingsScreen() {
       await disableBiometric();
       biometricMessages.authDisabled();
     } catch (error) {
-      console.error('Error disabling biometrics:', error);
+      logger.error('SCREEN', 'Error disabling biometrics:', error);
       biometricMessages.genericError('disable biometric authentication');
     }
   };

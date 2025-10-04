@@ -11,7 +11,13 @@ export interface UpdateTransactionData {
 
 function getUserId() {
   const { user } = useAuthStore.getState();
-  return (user as any)?.$id || (user as any)?.id;
+  if (!user) {
+    logger.warn('TRANSACTION_SERVICE', 'No user found in auth store');
+    return null;
+  }
+  const userId = (user as any)?.$id || (user as any)?.id;
+  logger.info('TRANSACTION_SERVICE', 'Resolved user ID:', { userId, userObj: user });
+  return userId;
 }
 
 export async function createAppwriteTransaction(tx: Omit<Transaction, 'id'>): Promise<Transaction> {
@@ -61,11 +67,23 @@ export async function queryAppwriteTransactions(options: { limit?: number; offse
   if (!databaseId || !transactionsCollectionId) throw new Error('Transactions collection not configured');
   const userId = getUserId();
   
+  logger.info('TRANSACTION_SERVICE', '[queryAppwriteTransactions] Query params:', {
+    databaseId,
+    collectionId: transactionsCollectionId,
+    userId,
+    options
+  });
+  
   const queries: any[] = [];
   
   // Add user filter if userId exists
   if (userId) {
     queries.push(Query.equal('userId', userId));
+    logger.info('TRANSACTION_SERVICE', 'Adding user filter to query:', { userId });
+  } else {
+    logger.warn('TRANSACTION_SERVICE', 'No userId available - query may return no results');
+    // Add a filter that will return no results to prevent showing other users' transactions
+    queries.push(Query.equal('userId', '__NO_USER__'));
   }
   
   // Add limit query
@@ -82,6 +100,13 @@ export async function queryAppwriteTransactions(options: { limit?: number; offse
   queries.push(Query.orderDesc('$createdAt'));
   
   const resp = await databases.listDocuments(databaseId, transactionsCollectionId, queries);
+  
+  logger.info('TRANSACTION_SERVICE', '[queryAppwriteTransactions] Response:', {
+    total: resp.total,
+    documentsCount: resp.documents?.length || 0,
+    sampleDocuments: resp.documents?.slice(0, 2) || []
+  });
+  
   return resp;
 }
 

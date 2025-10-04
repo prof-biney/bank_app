@@ -44,7 +44,7 @@ export function SplashScreenProvider({
     isCompleting: false,
   });
 
-  const autoHideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const autoHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const completionPromiseRef = useRef<Promise<void> | null>(null);
   const completionResolveRef = useRef<(() => void) | null>(null);
 

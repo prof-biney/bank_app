@@ -47,7 +47,7 @@ export interface UseBiometricAuthResult {
 
 export const useBiometricAuth = (): UseBiometricAuthResult => {
   const biometricMessages = useBiometricMessages();
-  const timeoutRef = useRef<NodeJS.Timeout>();
+  const timeoutRef = useRef<ReturnType<typeof setTimeout>>();
   
   const {
     biometricEnabled,
@@ -68,7 +68,7 @@ export const useBiometricAuth = (): UseBiometricAuthResult => {
   });
 
   // Clear timeout on unmount
-  const clearTimeout = useCallback(() => {
+  const clearTimeoutRef = useCallback(() => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = undefined;
@@ -77,7 +77,7 @@ export const useBiometricAuth = (): UseBiometricAuthResult => {
 
   // Reset state to idle
   const reset = useCallback(() => {
-    clearTimeout();
+    clearTimeoutRef();
     setState({
       stage: 'idle',
       buttonState: 'idle',
@@ -86,7 +86,7 @@ export const useBiometricAuth = (): UseBiometricAuthResult => {
       availability: null,
       progress: 0,
     });
-  }, [clearTimeout]);
+  }, [clearTimeoutRef]);
 
   // Set stage with automatic timeout
   const setStage = useCallback((
@@ -99,7 +99,7 @@ export const useBiometricAuth = (): UseBiometricAuthResult => {
       nextStage?: BiometricStage;
     }
   ) => {
-    clearTimeout();
+    clearTimeoutRef();
     
     setState(prev => ({
       ...prev,
@@ -125,7 +125,7 @@ export const useBiometricAuth = (): UseBiometricAuthResult => {
         }));
       }, options.timeout);
     }
-  }, [clearTimeout]);
+  }, [clearTimeoutRef]);
 
   // Check biometric availability
   const checkAvailability = useCallback(async () => {
@@ -181,7 +181,7 @@ export const useBiometricAuth = (): UseBiometricAuthResult => {
           nextStage: 'idle'
         });
         
-        biometricMessages.authSuccess(biometricType);
+        biometricMessages.authSuccess(biometricType || undefined);
         return;
       } else {
         setStage('error', { 
@@ -194,7 +194,7 @@ export const useBiometricAuth = (): UseBiometricAuthResult => {
         if (result.requiresPasswordLogin) {
           biometricMessages.fallbackToPassword(result.error);
         } else {
-          biometricMessages.authFailed(biometricType, result.error);
+          biometricMessages.authFailed(biometricType || undefined, result.error);
         }
       }
     } catch (error) {
@@ -229,7 +229,7 @@ export const useBiometricAuth = (): UseBiometricAuthResult => {
           nextStage: 'idle'
         });
         
-        biometricMessages.setupSuccess(result.biometricType);
+        biometricMessages.setupSuccess(result.biometricType || undefined);
         return true;
       } else {
         setStage('error', { 

@@ -35,6 +35,7 @@ export default function DepositScreen() {
   const [step, setStep] = useState<
     "select-card" | "enter-details" | "mobile-money" | "confirm-deposit" | "escrow-instructions" | "processing"
   >("select-card");
+  const [isConfirming, setIsConfirming] = useState(false);
   
   // Mobile money specific state
   const [mobileNetwork, setMobileNetwork] = useState<MobileNetwork>('mtn');
@@ -146,9 +147,27 @@ export default function DepositScreen() {
       });
       
       if (result.success && result.data) {
-        setDepositId(result.data.id);
-        setEscrowInstructions(result.data.instructions);
-        setExpiresAt(result.data.expiresAt);
+        setDepositId(result.data.depositId || result.data.id || `DEP-${Date.now()}`);
+        
+        // Set fallback instructions if none provided
+        const instructions = result.data.instructions || {
+          method: `${getNetworkInfo(mobileNetwork).name} Mobile Money`,
+          steps: [
+            `Dial ${getNetworkInfo(mobileNetwork).ussd} (${getNetworkInfo(mobileNetwork).name} Mobile Money USSD code)`,
+            'Select "Send Money" or "Transfer"',
+            `Enter the merchant number or recipient details`,
+            `Enter amount: GHS ${parseFloat(amount).toFixed(2)}`,
+            `Enter your Mobile Money PIN`,
+            'Confirm the transaction',
+            'You will receive a confirmation SMS',
+            'Click "I\'ve Made Payment" below after completing the transaction'
+          ],
+          reference: reference || `DEP-${Date.now().toString().slice(-8)}`,
+          estimatedTime: '2-5 minutes'
+        };
+        
+        setEscrowInstructions(instructions);
+        setExpiresAt(result.data.expiresAt || new Date(Date.now() + 30 * 60 * 1000).toISOString()); // 30 mins default
         setStep("escrow-instructions");
         
         showAlertWithNotification(
@@ -174,7 +193,7 @@ export default function DepositScreen() {
       return;
     }
 
-    setStep("processing");
+    setIsConfirming(true);
     const loadingId = startLoading('deposit', 'Confirming payment and updating balance...');
     
     try {
@@ -184,6 +203,7 @@ export default function DepositScreen() {
       });
       
       if (result.success && result.data) {
+        // Show success alert and navigate to home
         showAlertWithNotification(
           showAlert,
           'success', 
@@ -191,10 +211,10 @@ export default function DepositScreen() {
           'Deposit Completed'
         );
         
-        // Navigate back after a short delay
+        // Navigate to home screen after a short delay
         setTimeout(() => {
-          router.back();
-        }, 2000);
+          router.push('/(tabs)');
+        }, 1500);
       } else {
         showAlertWithNotification(showAlert, 'error', result.error || 'Deposit confirmation failed.', 'Deposit Failed');
         setStep("escrow-instructions"); // Go back to instructions
@@ -205,6 +225,7 @@ export default function DepositScreen() {
       setStep("escrow-instructions"); // Go back to instructions
     } finally {
       stopLoading(loadingId);
+      setIsConfirming(false);
     }
   };
 
@@ -576,7 +597,7 @@ export default function DepositScreen() {
             <View style={styles.instructionsHeader}>
               <Clock color={colors.warning} size={24} />
               <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginBottom: 8 }]}>
-                Payment Instructions
+                Complete Your Payment
               </Text>
               <Text style={[styles.expiryText, { color: colors.warning }]}>
                 {formatTimeRemaining(expiresAt)}
@@ -584,35 +605,74 @@ export default function DepositScreen() {
             </View>
 
             <ScrollView style={styles.instructionsScroll}>
-              {escrowInstructions && (
-                <View style={[styles.instructionsSection, { backgroundColor: colors.card }]}>
-                  <Text style={[styles.instructionsTitle, { color: colors.textPrimary }]}>
-                    {escrowInstructions.method}
-                  </Text>
-                  
-                  <View style={styles.stepsContainer}>
-                    {escrowInstructions.steps.map((step: string, index: number) => (
-                      <View key={index} style={styles.stepItem}>
-                        <View style={[styles.stepNumber, { backgroundColor: colors.tintPrimary }]}>
-                          <Text style={styles.stepNumberText}>{index + 1}</Text>
-                        </View>
-                        <Text style={[styles.stepText, { color: colors.textPrimary }]}>{step}</Text>
-                      </View>
-                    ))}
-                  </View>
-
-                  {escrowInstructions.reference && (
-                    <View style={[styles.referenceBox, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
-                      <Text style={[styles.referenceLabel, { color: colors.textSecondary }]}>Reference Code:</Text>
-                      <Text style={[styles.referenceCode, { color: colors.textPrimary }]}>{escrowInstructions.reference}</Text>
-                    </View>
-                  )}
-
-                  <Text style={[styles.estimatedTime, { color: colors.textSecondary }]}>
-                    Estimated processing time: {escrowInstructions.estimatedTime}
-                  </Text>
+              {/* Deposit Summary Section */}
+              <View style={[styles.depositSummary, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Text style={[styles.depositSummaryTitle, { color: colors.textPrimary }]}>Deposit Summary</Text>
+                
+                <View style={styles.summaryRow}>
+                  <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Amount to Pay</Text>
+                  <Text style={[styles.depositAmount, { color: colors.positive }]}>GHS {parseFloat(amount || '0').toFixed(2)}</Text>
                 </View>
-              )}
+                
+                <View style={styles.summaryRow}>
+                  <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>To Card</Text>
+                  <View style={styles.summaryCardInfo}>
+                    <Text style={[styles.summaryValue, { color: colors.textPrimary }]}>{activeCard?.cardHolderName}</Text>
+                    <Text style={[styles.summarySecondary, { color: colors.textSecondary }]}>{activeCard?.cardNumber}</Text>
+                  </View>
+                </View>
+                
+                {escrowMethod === 'mobile_money' && (
+                  <View style={styles.summaryRow}>
+                    <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Payment Method</Text>
+                    <View style={styles.summaryCardInfo}>
+                      <Text style={[styles.summaryValue, { color: colors.textPrimary }]}>{getNetworkInfo(mobileNetwork).name}</Text>
+                      <Text style={[styles.summarySecondary, { color: colors.textSecondary }]}>{formatPhoneForDisplay(mobileNumber)}</Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+              <View style={[styles.instructionsSection, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1 }]}>
+                <Text style={[styles.instructionsTitle, { color: colors.textPrimary }]}>
+                  Follow these steps to complete your payment:
+                </Text>
+                <Text style={[styles.paymentMethod, { color: colors.tintPrimary }]}>
+                  {escrowInstructions?.method || `${getNetworkInfo(mobileNetwork).name} Mobile Money`}
+                </Text>
+                
+                <View style={styles.stepsContainer}>
+                  {(escrowInstructions?.steps || [
+                    `Dial ${getNetworkInfo(mobileNetwork).ussd} (${getNetworkInfo(mobileNetwork).name} USSD code)`,
+                    'Select "Send Money" or "Transfer"', 
+                    'Enter the merchant details',
+                    `Enter amount: GHS ${parseFloat(amount || '0').toFixed(2)}`,
+                    'Enter your Mobile Money PIN',
+                    'Confirm the transaction',
+                    'You will receive a confirmation SMS',
+                    'Click "I\'ve Made Payment" below'
+                  ]).map((step: string, index: number) => (
+                    <View key={index} style={styles.stepItem}>
+                      <View style={[styles.stepNumber, { backgroundColor: colors.tintPrimary }]}>
+                        <Text style={styles.stepNumberText}>{index + 1}</Text>
+                      </View>
+                      <Text style={[styles.stepText, { color: colors.textPrimary }]}>{step}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                {(escrowInstructions?.reference || reference) && (
+                  <View style={[styles.referenceBox, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
+                    <Text style={[styles.referenceLabel, { color: colors.textSecondary }]}>Reference Code:</Text>
+                    <Text style={[styles.referenceCode, { color: colors.textPrimary }]}>
+                      {escrowInstructions?.reference || reference || `DEP-${Date.now().toString().slice(-8)}`}
+                    </Text>
+                  </View>
+                )}
+
+                <Text style={[styles.estimatedTime, { color: colors.textSecondary }]}>
+                  Estimated processing time: {escrowInstructions?.estimatedTime || '2-5 minutes'}
+                </Text>
+              </View>
             </ScrollView>
 
             <View style={styles.instructionsButtons}>
@@ -620,15 +680,16 @@ export default function DepositScreen() {
                 title="Cancel Deposit"
                 variant="secondary"
                 onPress={() => {
-                  // Use in-app alert to keep UI consistent (non-blocking)
-                  showAlert('warning', 'Are you sure you want to cancel this deposit request?', 'Cancel Deposit');
+                  // Route to home screen when cancel is pressed
+                  router.push('/(tabs)');
                 }}
                 style={styles.cancelButton}
               />
               <CustomButton
-                title="I've Made Payment"
+                title={isConfirming ? "Processing..." : "I've Made Payment"}
                 variant="primary"
                 onPress={handleConfirmPayment}
+                disabled={isConfirming}
                 style={styles.confirmPaymentButton}
               />
             </View>
@@ -988,5 +1049,27 @@ const styles = StyleSheet.create({
   },
   emptyStateCTA: {
     minWidth: 140,
+  },
+  depositSummary: {
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
+    borderWidth: 1,
+  },
+  depositSummaryTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 16,
+    textAlign: "center",
+  },
+  depositAmount: {
+    fontSize: 20,
+    fontWeight: "bold",
+  },
+  paymentMethod: {
+    fontSize: 16,
+    fontWeight: "600",
+    textAlign: "center",
+    marginBottom: 16,
   },
 });

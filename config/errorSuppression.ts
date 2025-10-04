@@ -7,6 +7,7 @@
  */
 
 import { LogBox } from 'react-native';
+import { logger } from '@/lib/logger';
 
 /**
  * Configure error suppression for the app
@@ -117,7 +118,7 @@ export function configureGlobalErrorHandlers() {
   if (typeof global.HermesInternal?.setPromiseRejectionTracker === 'function') {
     global.HermesInternal.setPromiseRejectionTracker((id: number, rejection: any) => {
       if (__DEV__) {
-        console.warn('Unhandled promise rejection:', rejection);
+        logger.warn('CONFIG', 'Unhandled promise rejection:', rejection);
       }
       // In production, silently handle the rejection
     });
@@ -128,13 +129,14 @@ export function configureGlobalErrorHandlers() {
   
   ErrorUtils.setGlobalHandler((error, isFatal) => {
     if (__DEV__) {
-      console.error('Global error handler:', error);
+      logger.error('CONFIG', 'Global error handler:', { error, isFatal });
       // Call original handler in development for debugging
       if (originalErrorHandler) {
         originalErrorHandler(error, isFatal);
       }
     } else {
       // In production, log the error but don't crash the app
+      // Note: Using console.log here is intentional for production error tracking
       console.log('Error occurred in production:', error?.message || 'Unknown error');
     }
   });

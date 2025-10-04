@@ -37,13 +37,13 @@ const faqs: FAQ[] = [
     id: "3",
     question: "How do I add a new card to my account?",
     answer:
-      "Currently, new cards are added through our customer service. Please contact support@yourbankapp.com to add additional cards to your account.",
+      "Currently, new cards are added through our customer service. Please contact support@ahantamanruralbank.com to add additional cards to your account.",
   },
   {
     id: "4",
     question: "What should I do if I notice unauthorized transactions?",
     answer:
-      "Immediately contact our support team at support@yourbankapp.com or call our 24/7 fraud hotline. We will freeze your account and investigate the transactions.",
+      "Immediately contact our support team at support@ahantamanruralbank.com or call our 24/7 fraud hotline. We will freeze your account and investigate the transactions.",
   },
   {
     id: "5",
@@ -63,7 +63,7 @@ export default function HelpSupportScreen() {
 
   const handleEmailSupport = () => {
     Linking.openURL(
-      "mailto:support@yourbankapp.com?subject=Banking App Support"
+      "mailto:support@ahantamanruralbank.com?subject=Ahantaman Rural Bank Support"
     );
   };
 
@@ -98,7 +98,7 @@ export default function HelpSupportScreen() {
                   styles.emailText,
                   { color: pressed ? chooseReadableText(colors.tintPrimary) : colors.tintPrimary },
                 ]}>
-                  support@yourbankapp.com
+                  support@ahantamanruralbank.com
                 </Text>
               </View>
             )}

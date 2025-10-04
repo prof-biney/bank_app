@@ -9,54 +9,21 @@ function getUserId() {
 }
 
 export async function createAppwriteActivityEvent(evt: ActivityEvent): Promise<ActivityEvent> {
-  const { accountUpdatesCollectionId, databaseId } = appwriteConfig;
-  if (!databaseId || !accountUpdatesCollectionId) throw new Error('Activity collection not configured');
-  // Authentication is handled by Appwrite SDK
+  // Stubbed - account_updates collection removed
+  logger.info('ACTIVITY', 'createAppwriteActivityEvent stubbed (account_updates collection removed)');
+  
   const id = ID.unique();
-  const data = { ...evt, userId: getUserId(), createdAt: new Date().toISOString() } as any;
-
-  try {
-  await databases.createDocument(databaseId, accountUpdatesCollectionId, id, data);
-  // Ensure returned event uses the generated id and does not accidentally
-  // include any id field present on the incoming evt object.
   const { id: _maybe, ...rest } = evt as any;
-  return { id, ...rest } as ActivityEvent;
-  } catch (err) {
-    logger.error('ACTIVITY', 'createAppwriteActivityEvent failed', err);
-    throw err;
-  }
+  return { id, ...rest, userId: getUserId(), createdAt: new Date().toISOString() } as ActivityEvent;
 }
 
 export async function queryAppwriteActivityEvents(options: { limit?: number; offset?: number } = {}) {
-  const { accountUpdatesCollectionId, databaseId } = appwriteConfig;
-  if (!databaseId || !accountUpdatesCollectionId) throw new Error('Activity collection not configured');
-  const userId = getUserId();
+  // Stubbed - account_updates collection removed
+  logger.info('ACTIVITY', 'queryAppwriteActivityEvents stubbed (account_updates collection removed)');
   
-  const queries: any[] = [];
-  
-  // Add user filter if userId exists
-  if (userId) {
-    queries.push(Query.equal('userId', userId));
-  }
-  
-  // Add limit query
-  if (options.limit) {
-    queries.push(Query.limit(options.limit));
-  }
-  
-  // Add offset/pagination
-  if (options.offset) {
-    queries.push(Query.offset(options.offset));
-  }
-  
-  // Add ordering by creation date (newest first)
-  queries.push(Query.orderDesc('$createdAt'));
-
-  try {
-    const resp = await databases.listDocuments(databaseId, accountUpdatesCollectionId, queries);
-    return resp;
-  } catch (err) {
-    logger.error('ACTIVITY', 'queryAppwriteActivityEvents failed', err);
-    throw err;
-  }
+  // Return empty response
+  return {
+    documents: [],
+    total: 0,
+  };
 }

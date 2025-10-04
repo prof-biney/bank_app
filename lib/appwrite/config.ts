@@ -33,8 +33,11 @@ export const appwriteConfig = {
   usersCollectionId: getEnvVar(['EXPO_PUBLIC_APPWRITE_USER_COLLECTION_ID', 'APPWRITE_USER_COLLECTION_ID']),
   cardsCollectionId: getEnvVar(['EXPO_PUBLIC_APPWRITE_CARDS_COLLECTION_ID', 'APPWRITE_CARDS_COLLECTION_ID']),
   transactionsCollectionId: getEnvVar(['EXPO_PUBLIC_APPWRITE_TRANSACTIONS_COLLECTION_ID', 'APPWRITE_TRANSACTIONS_COLLECTION_ID']),
-  accountUpdatesCollectionId: getEnvVar(['EXPO_PUBLIC_APPWRITE_ACCOUNT_UPDATES_COLLECTION_ID', 'APPWRITE_ACCOUNT_UPDATES_COLLECTION_ID'], 'account_updates'),
+  // Removed accountUpdatesCollectionId - using users collection for activity logging instead
   notificationsCollectionId: getEnvVar(['EXPO_PUBLIC_APPWRITE_NOTIFICATIONS_COLLECTION_ID', 'APPWRITE_NOTIFICATIONS_COLLECTION_ID']),
+  
+  // Analytics collection (optional)
+  analyticsCollectionId: getEnvVar(['EXPO_PUBLIC_APPWRITE_ANALYTICS_COLLECTION_ID', 'APPWRITE_ANALYTICS_COLLECTION_ID'], 'analytics_events'),
   
   // Biometric collections (optional - will use fallback names if not configured)
   biometricTokensCollectionId: getEnvVar(['EXPO_PUBLIC_APPWRITE_BIOMETRIC_TOKENS_COLLECTION_ID', 'APPWRITE_BIOMETRIC_TOKENS_COLLECTION_ID'], 'biometric_tokens'),
@@ -159,12 +162,13 @@ export const collections = {
     id: appwriteConfig.transactionsCollectionId,
     databaseId: appwriteConfig.databaseId,
   },
-  accountUpdates: {
-    id: appwriteConfig.accountUpdatesCollectionId,
-    databaseId: appwriteConfig.databaseId,
-  },
+  // Removed accountUpdates - using users collection for activity logging instead
   notifications: {
     id: appwriteConfig.notificationsCollectionId,
+    databaseId: appwriteConfig.databaseId,
+  },
+  analytics: {
+    id: appwriteConfig.analyticsCollectionId,
     databaseId: appwriteConfig.databaseId,
   },
   biometricTokens: {
@@ -203,12 +207,102 @@ export const createRealtimeSubscription = (
  * Storage helper for file operations
  */
 export const storageHelpers = {
-  uploadFile: async (file: File | Blob, fileId?: string) => {
+  uploadFile: async (file: File | Blob | string, fileId?: string) => {
     try {
       const id = fileId || AppwriteID.unique();
-      const result = await storage.createFile(appwriteConfig.storageBucketId, id, file);
-      logger.info('APPWRITE_STORAGE', 'File uploaded', { fileId: result.$id });
-      return result;
+      
+      // Handle React Native image URI
+      if (typeof file === 'string') {
+        try {
+          // Convert React Native URI to File-like object that Appwrite SDK can handle
+          const response = await fetch(file);
+          const blob = await response.blob();
+          
+          // Create a File-like object from the blob
+          const fileName = `profile-${id}.jpg`;
+          const fileObject = new File([blob], fileName, { type: 'image/jpeg' });
+          
+          // Use the standard Appwrite SDK method
+          const result = await storage.createFile(
+            appwriteConfig.storageBucketId, 
+            id, 
+            fileObject
+          );
+          
+          logger.info('APPWRITE_STORAGE', 'React Native file uploaded via SDK', { 
+            fileId: result.$id,
+            fileName: result.name,
+            size: result.sizeOriginal,
+          });
+          return result;
+        } catch (sdkError) {
+          logger.warn('APPWRITE_STORAGE', 'SDK upload failed, trying REST API fallback', sdkError);
+          
+          // Fallback to REST API approach
+          try {
+            // Get current session for authentication
+            let sessionId = '';
+            try {
+              const currentSession = await account.getSession('current');
+              sessionId = currentSession.$id;
+            } catch (sessionError) {
+              logger.error('APPWRITE_STORAGE', 'Failed to get session for file upload', sessionError);
+              throw new Error('Authentication required for file upload');
+            }
+            
+            // Create FormData for React Native file upload
+            const formData = new FormData();
+            formData.append('fileId', id);
+            formData.append('file', {
+              uri: file,
+              type: 'image/jpeg',
+              name: `profile-${id}.jpg`,
+            } as any);
+            
+            // Use fetch to upload via Appwrite REST API with authentication
+            const uploadResponse = await fetch(
+              `${appwriteConfig.endpoint}/storage/buckets/${appwriteConfig.storageBucketId}/files`,
+              {
+                method: 'POST',
+                headers: {
+                  'X-Appwrite-Project': appwriteConfig.projectId,
+                  'X-Appwrite-Session': sessionId,
+                },
+                body: formData,
+              }
+            );
+            
+            if (!uploadResponse.ok) {
+              const errorText = await uploadResponse.text();
+              logger.error('APPWRITE_STORAGE', 'REST API upload also failed', {
+                status: uploadResponse.status,
+                statusText: uploadResponse.statusText,
+                errorResponse: errorText,
+              });
+              throw new Error(`Both SDK and REST API upload failed. Last error: ${uploadResponse.statusText} - ${errorText}`);
+            }
+            
+            const result = await uploadResponse.json();
+            logger.info('APPWRITE_STORAGE', 'React Native file uploaded via REST API fallback', { 
+              fileId: result.$id,
+              fileName: result.name,
+              size: result.sizeOriginal,
+            });
+            return result;
+          } catch (restError) {
+            logger.error('APPWRITE_STORAGE', 'Both upload methods failed', {
+              sdkError: sdkError.message,
+              restError: restError.message,
+            });
+            throw new Error(`File upload failed: ${restError.message}`);
+          }
+        }
+      } else {
+        // Handle web File/Blob objects
+        const result = await storage.createFile(appwriteConfig.storageBucketId, id, file);
+        logger.info('APPWRITE_STORAGE', 'File uploaded', { fileId: result.$id });
+        return result;
+      }
     } catch (error) {
       logger.error('APPWRITE_STORAGE', 'Failed to upload file', error);
       throw error;

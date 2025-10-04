@@ -64,6 +64,7 @@ export interface BiometricToken {
 export interface BiometricAuthResult {
   success: boolean;
   token?: BiometricToken;
+  biometricType?: BiometricType;
   error?: string;
   requiresPasswordLogin?: boolean;
 }
@@ -71,7 +72,7 @@ export interface BiometricAuthResult {
 /**
  * Generates a unique device identifier
  */
-async function generateDeviceId(): Promise<string> {
+export async function generateDeviceId(): Promise<string> {
   let deviceId = await SecureStore.getItemAsync(DEVICE_ID_KEY);
   if (!deviceId) {
     deviceId = `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -459,6 +460,7 @@ export async function authenticateWithBiometrics(): Promise<BiometricAuthResult>
       return {
         success: true,
         token: storedToken,
+        biometricType: availability.biometricType,
       };
     } else {
       // Increment failed attempts
@@ -505,6 +507,7 @@ export async function authenticateWithBiometrics(): Promise<BiometricAuthResult>
 
       return {
         success: false,
+        biometricType: availability.biometricType,
         error,
         requiresPasswordLogin,
       };
@@ -623,6 +626,7 @@ export async function setupBiometricAuthentication(userId: string): Promise<Biom
     return {
       success: true,
       token: localToken,
+      biometricType: availability.biometricType,
     };
   } catch (error) {
     logger.error('BIOMETRIC', 'Biometric setup error:', error);

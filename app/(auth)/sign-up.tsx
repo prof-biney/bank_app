@@ -39,7 +39,7 @@ import LoadingAnimation from '@/components/LoadingAnimation';
 import { useLoading, LOADING_CONFIGS } from '@/hooks/useLoading';
 import { logger } from "@/lib/logger";
 import BiometricSetupModal from '@/components/auth/BiometricSetupModal';
-import { useBiometricMessages } from '@/context/BiometricToastContext';
+import { useBiometricMessages, useBiometricToast } from '@/context/BiometricToastContext';
 
 // Get all available countries and create a comprehensive country data array
 // This uses the getCountries function from libphonenumber-js to get all country codes
@@ -86,7 +86,7 @@ const countryData = getCountries()
     return { code, name, flag };
   })
   // Sort alphabetically by country name
-  .sort((a, b) => a.name.localeCompare(b.name));
+  .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
 export default function SignUpScreen() {
   const { colors } = useTheme();
@@ -142,6 +142,7 @@ export default function SignUpScreen() {
   const [accountCreated, setAccountCreated] = useState(false);
   
   const biometricMessages = useBiometricMessages();
+  const { showInfo } = useBiometricToast();
   
   // Function to detect user's country based on IP address
   const detectUserCountry = async () => {
@@ -169,7 +170,7 @@ export default function SignUpScreen() {
   const updateMaxDigitsForCountry = (country: string) => {
     try {
       // Get example number for the country
-      const exampleNumber = getExampleNumber(country, examples);
+      const exampleNumber = getExampleNumber(country as any, examples);
       
       if (exampleNumber) {
         // Get the national number (without country code)
@@ -219,10 +220,10 @@ export default function SignUpScreen() {
     
     try {
       // Parse the phone number with the country code
-      const parsedNumber = parsePhoneNumberFromString(phoneNumber, country);
+      const parsedNumber = parsePhoneNumberFromString(phoneNumber, country as any);
       
       // Get example number to determine expected length
-      const exampleNumber = getExampleNumber(country, examples);
+      const exampleNumber = getExampleNumber(country as any, examples);
       const maxDigits = exampleNumber ? exampleNumber.nationalNumber.length : 10;
       
       // Check if the number is valid for the country
@@ -781,7 +782,7 @@ export default function SignUpScreen() {
         logger.debug('AUTH', '[SignUp] Attempting to create user account');
 
         // Format phone number with country code
-        const formattedPhoneNumber = `+${getCountryCallingCode(countryCode)}${phoneNumber.replace(/\D/g, '')}`;
+        const formattedPhoneNumber = `+${getCountryCallingCode(countryCode as any)}${phoneNumber.replace(/\D/g, '')}`
 
         // Create user account using Appwrite auth service
         const user = await authService.register({
@@ -884,7 +885,7 @@ If this persists, contact support.`;
       const result = await setupBiometric();
       
       if (result.success) {
-        biometricMessages.setupSuccess(result.biometricType);
+        biometricMessages.setupSuccess(result.biometricType || undefined);
       } else {
         biometricMessages.setupFailed(result.error);
       }
@@ -911,7 +912,8 @@ If this persists, contact support.`;
   const handleBiometricSkip = () => {
     // User chose to skip biometric setup
     logger.info('AUTH', 'User skipped biometric setup during sign-up');
-    biometricMessages.showInfo(
+    // Use the toast context directly for info messages
+    showInfo(
       'Biometric Setup Skipped',
       'You can enable biometric authentication later in Settings'
     );

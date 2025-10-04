@@ -8,12 +8,12 @@
       "backgroundColor": "#0F766E",
       "barStyle": "light-content"
     },
-    "name": "bank_app",
-    "slug": "bank_app",
+    "name": "Ahantaman Rural Bank",
+    "slug": "ahantaman-rural-bank",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "bankapp",
+    "scheme": "ahantamanbank",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -38,14 +38,14 @@
     },
 
     "ios": {
-      "bundleIdentifier": "com.charatech.bankapp",
+      "bundleIdentifier": "com.ahantamanruralbank.app",
       "supportsTablet": true,
       "infoPlist": {
-        "NSFaceIDUsageDescription": "This app uses Face ID for secure and convenient authentication."
+        "NSFaceIDUsageDescription": "Ahantaman Rural Bank uses Face ID for secure and convenient authentication."
       }
     },
     "android": {
-      "package": "com.charatech.bankapp",
+      "package": "com.ahantamanruralbank.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"

@@ -55,7 +55,7 @@ const BiometricToast: React.FC<BiometricToastProps> = ({
   const progressWidth = useRef(new Animated.Value(100)).current;
 
   // Auto dismiss timer
-  const dismissTimerRef = useRef<NodeJS.Timeout>();
+  const dismissTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   // Pan responder for swipe to dismiss
   const panResponder = useRef(

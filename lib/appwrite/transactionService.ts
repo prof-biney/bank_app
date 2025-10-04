@@ -8,6 +8,7 @@
 import { databaseService, Query, ID, collections } from './database';
 import { authService } from './auth';
 import { logger } from '../logger';
+import { activityLogger } from '../activityLogger';
 import { Transaction } from '@/types';
 
 // Transaction service interfaces
@@ -19,7 +20,9 @@ export interface CreateTransactionData {
   recipient?: string;
   category: string;
   status?: 'completed' | 'pending' | 'failed';
-  metadata?: Record<string, any>;
+  // Mobile money details for deposits
+  mobileNumber?: string;
+  mobileNetwork?: string;
 }
 
 export interface UpdateTransactionData {
@@ -27,7 +30,9 @@ export interface UpdateTransactionData {
   description?: string;
   status?: 'completed' | 'pending' | 'failed';
   category?: string;
-  metadata?: Record<string, any>;
+  // Mobile money details for deposits
+  mobileNumber?: string;
+  mobileNetwork?: string;
 }
 
 export interface TransactionFilters {
@@ -118,9 +123,8 @@ export class AppwriteTransactionService {
       category: transactionData.category,
       status: transactionData.status || 'completed',
       currency: 'GHS', // Add default currency
-      date: new Date().toISOString(),
-      metadata: transactionData.metadata || {},
-      createdAt: new Date().toISOString(),
+      mobileNumber: transactionData.mobileNumber || null,
+      mobileNetwork: transactionData.mobileNetwork || null,
     };
   }
 
@@ -137,8 +141,10 @@ export class AppwriteTransactionService {
       description: doc.description,
       recipient: doc.recipient,
       category: doc.category,
-      date: doc.date || doc.$createdAt,
+      date: doc.$createdAt,
       status: doc.status || 'completed',
+      mobileNumber: doc.mobileNumber || undefined,
+      mobileNetwork: doc.mobileNetwork || undefined,
     };
   }
 
@@ -169,12 +175,21 @@ export class AppwriteTransactionService {
       // Transform back to Transaction type
       const transaction = this.transformAppwriteToTransaction(document);
 
-      // Log activity (fire-and-forget)
-      this.logTransactionActivity(
-        transaction.id, 
-        'created', 
-        `${transactionData.type} transaction of ${transactionData.amount} created`
-      );
+      // Log activity to centralized logger (fire-and-forget)
+      activityLogger.logTransactionActivity(
+        'created',
+        transaction.id,
+        {
+          type: transactionData.type,
+          amount: transactionData.amount,
+          cardId: transactionData.cardId,
+          description: transactionData.description,
+          recipientCardId: transactionData.recipient,
+        },
+        userId
+      ).catch(error => {
+        logger.warn('TRANSACTION_SERVICE', 'Failed to log transaction creation activity', error);
+      });
       
       // Recalculate and update card balance (fire-and-forget)
       this.recalculateCardBalanceAfterTransaction(transactionData.cardId);
@@ -223,8 +238,11 @@ export class AppwriteTransactionService {
       if (updateData.category !== undefined) {
         appwriteUpdateData.category = updateData.category;
       }
-      if (updateData.metadata !== undefined) {
-        appwriteUpdateData.metadata = updateData.metadata;
+      if (updateData.mobileNumber !== undefined) {
+        appwriteUpdateData.mobileNumber = updateData.mobileNumber;
+      }
+      if (updateData.mobileNetwork !== undefined) {
+        appwriteUpdateData.mobileNetwork = updateData.mobileNetwork;
       }
 
       // Update document in Appwrite
@@ -237,13 +255,41 @@ export class AppwriteTransactionService {
       // Transform back to Transaction type
       const transaction = this.transformAppwriteToTransaction(document);
 
-      // Log activity for status changes
+      // Log activity for all updates to centralized logger (fire-and-forget)
+      activityLogger.logTransactionActivity(
+        'updated',
+        transaction.id,
+        {
+          type: transaction.type,
+          amount: transaction.amount,
+          cardId: transaction.cardId,
+          description: transaction.description,
+          recipientCardId: transaction.recipient,
+        },
+        userId
+      ).catch(error => {
+        logger.warn('TRANSACTION_SERVICE', 'Failed to log transaction update activity', error);
+      });
+
+      // Handle status changes with notifications
       if (updateData.status !== undefined && updateData.status !== existingTransaction.status) {
-        this.logTransactionActivity(
-          transaction.id, 
-          'status_updated', 
-          `Transaction status changed from ${existingTransaction.status} to ${updateData.status}`
-        );
+        // Log status change specifically - use 'updated' action since status_updated is not in the allowed actions
+        activityLogger.logTransactionActivity(
+          'updated',
+          transaction.id,
+          {
+            type: transaction.type,
+            amount: transaction.amount,
+            cardId: transaction.cardId,
+            description: `Status changed from ${existingTransaction.status} to ${updateData.status}`,
+          },
+          userId
+        ).catch(error => {
+          logger.warn('TRANSACTION_SERVICE', 'Failed to log status change activity', error);
+        });
+
+        // Status change has been logged to centralized activity logger above
+        // Activity logging provides all necessary user feedback
       }
       
       // Recalculate and update card balance if amount changed (fire-and-forget)
@@ -277,12 +323,22 @@ export class AppwriteTransactionService {
       // Delete from database
       await databaseService.deleteDocument(collections.transactions.id, transactionId);
 
-      // Log activity
-      this.logTransactionActivity(
-        transactionId, 
-        'deleted', 
-        `${existingTransaction.type} transaction deleted`
-      );
+      // Log activity to centralized logger (fire-and-forget)
+      // Note: 'deleted' is not in the allowed actions, using 'failed' to indicate deletion
+      activityLogger.logTransactionActivity(
+        'failed',
+        transactionId,
+        {
+          type: existingTransaction.type,
+          amount: existingTransaction.amount,
+          cardId: existingTransaction.cardId,
+          description: `${existingTransaction.type.charAt(0).toUpperCase() + existingTransaction.type.slice(1)} transaction deleted`,
+          failureReason: 'Transaction was deleted'
+        },
+        userId
+      ).catch(error => {
+        logger.warn('TRANSACTION_SERVICE', 'Failed to log transaction deletion activity', error);
+      });
       
       // Recalculate and update card balance (fire-and-forget)
       this.recalculateCardBalanceAfterTransaction(existingTransaction.cardId);
@@ -809,43 +865,6 @@ export class AppwriteTransactionService {
     }
   }
 
-  /**
-   * Log transaction activity (fire-and-forget)
-   */
-  private async logTransactionActivity(
-    transactionId: string, 
-    action: string, 
-    description: string
-  ): Promise<void> {
-    try {
-      const userId = await this.getCurrentUserId();
-      
-      // Import activity service to avoid circular dependencies
-      const { databaseService: db } = await import('./database');
-      
-      await db.createDocument(
-        collections.accountUpdates.id,
-        {
-          userId,
-          type: 'transaction_activity',
-          description,
-          metadata: {
-            transactionId,
-            action,
-            timestamp: new Date().toISOString(),
-          },
-          createdAt: new Date().toISOString(),
-        }
-      );
-    } catch (error) {
-      // Don't throw - this is a fire-and-forget operation
-      logger.warn('TRANSACTION_SERVICE', 'Failed to log transaction activity', { 
-        transactionId, 
-        action, 
-        error 
-      });
-    }
-  }
 
   /**
    * Handle and format transaction-related errors

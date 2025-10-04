@@ -21,6 +21,8 @@ import { transferService, type TransferRequest } from "@/lib/appwrite";
 import LoadingAnimation from '@/components/LoadingAnimation';
 import { useLoading, LOADING_CONFIGS } from '@/hooks/useLoading';
 import { showAlertWithNotification } from "@/lib/appwrite/notificationService";
+import { useBiometricToast } from "@/context/BiometricToastContext";
+import TransferSuccessModal from "@/components/TransferSuccessModal";
 import { Recipient } from "@/types/index";
 import { useTheme } from "@/context/ThemeContext";
 import { getChipStyles } from "@/theme/variants";
@@ -30,8 +32,9 @@ import Badge from "@/components/ui/Badge";
 import { getBadgeVisuals } from "@/theme/badge-utils";
 
 export default function TransferScreen() {
-  const { cards, activeCard, setActiveCard } = useApp();
+  const { cards, activeCard, setActiveCard, makeTransfer } = useApp();
   const { showAlert } = useAlert();
+  const { showSuccess, showError } = useBiometricToast();
   const { loading, withLoading } = useLoading();
   const [recipientCardNumber, setRecipientCardNumber] = useState("");
   const [recipientName, setRecipientName] = useState("");
@@ -45,6 +48,8 @@ export default function TransferScreen() {
   const [step, setStep] = useState<
     "select-card" | "select-recipient" | "enter-amount" | "confirm-transfer"
   >("select-card");
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [transferSuccessData, setTransferSuccessData] = useState<any>(null);
 
   const handleCardSelect = (card: any) => {
     setActiveCard(card);
@@ -138,11 +143,11 @@ export default function TransferScreen() {
   };
 
   const handleTransfer = async () => {
-    logger.info('SCREEN', '[TransferScreen] handleTransfer called');
+    logger.info('SCREEN', '[TransferScreen] Enhanced transfer called');
     
     if (!activeCard || !recipientCardNumber || !amount) {
       logger.info('SCREEN', '[TransferScreen] Missing required fields:', { activeCard: !!activeCard, recipientCardNumber, amount });
-      showAlertWithNotification(showAlert, 'error', 'Please complete all required fields.', 'Transfer Error');
+      showError('Transfer Error', 'Please complete all required fields.');
       return;
     }
 
@@ -150,39 +155,33 @@ export default function TransferScreen() {
     
     if (isNaN(transferAmount) || transferAmount <= 0) {
       logger.info('SCREEN', '[TransferScreen] Invalid amount:', { amount, transferAmount });
-      showAlertWithNotification(showAlert, 'error', 'Please enter a valid amount.', 'Transfer Error');
+      showError('Transfer Error', 'Please enter a valid amount.');
       return;
     }
 
     // Check card validation result
     if (!cardValidationResult?.isValid) {
-      showAlertWithNotification(
-        showAlert, 
-        'error', 
-        cardValidationResult?.error || 'Please enter a valid recipient card number.', 
-        'Invalid Recipient Card'
+      showError(
+        'Invalid Recipient Card',
+        cardValidationResult?.error || 'Please enter a valid recipient card number.'
       );
       return;
     }
 
-    logger.info('SCREEN', '[TransferScreen] Starting enhanced transfer:', {
+    logger.info('SCREEN', '[TransferScreen] Starting enhanced transfer via AppContext:', {
       cardId: activeCard.id,
       amount: transferAmount,
       recipientCardNumber
     });
     
     try {
-      const transferRequest: TransferRequest = {
-        sourceCardId: activeCard.id,
-        recipientCardNumber: recipientCardNumber,
-        amount: transferAmount,
-        currency: 'GHS',
-        description: `Transfer to ${cardValidationResult.cardHolderName || recipientName}`,
-        recipientName: cardValidationResult.cardHolderName || recipientName
-      };
-      
       const result = await withLoading(
-        async () => await transferService.executeTransfer(transferRequest),
+        async () => await makeTransfer(
+          activeCard.id,
+          transferAmount,
+          recipientCardNumber,
+          `Transfer to ${cardValidationResult.cardHolderName || recipientName}`
+        ),
         {
           ...LOADING_CONFIGS.PROCESS_TRANSACTION,
           message: `Transferring GHS ${transferAmount.toFixed(2)}...`,
@@ -191,42 +190,38 @@ export default function TransferScreen() {
       );
       
       if (result.success) {
-        const recipientDisplay = cardValidationResult.cardHolderName 
-          ? `${cardValidationResult.cardHolderName} (${recipientCardNumber})`
-          : recipientCardNumber;
+        // Prepare success modal data
+        const successData = {
+          amount: transferAmount,
+          currency: 'GHS',
+          recipientName: cardValidationResult.cardHolderName || recipientName || 'Recipient',
+          recipientCardNumber: recipientCardNumber,
+          sourceNewBalance: result.newBalance || 0,
+          recipientNewBalance: result.recipientNewBalance,
+          transactionId: result.transactionId || `TXN-${Date.now()}`,
+          reference: `TXN-${Date.now().toString().slice(-8)}`,
+          timestamp: new Date().toISOString()
+        };
         
-        const successMessage = [
-          `GHS ${transferAmount.toFixed(2)} has been successfully transferred to ${recipientDisplay}.`,
-          result.recipientNewBalance ? ` Recipient balance: GHS ${result.recipientNewBalance.toFixed(2)}.` : '',
-          ` Your balance: GHS ${result.sourceNewBalance?.toFixed(2) || 'N/A'}`
-        ].join('');
+        setTransferSuccessData(successData);
+        setShowSuccessModal(true);
         
-        showAlertWithNotification(
-          showAlert,
-          'success',
-          successMessage,
-          'Transfer Successful'
-        );
-        
-        // Navigate back after showing success
-        setTimeout(() => {
-          router.back();
-        }, 2000);
+        logger.info('SCREEN', '[TransferScreen] Enhanced transfer completed successfully', {
+          transactionId: result.transactionId,
+          sourceNewBalance: result.newBalance,
+          recipientNewBalance: result.recipientNewBalance
+        });
         
       } else {
-        showAlertWithNotification(
-          showAlert, 
-          'error', 
-          result.error || 'An error occurred while processing your transfer.', 
-          'Transfer Failed'
+        showError(
+          'Transfer Failed',
+          result.error || 'An error occurred while processing your transfer.'
         );
       }
     } catch (error) {
-      showAlertWithNotification(
-        showAlert, 
-        'error', 
-        'An unexpected error occurred. Please try again.', 
-        'Transfer Failed'
+      showError(
+        'Transfer Failed',
+        'An unexpected error occurred. Please try again.'
       );
       logger.error('SCREEN', 'Enhanced transfer error:', error);
     }
