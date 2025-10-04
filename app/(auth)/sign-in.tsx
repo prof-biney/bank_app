@@ -45,7 +45,10 @@ export default function SignInScreen() {
     authenticateWithBiometric,
     loadBiometricState,
     loginAttempts,
-    checkLoginAttemptStatus
+    checkLoginAttemptStatus,
+    attemptAutoLogin,
+    deviceTrackingState,
+    loadDeviceTrackingState
   } = useAuthStore();
   const { showAlert } = useAlert();
   const { loading, withLoading } = useLoading();
@@ -60,6 +63,9 @@ export default function SignInScreen() {
   const [lockoutTimeLeft, setLockoutTimeLeft] = useState(0);
   const [lastLoginError, setLastLoginError] = useState<string | null>(null);
   const [showLoginError, setShowLoginError] = useState(false);
+  const [autoLoginAttempted, setAutoLoginAttempted] = useState(false);
+  const [autoLoginCountdown, setAutoLoginCountdown] = useState(0);
+  const [showAutoLoginPrompt, setShowAutoLoginPrompt] = useState(false);
   
   const biometricMessages = useBiometricMessages();
   const navigationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -274,9 +280,47 @@ export default function SignInScreen() {
         availabilityReason: availability.reason,
       });
       
+      // Check for trusted device auto-login eligibility
+      let deviceCanAutoLogin = false;
+      if (currentBiometricEnabled && availability.isAvailable) {
+        try {
+          // Get a potential email from previous attempts to check device trust
+          const lastAttemptedEmail = await loginAttemptsService.getLastAttemptedEmail();
+          if (lastAttemptedEmail) {
+            await loadDeviceTrackingState(lastAttemptedEmail);
+            const { deviceTrackingState: currentDeviceState } = useAuthStore.getState();
+            deviceCanAutoLogin = currentDeviceState?.canAutoLogin || false;
+            
+            if (deviceCanAutoLogin && !autoLoginAttempted) {
+              logger.info('SCREEN', '[SignIn] Device eligible for auto-login, starting countdown');
+              setAutoLoginAttempted(true);
+              setShowAutoLoginPrompt(true);
+              setAutoLoginCountdown(2);
+              
+              // Start countdown
+              const countdownInterval = setInterval(() => {
+                setAutoLoginCountdown(prev => {
+                  if (prev <= 1) {
+                    clearInterval(countdownInterval);
+                    // Attempt auto-login
+                    handleAutoLogin(lastAttemptedEmail);
+                    return 0;
+                  }
+                  return prev - 1;
+                });
+              }, 1000);
+              
+              return; // Exit early to show auto-login prompt
+            }
+          }
+        } catch (error) {
+          logger.warn('SCREEN', '[SignIn] Error checking device trust:', error);
+        }
+      }
+      
       // Show biometric login if enabled and available, otherwise show password form
       // In development, also check if we should show biometric option for testing
-      const shouldShowBiometric = currentBiometricEnabled && availability.isAvailable;
+      const shouldShowBiometric = currentBiometricEnabled && availability.isAvailable && !deviceCanAutoLogin;
       
       // Development override: Show biometric setup option if device has hardware but no biometrics enrolled
       const shouldShowBiometricSetupHint = __DEV__ && 
@@ -286,12 +330,14 @@ export default function SignInScreen() {
       if (shouldShowBiometric) {
         logger.info('SCREEN', '[SignIn] Showing biometric authentication option');
         setShowPasswordForm(false);
+        setShowAutoLoginPrompt(false);
       } else {
         logger.info('SCREEN', '[SignIn] Showing password form', {
           reason: !currentBiometricEnabled ? 'biometric not enabled' : 'biometric not available',
           shouldShowBiometricSetupHint,
         });
         setShowPasswordForm(true);
+        setShowAutoLoginPrompt(false);
         if (!availability.isAvailable) {
           if (availability.reason === 'hardware_not_available') {
             biometricMessages.hardwareNotAvailable();
@@ -366,10 +412,79 @@ export default function SignInScreen() {
     }
   };
   
+  // Handle auto-login attempt for trusted device
+  const handleAutoLogin = async (email: string) => {
+    setLoadingVisible(true);
+    setBiometricStage('authenticating');
+    
+    try {
+      const result = await attemptAutoLogin(email);
+      
+      if (result.success) {
+        setBiometricStage('success');
+        biometricMessages.authSuccess(biometricType || undefined);
+        setShowSuccessAlert(true);
+        
+        logger.info('SCREEN', '[SignIn] Auto-login successful');
+        
+        // Hide loading after success animation
+        setTimeout(() => {
+          setLoadingVisible(false);
+          setBiometricStage('idle');
+          setShowAutoLoginPrompt(false);
+        }, 1500);
+      } else {
+        setBiometricStage('error');
+        setShowAutoLoginPrompt(false);
+        
+        if (result.skipped) {
+          logger.info('SCREEN', '[SignIn] Auto-login skipped:', result.reason);
+        } else {
+          logger.warn('SCREEN', '[SignIn] Auto-login failed:', result.reason);
+          biometricMessages.authFailed(biometricType || undefined, result.reason);
+        }
+        
+        setTimeout(() => {
+          setLoadingVisible(false);
+          setBiometricStage('idle');
+          // Fallback to regular biometric or password form
+          if (biometricEnabled && biometricAvailability?.isAvailable) {
+            setShowPasswordForm(false);
+          } else {
+            setShowPasswordForm(true);
+          }
+        }, 1000);
+      }
+    } catch (error) {
+      logger.error('SCREEN', '[SignIn] Auto-login error:', error);
+      setBiometricStage('error');
+      setShowAutoLoginPrompt(false);
+      
+      setTimeout(() => {
+        setLoadingVisible(false);
+        setBiometricStage('idle');
+        setShowPasswordForm(true);
+      }, 1000);
+    }
+  };
+
   // Handle "Use Password Instead" button
   const handleUsePassword = () => {
     setShowPasswordForm(true);
     setBiometricError(false);
+    setShowAutoLoginPrompt(false);
+  };
+  
+  // Handle canceling auto-login
+  const handleCancelAutoLogin = () => {
+    setShowAutoLoginPrompt(false);
+    setAutoLoginCountdown(0);
+    // Show regular biometric or password form
+    if (biometricEnabled && biometricAvailability?.isAvailable) {
+      setShowPasswordForm(false);
+    } else {
+      setShowPasswordForm(true);
+    }
   };
 
   // Cleanup on unmount
@@ -488,17 +603,16 @@ export default function SignInScreen() {
           const duration = isLoginAttemptError ? 6000 : 4000; // Longer for attempt warnings
           showAlert(alertType, errorMessage, errorTitle, duration);
         } else {
-          console.error('showAlert is not a function', typeof showAlert, showAlert);
+          logger.error('SCREEN', 'showAlert is not a function', { type: typeof showAlert, showAlert });
         }
       } catch (alertErr) {
-        console.error('Failed to show alert:', alertErr);
+        logger.error('SCREEN', 'Failed to show alert:', alertErr);
       }
       logger.info('SCREEN', "Sign in error:", error);
       try {
         // Extra diagnostics for runtime environments that strip stacks from structured logs
-        console.error('Sign in full error:', error);
-        console.error('Sign in error stack:', (error as any)?.stack);
-        logger.info('SCREEN', 'Sign in error stack', (error as any)?.stack);
+        logger.error('SCREEN', 'Sign in full error:', error);
+        logger.error('SCREEN', 'Sign in error stack:', { stack: (error as any)?.stack });
       } catch {}
       setShowSuccessAlert(false); // Reset success alert state on error
     }
@@ -539,7 +653,7 @@ export default function SignInScreen() {
                 </View>
               </View>
               <Text style={styles.heroTitle}>Welcome Back</Text>
-              <Text style={styles.heroSubtitle}>Your finances await. Sign in to continue your journey.</Text>
+              <Text style={styles.heroSubtitle}>Welcome to Ahantaman Rural Bank. Sign in to access your account.</Text>
             </View>
 
 
@@ -628,14 +742,58 @@ export default function SignInScreen() {
                   </View>
                 )}
                 
+                {/* Auto-Login Prompt for Trusted Device */}
+                {showAutoLoginPrompt && (
+                  <View style={[styles.autoLoginPrompt, { 
+                    backgroundColor: withAlpha(colors.tintPrimary, 0.1), 
+                    borderColor: colors.tintPrimary 
+                  }]}>
+                    <View style={styles.autoLoginHeader}>
+                      <MaterialIcons name="security" size={24} color={colors.tintPrimary} />
+                      <Text style={[styles.autoLoginTitle, { color: colors.tintPrimary }]}>
+                        Trusted Device Detected
+                      </Text>
+                    </View>
+                    
+                    <Text style={[styles.autoLoginMessage, { color: colors.textSecondary }]}>
+                      This device is trusted. Automatically signing you in with {biometricType === 'faceId' ? 'Face ID' : biometricType === 'touchId' ? 'Touch ID' : 'fingerprint'} in:
+                    </Text>
+                    
+                    <View style={styles.countdownContainer}>
+                      <View style={[styles.countdownCircle, { borderColor: colors.tintPrimary }]}>
+                        <Text style={[styles.countdownText, { color: colors.tintPrimary }]}>
+                          {autoLoginCountdown}
+                        </Text>
+                      </View>
+                    </View>
+                    
+                    <TouchableOpacity 
+                      style={[styles.cancelAutoLoginButton, { 
+                        backgroundColor: withAlpha(colors.textSecondary, 0.1),
+                        borderColor: colors.textSecondary 
+                      }]}
+                      onPress={handleCancelAutoLogin}
+                    >
+                      <MaterialIcons name="close" size={16} color={colors.textSecondary} />
+                      <Text style={[styles.cancelAutoLoginText, { color: colors.textSecondary }]}>
+                        Cancel Auto-Login
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                
                 {/* Biometric Authentication Section */}
                 {biometricEnabled && biometricAvailability?.isAvailable && !showPasswordForm && (
-                  <View style={styles.biometricSection}>
-                    <Text style={[styles.biometricTitle, { color: colors.textPrimary }]}>
-                      Quick Sign In
-                    </Text>
+                  <View style={[styles.biometricSection, { backgroundColor: withAlpha(colors.tintPrimary, 0.05), borderColor: withAlpha(colors.tintPrimary, 0.1) }]}>
+                    <View style={[styles.biometricHeader, { backgroundColor: withAlpha(colors.tintPrimary, 0.1) }]}>
+                      <MaterialIcons name="security" size={24} color={colors.tintPrimary} />
+                      <Text style={[styles.biometricTitle, { color: colors.textPrimary }]}>
+                        Secure Sign In
+                      </Text>
+                    </View>
+                    
                     <Text style={[styles.biometricSubtitle, { color: colors.textSecondary }]}>
-                      Use your {biometricType === 'faceId' ? 'Face ID' : biometricType === 'touchId' ? 'Touch ID' : 'fingerprint'} to sign in securely
+                      Use your {biometricType === 'faceId' ? 'Face ID' : biometricType === 'touchId' ? 'Touch ID' : 'fingerprint'} for instant, secure access to your account
                     </Text>
                     
                     <View style={styles.biometricButtonContainer}>
@@ -650,13 +808,29 @@ export default function SignInScreen() {
                     </View>
                     
                     <TouchableOpacity 
-                      style={styles.usePasswordButton}
+                      style={[styles.usePasswordButton, { backgroundColor: withAlpha(colors.tintPrimary, 0.1) }]}
                       onPress={handleUsePassword}
                     >
+                      <MaterialIcons name="keyboard" size={16} color={colors.tintPrimary} />
                       <Text style={[styles.usePasswordText, { color: colors.tintPrimary }]}>
                         Use Password Instead
                       </Text>
                     </TouchableOpacity>
+                  </View>
+                )}
+                
+                {/* Biometric Setup Prompt for new users */}
+                {!biometricEnabled && biometricAvailability?.isAvailable && showPasswordForm && (
+                  <View style={[styles.biometricPrompt, { backgroundColor: withAlpha('#4CAF50', 0.1), borderColor: withAlpha('#4CAF50', 0.2) }]}>
+                    <View style={styles.biometricPromptHeader}>
+                      <MaterialIcons name="fingerprint" size={20} color="#4CAF50" />
+                      <Text style={[styles.biometricPromptTitle, { color: '#4CAF50' }]}>
+                        Enable Biometric Sign In
+                      </Text>
+                    </View>
+                    <Text style={[styles.biometricPromptText, { color: colors.textSecondary }]}>
+                      Skip typing your password next time. Set up {biometricAvailability.biometricType === 'faceId' ? 'Face ID' : 'fingerprint'} authentication after signing in.
+                    </Text>
                   </View>
                 )}
                 
@@ -929,32 +1103,71 @@ const styles = StyleSheet.create({
   biometricSection: {
     alignItems: 'center',
     paddingVertical: 24,
+    marginBottom: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginHorizontal: -4,
+    paddingHorizontal: 24,
+  },
+  biometricHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+    gap: 8,
   },
   biometricTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
-    marginBottom: 8,
     textAlign: 'center',
   },
   biometricSubtitle: {
     fontSize: 14,
     textAlign: 'center',
-    marginBottom: 32,
-    opacity: 0.7,
+    marginBottom: 28,
     lineHeight: 20,
-    maxWidth: 280,
+    maxWidth: 300,
+    paddingHorizontal: 8,
   },
   biometricButtonContainer: {
-    marginBottom: 24,
+    marginBottom: 20,
   },
   usePasswordButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    gap: 8,
   },
   usePasswordText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  biometricPrompt: {
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 20,
+  },
+  biometricPromptHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  biometricPromptTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  biometricPromptText: {
+    fontSize: 14,
+    lineHeight: 20,
+    paddingLeft: 28,
   },
   backToBiometricButton: {
     flexDirection: 'row',
@@ -1007,6 +1220,61 @@ const styles = StyleSheet.create({
   errorCloseButton: {
     padding: 4,
     marginLeft: 8,
+  },
+  
+  // Auto-Login Prompt Styles
+  autoLoginPrompt: {
+    alignItems: 'center',
+    padding: 20,
+    marginBottom: 24,
+    borderRadius: 16,
+    borderWidth: 2,
+  },
+  autoLoginHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 12,
+  },
+  autoLoginTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  autoLoginMessage: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 20,
+    paddingHorizontal: 8,
+  },
+  countdownContainer: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  countdownCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    borderWidth: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countdownText: {
+    fontSize: 32,
+    fontWeight: '800',
+  },
+  cancelAutoLoginButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 8,
+  },
+  cancelAutoLoginText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   
   // Footer Styles

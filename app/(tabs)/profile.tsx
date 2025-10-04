@@ -6,6 +6,7 @@ import {
   CircleHelp as HelpCircle,
   LogOut,
   Settings,
+  Edit3 as EditIcon,
 } from "lucide-react-native";
 import React, { useState, useCallback } from "react";
 import {
@@ -65,6 +66,11 @@ export default function ProfileScreen() {
     router.push("/help-support");
   }, []);
 
+  const handleEditProfile = useCallback(() => {
+    logger.debug('SCREEN', 'Edit Profile button pressed');
+    router.push("/edit-profile");
+  }, []);
+
   const handleProfilePicturePress = useCallback(() => {
     logger.debug('SCREEN', 'Profile picture pressed');
     setShowImagePicker(true);
@@ -110,6 +116,18 @@ export default function ProfileScreen() {
         </View>
 
         <View style={[styles.menuSection, { backgroundColor: colors.card }]}>
+          <TouchableOpacity 
+            style={[styles.menuItem, { borderBottomColor: colors.border }]} 
+            onPress={handleEditProfile}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <View style={styles.menuItemLeft}>
+              <EditIcon color={colors.textSecondary} size={20} />
+              <Text style={[styles.menuItemText, { color: colors.textPrimary }]}>Edit Profile</Text>
+            </View>
+          </TouchableOpacity>
+
           <TouchableOpacity 
             style={[styles.menuItem, { borderBottomColor: colors.border }]} 
             onPress={handleSettings}
