@@ -89,16 +89,21 @@ export interface UserSession {
 }
 
 export interface UserProfile extends User {
-  profilePicture?: {
-    id: string;
-    url: string;
-  };
+  // avatar field is already included from User interface as string
+  // avatarFileId is stored separately for file deletion purposes  
+  avatarFileId?: string;
   preferences?: {
     theme: 'light' | 'dark' | 'system';
     notifications: boolean;
     language: string;
   };
   biometricPreferences?: BiometricPreferences;
+  // Additional database fields that may be present
+  phoneNumber?: string;
+  emailVerified?: boolean;
+  phoneVerified?: boolean;
+  lastLoginAt?: string;
+  updatedAt?: string;
 }
 
 /**
@@ -519,42 +524,105 @@ export class AppwriteAuthService {
         throw new Error('User not authenticated');
       }
 
-      // Convert image URI to blob
-      const response = await fetch(imageUri);
-      const blob = await response.blob();
+      logger.info('AUTH', 'Starting profile picture update', { 
+        userId: user.$id,
+        imageUri: imageUri.substring(0, 50) + '...' // Log partial URI for debugging
+      });
 
       // Get current profile to check for existing profile picture
-      const currentProfile = await this.getUserProfile();
+      let currentProfile;
+      try {
+        currentProfile = await this.getUserProfile();
+        logger.info('AUTH', 'Current profile retrieved', { 
+          hasProfile: !!currentProfile,
+          currentAvatar: currentProfile?.avatar,
+          currentAvatarFileId: currentProfile?.avatarFileId
+        });
+      } catch (profileError) {
+        logger.warn('AUTH', 'Failed to get current profile for cleanup', profileError);
+      }
       
-      // Delete old profile picture if it exists
-      if (currentProfile?.profilePicture?.id) {
+      // Delete old profile picture if it exists (check avatarFileId for file ID)
+      if (currentProfile?.avatarFileId) {
         try {
-          await storageHelpers.deleteFile(currentProfile.profilePicture.id);
+          logger.info('AUTH', 'Attempting to delete old profile picture', { 
+            oldFileId: currentProfile.avatarFileId 
+          });
+          await storageHelpers.deleteFile(currentProfile.avatarFileId);
+          logger.info('AUTH', 'Successfully deleted old profile picture', { 
+            oldFileId: currentProfile.avatarFileId 
+          });
         } catch (deleteError) {
-          logger.warn('AUTH', 'Failed to delete old profile picture', deleteError);
+          logger.warn('AUTH', 'Failed to delete old profile picture - continuing with upload', deleteError);
+          // Don't fail the upload if deletion fails
         }
       }
 
-      // Upload new profile picture
-      const uploadedFile = await storageHelpers.uploadFile(blob);
-      const fileUrl = storageHelpers.getFileView(uploadedFile.$id);
+      // Upload new profile picture (pass imageUri directly for React Native)
+      logger.info('AUTH', 'Starting file upload to storage');
+      let uploadedFile;
+      try {
+        uploadedFile = await storageHelpers.uploadFile(imageUri);
+        logger.info('AUTH', 'File upload successful', { 
+          fileId: uploadedFile.$id,
+          fileName: uploadedFile.name,
+          fileSize: uploadedFile.sizeOriginal
+        });
+      } catch (uploadError) {
+        logger.error('AUTH', 'File upload failed', uploadError);
+        throw new Error(`Failed to upload image: ${uploadError.message || 'Unknown error'}`);
+      }
 
-      // Update user profile with new picture
-      const updatedProfile = await this.updateUserProfile({
-        profilePicture: {
-          id: uploadedFile.$id,
-          url: fileUrl.toString(),
+      // Generate file view URL
+      let fileUrl;
+      try {
+        fileUrl = storageHelpers.getFileView(uploadedFile.$id);
+        logger.info('AUTH', 'File view URL generated', { 
+          fileId: uploadedFile.$id,
+          fileUrl: fileUrl.toString()
+        });
+      } catch (urlError) {
+        logger.error('AUTH', 'Failed to generate file view URL', urlError);
+        throw new Error(`Failed to generate image URL: ${urlError.message || 'Unknown error'}`);
+      }
+
+      // Update user profile with new picture - use avatar field (string) instead of profilePicture object
+      logger.info('AUTH', 'Updating user profile in database');
+      let updatedProfile;
+      try {
+        updatedProfile = await this.updateUserProfile({
+          avatar: fileUrl.toString(),
+          avatarFileId: uploadedFile.$id, // Store file ID separately for deletion
+        });
+        logger.info('AUTH', 'User profile updated successfully in database', { 
+          userId: user.$id,
+          newAvatar: updatedProfile.avatar,
+          newAvatarFileId: updatedProfile.avatarFileId
+        });
+      } catch (updateError) {
+        logger.error('AUTH', 'Failed to update user profile in database', updateError);
+        // Attempt to clean up uploaded file since profile update failed
+        try {
+          await storageHelpers.deleteFile(uploadedFile.$id);
+          logger.info('AUTH', 'Cleaned up uploaded file after profile update failure');
+        } catch (cleanupError) {
+          logger.warn('AUTH', 'Failed to cleanup uploaded file after profile update failure', cleanupError);
         }
-      });
+        throw new Error(`Failed to save profile changes: ${updateError.message || 'Unknown error'}`);
+      }
 
-      logger.info('AUTH', 'Profile picture updated', { 
+      logger.info('AUTH', 'Profile picture update completed successfully', { 
         userId: user.$id, 
-        fileId: uploadedFile.$id 
+        fileId: uploadedFile.$id,
+        avatarUrl: fileUrl.toString()
       });
 
       return updatedProfile;
     } catch (error) {
-      logger.error('AUTH', 'Failed to update profile picture', error);
+      logger.error('AUTH', 'Profile picture update failed with error', {
+        error: error.message || 'Unknown error',
+        stack: error.stack
+      });
       throw this.handleAuthError(error);
     }
   }
@@ -571,18 +639,22 @@ export class AppwriteAuthService {
 
       const currentProfile = await this.getUserProfile();
       
-      // Delete file from storage if exists
-      if (currentProfile?.profilePicture?.id) {
+      // Delete file from storage if exists (check avatarFileId for file ID)
+      if (currentProfile?.avatarFileId) {
         try {
-          await storageHelpers.deleteFile(currentProfile.profilePicture.id);
+          await storageHelpers.deleteFile(currentProfile.avatarFileId);
+          logger.info('AUTH', 'Deleted profile picture file', { 
+            fileId: currentProfile.avatarFileId 
+          });
         } catch (deleteError) {
           logger.warn('AUTH', 'Failed to delete profile picture file', deleteError);
         }
       }
 
-      // Update profile to remove picture reference
+      // Update profile to remove picture reference - use default placeholder
       const updatedProfile = await this.updateUserProfile({
-        profilePicture: null
+        avatar: 'https://via.placeholder.com/150/000000/FFFFFF/?text=User',
+        avatarFileId: null, // Clear the file ID
       });
 
       logger.info('AUTH', 'Profile picture deleted', { userId: user.$id });
@@ -826,6 +898,7 @@ export class AppwriteAuthService {
         biometricType,
         createdAt: now.toISOString(),
         expiresAt: expiresAt.toISOString(),
+        lastUsedAt: null, // Set as null initially (not used yet)
         isActive: true,
       };
 
@@ -1127,10 +1200,32 @@ export class AppwriteAuthService {
    * Clear local session data
    */
   private async clearLocalSession(): Promise<void> {
+    logger.info('AUTH', 'Clearing local session data', {
+      hadUser: !!this.currentUser,
+      hadSession: !!this.currentSession,
+      previousUserId: this.currentUser?.$id
+    });
+    
     this.currentUser = null;
     this.currentSession = null;
     await sessionHelpers.clearSession();
-    logger.info('AUTH', 'Local session cleared');
+    
+    logger.info('AUTH', 'Local session cleared successfully');
+  }
+
+  /**
+   * Force clear user cache (for debugging user isolation issues)
+   */
+  async forceClearUserCache(): Promise<void> {
+    logger.warn('AUTH', 'Force clearing user cache', {
+      previousUserId: this.currentUser?.$id,
+      previousSession: this.currentSession?.$id
+    });
+    
+    this.currentUser = null;
+    this.currentSession = null;
+    
+    logger.info('AUTH', 'User cache force cleared');
   }
 
   /**
@@ -1204,6 +1299,7 @@ export const completePasswordRecovery = authService.completePasswordRecovery.bin
 export const sendEmailVerification = authService.sendEmailVerification.bind(authService);
 export const verifyEmail = authService.verifyEmail.bind(authService);
 export const forceActivateUser = authService.forceActivateUser.bind(authService);
+export const forceClearUserCache = authService.forceClearUserCache.bind(authService);
 
 // Export biometric authentication functions
 export const createBiometricToken = authService.createBiometricToken.bind(authService);
