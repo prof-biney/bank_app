@@ -32,6 +32,12 @@ import { initConnectionMonitoring, getConnectionStatus } from "@/lib/connectionS
 import { activityLogger } from "@/lib/activityLogger";
 import useAuthStore from "@/store/auth.store";
 import appStateService from "@/lib/appState.service";
+import { 
+  useTransactionLoading, 
+  useCardLoading, 
+  useDataLoading, 
+  useNotificationLoading 
+} from "@/hooks/useEnhancedLoading";
 
 interface AppContextType {
   cards: Card[];
@@ -43,6 +49,7 @@ interface AppContextType {
   addTransaction: (transaction: Omit<Transaction, "id" | "date">) => void;
   updateCardBalance: (cardId: string, newBalance: number) => void;
   makeTransfer: (cardId: string, amount: number, recipientCardNumber: string, description?: string) => Promise<{ success: boolean; error?: string; newBalance?: number; recipientNewBalance?: number }>;
+  makeWithdrawal: (cardId: string, amount: number, withdrawalMethod: string, withdrawalDetails: any, description?: string) => Promise<{ success: boolean; error?: string; newBalance?: number; transactionId?: string; reference?: string; instructions?: any }>;
   makeDeposit: (params: { cardId?: string; amount?: number; currency?: string; escrowMethod?: string; description?: string; depositId?: string; action?: string; mobileNetwork?: string; mobileNumber?: string; reference?: string }, onSuccess?: (data: any) => void) => Promise<{ success: boolean; error?: string; data?: any }>;
   makeTransaction: (params: { type: 'withdrawal' | 'deposit' | 'transfer' | 'payment'; amount: number; fromCardId?: string; toCardId?: string; description?: string; fee?: number }) => Promise<{ success: boolean; error?: string }>;
   refreshCardBalances: () => Promise<void>;
@@ -95,8 +102,57 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [pendingApprovalsCount, setPendingApprovalsCount] = useState<number>(0);
   
+  // Store original unfiltered data
+  const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
+  const [allActivity, setAllActivity] = useState<ActivityEvent[]>([]);
+  
   // Get auth state reactively
   const { isAuthenticated, isLoading: authLoading, user } = useAuthStore();
+  
+  // Enhanced setActiveCard function that filters data by selected card
+  const setActiveCardWithFilter = (card: Card | null) => {
+    logger.info('CONTEXT', '[setActiveCardWithFilter] Card selection changed', {
+      previousCardId: activeCard?.id,
+      newCardId: card?.id,
+      cardHolder: card?.cardHolderName
+    });
+    
+    // Update the active card
+    setActiveCard(card);
+    
+    if (card) {
+      // Filter transactions for the selected card
+      const filteredTransactions = allTransactions.filter(tx => tx.cardId === card.id);
+      setTransactions(filteredTransactions);
+      
+      // Filter activity events for the selected card
+      const filteredActivity = allActivity.filter(activity => 
+        activity.cardId === card.id || 
+        // Include transaction-related activities
+        (activity.transactionId && allTransactions.find(tx => tx.id === activity.transactionId && tx.cardId === card.id))
+      );
+      setActivity(filteredActivity);
+      
+      // Keep all notifications (no filtering for notifications)
+      // Notifications are typically system-wide and don't need card-specific filtering
+      
+      logger.info('CONTEXT', '[setActiveCardWithFilter] Data filtered for card', {
+        cardId: card.id,
+        filteredTransactions: filteredTransactions.length,
+        totalTransactions: allTransactions.length,
+        filteredActivity: filteredActivity.length,
+        totalActivity: allActivity.length,
+        totalNotifications: notifications.length
+      });
+    } else {
+      // No card selected - show all data
+      setTransactions(allTransactions);
+      setActivity(allActivity);
+      // Don't filter notifications - keep them as they are
+      
+      logger.info('CONTEXT', '[setActiveCardWithFilter] No card selected, showing all data');
+    }
+  };
   
   // Function to refresh card balances from database with smart balance calculation
   const refreshCardBalances = async () => {
@@ -120,9 +176,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const { recalculateAndUpdateCardBalance } = await import('@/lib/appwrite/cardService');
           
           // Recalculate balance for each card in parallel
+          // Note: Only recalculate for cards that belong to the current user
           const updatedCards = await Promise.all(
             freshCards.map(async (card) => {
               try {
+                // Check if this card belongs to the current user before recalculating
+                const currentUserId = user.$id || user.id || '';
+                if (card.userId !== currentUserId) {
+                  logger.info('CONTEXT', `[refreshCardBalances] Skipping recalculation for card ${card.id} - belongs to different user`);
+                  return card; // Return original card data for other users' cards
+                }
+                
                 const updatedCard = await recalculateAndUpdateCardBalance(card.id);
                 logger.info('CONTEXT', `[refreshCardBalances] Smart balance calculated for card ${card.id}`, {
                   oldBalance: card.balance,
@@ -224,7 +288,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
 const pushActivity: AppContextType["pushActivity"] = (evt) => {
-    setActivity((prev) => [evt, ...prev]);
+    // Add to all activities
+    setAllActivity((prev) => [evt, ...prev]);
+    
+    // Add to filtered activities if it matches the active card
+    if (!activeCard || evt.cardId === activeCard.id || 
+        (evt.transactionId && allTransactions.find(tx => tx.id === evt.transactionId && tx.cardId === activeCard.id))) {
+      setActivity((prev) => [evt, ...prev]);
+    }
   };
 
   const addTransaction = (
@@ -236,8 +307,13 @@ const pushActivity: AppContextType["pushActivity"] = (evt) => {
       date: new Date().toISOString(),
     };
     
-    // Optimistically add to local state
-    setTransactions((prev) => [newTransaction, ...prev]);
+    // Optimistically add to all transactions
+    setAllTransactions((prev) => [newTransaction, ...prev]);
+    
+    // Add to filtered transactions if it matches the active card
+    if (!activeCard || newTransaction.cardId === activeCard.id) {
+      setTransactions((prev) => [newTransaction, ...prev]);
+    }
 
     // Log activity to centralized logger
     const transactionType = newTransaction.type === 'withdraw' ? 'withdrawal' : newTransaction.type;
@@ -565,7 +641,7 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
   };
 
   const makeTransfer: AppContextType["makeTransfer"] = async (cardId, amount, recipientCardNumber, description) => {
-    logger.info('TRANSFERS', 'Function called', { 
+    logger.info('TRANSFERS', '[Enhanced] Function called', { 
       cardId, 
       amount, 
       recipientCardNumber: recipientCardNumber?.substring(0, 10) + '...', 
@@ -582,269 +658,141 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
       };
     }
     
-    // Get source card details
-    const sourceCard = cards.find(card => card.id === cardId);
-    if (!sourceCard) {
-      logger.error('TRANSFERS', 'Source card not found');
-      return {
-        success: false,
-        error: 'Source card not found. Please try again.'
-      };
-    }
-    
-    // Check if sufficient funds
-    if (sourceCard.balance < amount) {
-      return {
-        success: false,
-        error: 'Insufficient funds for this transfer.'
-      };
-    }
-    
-    // Check if recipient is one of user's own cards (internal transfer)
-    // Use last4 matching since cards are stored with masked numbers
-    const recipientCardNumberClean = recipientCardNumber.replace(/\s/g, ''); // Remove spaces for comparison
-    const recipientLast4 = recipientCardNumberClean.slice(-4); // Get last 4 digits
-    
-    const recipientCard = cards.find(card => {
-      const cardLast4 = card.cardNumber.replace(/[^\d]/g, '').slice(-4);
-      return cardLast4 === recipientLast4;
-    });
-    
-    // Prevent self-transfers (same card to same card)
-    if (recipientCard && recipientCard.id === cardId) {
-      return {
-        success: false,
-        error: 'Cannot transfer to the same card. Please select a different recipient.'
-      };
-    }
-    
-    // Handle internal transfer (between user's own cards) - local only
-    if (recipientCard && sourceCard) {
-      logger.info('TRANSFERS', 'Internal transfer detected - handling locally');
+    try {
+      // Use the enhanced transfer service
+      const { transferService } = await import('@/lib/appwrite/transferService');
       
-      try {
-        const newSourceBalance = sourceCard.balance - amount;
-        const newRecipientBalance = recipientCard.balance + amount;
+      const transferRequest = {
+        sourceCardId: cardId,
+        recipientCardNumber,
+        amount,
+        currency: 'GHS',
+        description: description || `Transfer to ${recipientCardNumber}`,
+        recipientName: undefined // Will be resolved by the service
+      };
+      
+      logger.info('TRANSFERS', '[Enhanced] Executing transfer with enhanced service');
+      
+      const result = await transferService.executeTransfer(transferRequest);
+      
+      if (result.success) {
+        // Update local card balance optimistically
+        if (result.sourceNewBalance !== undefined) {
+          updateCardBalance(cardId, result.sourceNewBalance);
+        }
         
-        // Update both card balances locally
-        updateCardBalance(sourceCard.id, newSourceBalance);
-        updateCardBalance(recipientCard.id, newRecipientBalance);
+        // Refresh data with slight delay to ensure database consistency
+        setTimeout(() => {
+          refreshCardBalances();
+          refreshTransactions();
+        }, 1000);
         
-        // Add outgoing transaction for source card
-        addTransaction({
-          userId: user.$id || user.id || '',
-          cardId: sourceCard.id,
-          amount: -amount, // Negative for outgoing transfer
-          type: 'transfer',
-          category: 'transfer',
-          description: description || `Internal Transfer To: ${recipientCard.cardHolderName}`,
-          recipient: `${recipientCard.cardHolderName} (${recipientCardNumber})`,
-          status: 'completed'
+        logger.info('TRANSFERS', '[Enhanced] Transfer completed successfully', {
+          transactionId: result.transactionId,
+          sourceNewBalance: result.sourceNewBalance,
+          recipientNewBalance: result.recipientNewBalance
         });
-        
-        // Add incoming transaction for recipient card
-        addTransaction({
-          userId: user.$id || user.id || '',
-          cardId: recipientCard.id,
-          amount: amount, // Positive for incoming transfer
-          type: 'transfer',
-          category: 'transfer',
-          description: description || `Internal Transfer From: ${sourceCard.cardHolderName}`,
-          recipient: `${sourceCard.cardHolderName} (${sourceCard.cardNumber})`,
-          status: 'completed'
-        });
-        
-        // Send notification for recipient (internal transfer)
-        const { pushTransferNotification } = require('../lib/appwrite/notificationService');
-        pushTransferNotification('received', amount, sourceCard.cardHolderName, newRecipientBalance);
-        
-        // Refresh card balances from database after successful transfer
-        setTimeout(() => refreshCardBalances(), 1000); // Small delay to ensure DB updates are complete
-        
-        logger.info('TRANSFERS', 'Internal transfer completed successfully');
         
         return {
           success: true,
-          newBalance: newSourceBalance,
-          recipientNewBalance: newRecipientBalance
+          error: undefined,
+          newBalance: result.sourceNewBalance,
+          recipientNewBalance: result.recipientNewBalance,
+          transactionId: result.transactionId,
+          recipientCard: result.recipientCard
         };
-      } catch (error) {
-        logger.error('TRANSFERS', 'Internal transfer error', error);
+      } else {
+        logger.error('TRANSFERS', '[Enhanced] Transfer failed', result.error);
         return {
           success: false,
-          error: error instanceof Error ? error.message : 'Internal transfer failed'
+          error: result.error || 'Transfer failed'
         };
       }
-    }
-    
-    // Handle external transfer (to external card/recipient)
-    logger.info('TRANSFERS', 'Attempting external transfer');
-    
-    if (!sourceCard) {
-      logger.error('TRANSFERS', 'Source card not found');
+      
+    } catch (error) {
+      logger.error('TRANSFERS', '[Enhanced] Transfer service error', error);
       return {
         success: false,
-        error: 'Source card not found. Please try again.'
+        error: error instanceof Error ? error.message : 'Transfer service unavailable'
+      };
+    }
+  };
+
+  const makeWithdrawal: AppContextType["makeWithdrawal"] = async (cardId, amount, withdrawalMethod, withdrawalDetails, description) => {
+    logger.info('WITHDRAWALS', '[Enhanced] Function called', {
+      cardId,
+      amount,
+      withdrawalMethod,
+      description
+    });
+    
+    // Validate user session is active before initiating withdrawal
+    const { isAuthenticated, user } = useAuthStore.getState();
+    if (!isAuthenticated || !user) {
+      logger.error('WITHDRAWALS', 'User not authenticated');
+      return {
+        success: false,
+        error: 'User not authenticated. Please sign in again.'
       };
     }
     
-    // Check if sufficient funds
-    if (sourceCard.balance < amount) {
-      return {
-        success: false,
-        error: 'Insufficient funds for this transfer.'
-      };
-    }
-    
-    // Try Appwrite function first, fall back to local simulation
     try {
-      const { executeFunction } = require('../lib/api');
+      // Use the enhanced withdrawal service
+      const { processWithdrawal } = await import('@/lib/appwrite/withdrawalService');
       
-      logger.info('TRANSFERS', 'Using Appwrite function for external transfer');
-      
-      const requestData = {
+      // Build withdrawal request based on method and details
+      const withdrawalRequest = {
         cardId,
         amount,
         currency: 'GHS',
-        recipient: recipientCardNumber,
-        recipientName: undefined, // TODO: Extract recipient name from transfer form
-        description: description || `Transfer To: ${recipientCardNumber}`
+        withdrawalMethod: withdrawalMethod as any,
+        description: description || `Withdrawal via ${withdrawalMethod.replace('_', ' ')}`,
+        ...withdrawalDetails // Spread method-specific details
       };
       
-      logger.info('TRANSFERS', 'Request details', {
-        cardId,
-        amount,
-        recipient: recipientCardNumber
-      });
+      logger.info('WITHDRAWALS', '[Enhanced] Executing withdrawal with enhanced service');
       
-      // Execute Appwrite function for transfer
-      const result = await executeFunction('transfers', requestData);
-      
-      logger.info('TRANSFERS', 'Function result:', result);
+      const result = await processWithdrawal(withdrawalRequest);
       
       if (result.success) {
-        // Server transfer successful
-        const data = result.data;
-        const newBalance = data.newBalance;
-        
-        logger.info('TRANSFERS', 'Server transfer successful', { newBalance });
-        
-        // Create approval request for external transfers
-        const { createApprovalRequest, autoApprove } = await import('@/lib/appwrite/transactionApprovalService');
-        
-        // For large external transfers, require approval; for smaller amounts, auto-approve
-        const requiresApproval = amount > 1000; // Amounts over 1000 GHS require approval
-        
-        // Add pending transaction locally to show in history
-        const newTransaction = {
-          userId: user.$id || user.id || '',
-          cardId,
-          amount: -amount, // Negative for outgoing transfer
-          type: 'transfer',
-          category: 'transfer',
-          description: description || `Transfer To: ${recipientCardNumber}`,
-          recipient: recipientCardNumber,
-          status: requiresApproval ? 'pending_approval' : 'completed'
-        };
-        
-        addTransaction(newTransaction);
-        
-        let approvalData = null;
-        
-        if (requiresApproval) {
-          // Create approval request for large external transfers
-          try {
-            const approvalResponse = await createApprovalRequest({
-              transactionId: data.transferId || `transfer_${Date.now()}`,
-              approvalType: 'pin', // Require PIN for transfers
-              expiryMinutes: 20, // 20 minutes to approve
-              metadata: {
-                amount: amount,
-                currency: 'GHS',
-                recipient: recipientCardNumber,
-                description: description
-              }
-            });
-            
-            approvalData = approvalResponse;
-            
-            logger.info('TRANSFERS', 'Approval request created for external transfer', {
-              transferId: data.transferId,
-              approvalId: approvalResponse.approvalId
-            });
-          } catch (approvalError) {
-            logger.warn('TRANSFERS', 'Failed to create approval request, proceeding without approval', approvalError);
-          }
-        } else {
-          // Auto-approve small transfers and update balance
-          try {
-            await autoApprove(data.transferId || `transfer_${Date.now()}`, `Small transfer amount (${amount} GHS)`);
-            
-            // Update local card balance for auto-approved transfers
-            updateCardBalance(cardId, newBalance);
-            
-            logger.info('TRANSFERS', 'Small external transfer auto-approved', { transferId: data.transferId });
-          } catch (approvalError) {
-            logger.warn('TRANSFERS', 'Failed to auto-approve transfer', approvalError);
-            // Still update balance for small transfers
-            updateCardBalance(cardId, newBalance);
-          }
+        // Update local card balance optimistically
+        if (result.newBalance !== undefined) {
+          updateCardBalance(cardId, result.newBalance);
         }
         
-        // Refresh card balances from database after successful transfer
-        setTimeout(() => refreshCardBalances(), 1000);
+        // Refresh data with slight delay to ensure database consistency
+        setTimeout(() => {
+          refreshCardBalances();
+          refreshTransactions();
+        }, 1000);
+        
+        logger.info('WITHDRAWALS', '[Enhanced] Withdrawal completed successfully', {
+          transactionId: result.transactionId,
+          newBalance: result.newBalance,
+          reference: result.data?.reference
+        });
         
         return {
           success: true,
-          newBalance,
-          requiresApproval,
-          approval: approvalData
+          error: undefined,
+          newBalance: result.newBalance,
+          transactionId: result.transactionId,
+          reference: result.data?.reference,
+          instructions: result.data?.instructions
         };
       } else {
-        // Server transfer failed, fall back to local simulation
-        logger.warn('TRANSFERS', 'Server transfer failed, falling back to local simulation', result.error);
-        
-        // Fall through to local simulation below
+        logger.error('WITHDRAWALS', '[Enhanced] Withdrawal failed', result.error);
+        return {
+          success: false,
+          error: result.error || 'Withdrawal failed'
+        };
       }
+      
     } catch (error) {
-      logger.warn('TRANSFERS', 'Server transfer error, falling back to local simulation', error);
-      // Fall through to local simulation below
-    }
-    
-    // Local simulation fallback
-    try {
-      logger.info('TRANSFERS', 'Using local simulation for external transfer');
-      const newSourceBalance = sourceCard.balance - amount;
-      
-      // Update source card balance locally
-      updateCardBalance(sourceCard.id, newSourceBalance);
-      
-      // Add outgoing transaction for source card
-      addTransaction({
-        userId: user.$id || user.id || '',
-        cardId: sourceCard.id,
-        amount: -amount, // Negative for outgoing transfer
-        type: 'transfer',
-        category: 'transfer',
-        description: description || `External Transfer To: ${recipientCardNumber}`,
-        recipient: recipientCardNumber,
-        status: 'completed'
-      });
-      
-      // Refresh card balances from database after successful local transfer
-      setTimeout(() => refreshCardBalances(), 1000);
-      
-      logger.info('TRANSFERS', 'External transfer simulated locally');
-      
-      return {
-        success: true,
-        newBalance: newSourceBalance
-      };
-    } catch (error) {
-      logger.error('TRANSFERS', 'Local simulation error', error);
+      logger.error('WITHDRAWALS', '[Enhanced] Withdrawal service error', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'External transfer failed'
+        error: error instanceof Error ? error.message : 'Withdrawal service unavailable'
       };
     }
   };
@@ -1176,15 +1124,30 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
         }
         
         if (append) {
-          setTransactions(prev => {
-            // Avoid duplicates when appending
+          // Update both all transactions and filtered transactions
+          setAllTransactions(prev => {
             const existingIds = new Set(prev.map(tx => tx.id));
             const newTransactions = result.data.transactions.filter(tx => !existingIds.has(tx.id));
             return [...prev, ...newTransactions];
           });
+          setTransactions(prev => {
+            // Avoid duplicates when appending
+            const existingIds = new Set(prev.map(tx => tx.id));
+            const newTransactions = result.data.transactions.filter(tx => 
+              !existingIds.has(tx.id) && 
+              (activeCard ? tx.cardId === activeCard.id : true)
+            );
+            return [...prev, ...newTransactions];
+          });
         } else {
           logger.info('CONTEXT', '[loadTransactionsWithCache] Setting transactions in state:', result.data.transactions.length, 'items');
-          setTransactions(result.data.transactions);
+          // Store all transactions
+          setAllTransactions(result.data.transactions);
+          // Filter transactions for active card
+          const filteredTransactions = activeCard 
+            ? result.data.transactions.filter(tx => tx.cardId === activeCard.id)
+            : result.data.transactions;
+          setTransactions(filteredTransactions);
         }
         setTransactionsCursor(result.data.nextCursor || null);
         
@@ -1209,17 +1172,35 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
         logger.info('CONTEXT', '[loadTransactionsWithCache] Created', activities.length, 'activity events from transactions');
         
         if (append) {
-          setActivity(prev => {
-            // Avoid duplicates when appending activity
+          // Update both all activity and filtered activity
+          setAllActivity(prev => {
             const existingIds = new Set(prev.map(a => a.id));
             const newActivities = activities.filter(a => !existingIds.has(a.id));
             return [...prev, ...newActivities];
           });
+          setActivity(prev => {
+            // Avoid duplicates when appending activity
+            const existingIds = new Set(prev.map(a => a.id));
+            const newActivities = activities.filter(a => 
+              !existingIds.has(a.id) && 
+              (activeCard ? a.cardId === activeCard.id : true)
+            );
+            return [...prev, ...newActivities];
+          });
         } else {
+          // Store all activities
+          setAllActivity(prev => {
+            const nonTxActivities = prev.filter(a => a.category !== 'transaction');
+            return [...activities, ...nonTxActivities];
+          });
+          // Filter activities for active card
           setActivity(prev => {
             // Only add transaction activities, keep other activities
             const nonTxActivities = prev.filter(a => a.category !== 'transaction');
-            return [...activities, ...nonTxActivities];
+            const filteredActivities = activeCard 
+              ? activities.filter(a => a.cardId === activeCard.id)
+              : activities;
+            return [...filteredActivities, ...nonTxActivities];
           });
         }
         
@@ -1258,6 +1239,22 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
     }
   };
 
+  // Clear cards, transactions, and activity when user logs out or changes
+  useEffect(() => {
+    if (!isAuthenticated || !user) {
+      // User logged out or changed - clear all data to prevent cross-user data leakage
+      logger.info('CONTEXT', '[AuthChange] User logged out or changed, clearing all data');
+      setCards([]);
+      setActiveCard(null);
+      setTransactions([]);
+      setAllTransactions([]);
+      setActivity([]);
+      setAllActivity([]);
+      setNotifications([]);
+      setPendingApprovalsCount(0);
+    }
+  }, [isAuthenticated, user?.id || user?.$id]); // React to user ID changes, not user object changes
+
   // Load cards when authentication is ready
   useEffect(() => {
     // Don't load cards if authentication is still loading
@@ -1285,18 +1282,54 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
       try {
         // Try to load from Appwrite first since user is authenticated
         try {
-          if (__DEV__) {
-            logger.info('CONTEXT', '[LoadCards] Attempting to load cards from Appwrite for user:', user.$id || user.id);
-          }
+          const currentUserId = user.$id || user.id;
+          logger.info('CONTEXT', '[LoadCards] Attempting to load cards from Appwrite', {
+            currentUserId,
+            userEmail: user.email,
+            userObject: { id: user.id, $id: user.$id, email: user.email },
+            timestamp: new Date().toISOString()
+          });
+          
           const appwriteCards = await getAppwriteActiveCards();
+          
           if (appwriteCards.length > 0) {
-            if (__DEV__) {
-              logger.info('CONTEXT', '[LoadCards] Loaded', appwriteCards.length, 'cards from Appwrite with fresh balances');
+            // CRITICAL: Validate that all cards belong to the current user to prevent cross-user data leakage
+            const currentUserId = user.$id || user.id;
+            const invalidCards = appwriteCards.filter(card => card.userId !== currentUserId);
+            
+            if (invalidCards.length > 0) {
+              logger.error('CONTEXT', '[LoadCards] SECURITY ISSUE: Cards from other users detected!', {
+                currentUserId,
+                currentUserEmail: user.email,
+                invalidCards: invalidCards.map(c => ({ 
+                  cardId: c.id, 
+                  cardUserId: c.userId, 
+                  holderName: c.cardHolderName 
+                })),
+                totalCards: appwriteCards.length,
+                validCards: appwriteCards.length - invalidCards.length
+              });
+              
+              // Filter out invalid cards to prevent security issue
+              const validCards = appwriteCards.filter(card => card.userId === currentUserId);
+              logger.warn('CONTEXT', '[LoadCards] Filtered out invalid cards, using only valid ones', {
+                originalCount: appwriteCards.length,
+                validCount: validCards.length
+              });
+              
+              setCards(validCards);
+              setActiveCard(validCards[0] || null);
+            } else {
+              logger.info('CONTEXT', '[LoadCards] All cards validated - belong to current user', {
+                cardCount: appwriteCards.length,
+                currentUserId,
+                cardUserIds: appwriteCards.map(c => c.userId)
+              });
+              
+              // Cards from Appwrite already have fresh balances from database
+              setCards(appwriteCards);
+              setActiveCard(appwriteCards[0] || null);
             }
-            // Cards from Appwrite already have fresh balances from database
-            // No need to map - the service already returns proper Card objects with current balances
-            setCards(appwriteCards);
-            setActiveCard(appwriteCards[0] || null);
             
             if (__DEV__) {
               logger.info('CONTEXT', '[LoadCards] Cards set with current balances:', 
@@ -2575,12 +2608,13 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
         cards,
         transactions,
         activeCard,
-        setActiveCard,
+        setActiveCard: setActiveCardWithFilter,
         addCard,
         removeCard,
         addTransaction,
         updateCardBalance,
         makeTransfer,
+        makeWithdrawal,
         makeDeposit,
         makeTransaction,
         refreshCardBalances,
@@ -2613,7 +2647,6 @@ const removeCard: AppContextType["removeCard"] = async (cardId) => {
     handleApprovalStatusChange,
     refreshPendingApprovals,
     pendingApprovalsCount,
-        pendingApprovalsCount,
       }}
     >
       {children}
@@ -2628,3 +2661,4 @@ export function useApp() {
   }
   return context;
 }
+

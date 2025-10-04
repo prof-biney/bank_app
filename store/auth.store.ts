@@ -35,6 +35,22 @@ import {
   clearAllBiometricData,
   updateLastPasswordLogin,
 } from "@/lib/biometric/biometric.service";
+import { jwtSessionManager } from "@/lib/jwtSessionManager";
+import {
+  isCurrentDeviceTrusted,
+  addCurrentDeviceToTrusted,
+  updateDeviceLastUsed,
+  removeCurrentDeviceFromTrusted,
+  clearTrustedDevicesForUser,
+  shouldAttemptAutoLogin,
+  attemptAutoLogin,
+  isDeviceTrustEnabled,
+  setDeviceTrustEnabled,
+  getTrustedDevicesForUser,
+  DeviceTrackingState,
+  AutoLoginResult,
+  TrustedDevice,
+} from '@/lib/deviceTracking.service';
 
 /**
  * Authentication State Interface
@@ -62,6 +78,12 @@ type AuthState = {
   
   /** Current login attempt status and lockout information */
   loginAttempts: LoginAttemptResult | null;
+  
+  /** Device trust and auto-login state */
+  deviceTrackingState: DeviceTrackingState | null;
+  
+  /** List of trusted devices for the current user */
+  trustedDevices: TrustedDevice[];
   
   /**
    * Sets the authentication state
@@ -122,6 +144,14 @@ type AuthState = {
   updateProfilePicture: (imageUri: string) => Promise<void>;
   
   /**
+   * Updates the user's profile information
+   * @param updates - Partial user profile data to update
+   * @returns A promise that resolves when the update completes
+   * @throws Error if update fails
+   */
+  updateUserProfile: (updates: { name?: string; phoneNumber?: string }) => Promise<void>;
+  
+  /**
    * Checks biometric availability and updates state
    * @returns A promise that resolves when the check completes
    */
@@ -158,6 +188,52 @@ type AuthState = {
    * @returns A promise that resolves when status is loaded
    */
   checkLoginAttemptStatus: (email: string) => Promise<void>;
+  
+  /**
+   * Attempts auto-login for trusted device if eligible
+   * @param email - Email to attempt auto-login for
+   * @returns A promise that resolves with the auto-login result
+   */
+  attemptAutoLogin: (email: string) => Promise<AutoLoginResult>;
+  
+  /**
+   * Adds current device to trusted devices list
+   * @returns A promise that resolves when device is added
+   */
+  addDeviceToTrusted: () => Promise<void>;
+  
+  /**
+   * Removes current device from trusted devices list
+   * @returns A promise that resolves when device is removed
+   */
+  removeDeviceFromTrusted: () => Promise<void>;
+  
+  /**
+   * Loads device tracking state for current user
+   * @param userId - User ID to check device trust for
+   * @returns A promise that resolves when state is loaded
+   */
+  loadDeviceTrackingState: (userId: string) => Promise<void>;
+  
+  /**
+   * Loads trusted devices list for current user
+   * @returns A promise that resolves when devices are loaded
+   */
+  loadTrustedDevices: () => Promise<void>;
+  
+  /**
+   * Enables or disables device trust feature
+   * @param enabled - Whether to enable device trust
+   * @returns A promise that resolves when setting is updated
+   */
+  setDeviceTrustEnabled: (enabled: boolean) => Promise<void>;
+  
+  /**
+   * Removes a specific trusted device
+   * @param deviceId - Device ID to remove
+   * @returns A promise that resolves when device is removed
+   */
+  removeTrustedDevice: (deviceId: string) => Promise<void>;
 };
 
 /**
@@ -173,6 +249,8 @@ const useAuthStore = create<AuthState>((set, get) => ({
   biometricType: null,
   lastPasswordLogin: null,
   loginAttempts: null,
+  deviceTrackingState: null,
+  trustedDevices: [],
 
   /**
    * Updates the authentication state
@@ -220,50 +298,49 @@ const useAuthStore = create<AuthState>((set, get) => ({
             } as User,
           });
 
-          // Create JWT for server API calls
+          // Create JWT session for server API calls
           try {
-            const jwt = await createJWT();
-            (global as any).__APPWRITE_JWT__ = jwt?.jwt;
+            const jwt = await jwtSessionManager.createAndStoreToken();
             
             // Seed demo transactions on sign-in (idempotent if transactions exist)
-            try {
-              const apiMod = await import('@/lib/api');
-              const { getApiBase } = apiMod;
-              const url = `${getApiBase()}/v1/dev/seed-transactions`;
-              if (jwt?.jwt) {
+            if (jwt) {
+              try {
+                const apiMod = await import('@/lib/api');
+                const { getApiBase } = apiMod;
+                const url = `${getApiBase()}/v1/dev/seed-transactions`;
                 await fetch(url, {
                   method: 'POST',
-                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt.jwt}` },
+                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
                   body: JSON.stringify({ count: 20, skipIfNotEmpty: true })
                 }).catch(() => {});
-              }
-            } catch {}
+              } catch {}
+            }
           } catch {
-            // Non-fatal if JWT cannot be created
-            (global as any).__APPWRITE_JWT__ = undefined;
+            // Non-fatal if JWT session cannot be created
+            logger.warn('AUTH', 'JWT session creation failed during fetchAuthenticatedUser');
           }
         } else {
+          await jwtSessionManager.clearSession();
           set({
             isAuthenticated: false,
             user: null,
           });
-          (global as any).__APPWRITE_JWT__ = undefined;
         }
       } else {
+        await jwtSessionManager.clearSession();
         set({
           isAuthenticated: false,
           user: null,
         });
-        (global as any).__APPWRITE_JWT__ = undefined;
       }
     } catch (error) {
       logger.error('AUTH', 'fetchAuthenticatedUser error', error);
       // Set authenticated state to false on error
+      await jwtSessionManager.clearSession();
       set({
         isAuthenticated: false,
         user: null,
       });
-      (global as any).__APPWRITE_JWT__ = undefined;
     } finally {
       set({ isLoading: false });
     }
@@ -295,10 +372,9 @@ const useAuthStore = create<AuthState>((set, get) => ({
     } catch (error: any) {
       logger.error('AUTH', 'Registration error', error);
       
-      // Surface full error to stdout/console for runtime environments
+      // Surface full error to structured logger
       try {
-        console.error('Registration error (raw):', error);
-        console.error('Registration error stack (raw):', (error as any)?.stack);
+        logger.error('AUTH', 'Registration error details:', { error, stack: (error as any)?.stack });
       } catch {}
 
       // Re-throw the error (Appwrite auth service already formats errors)
@@ -435,31 +511,39 @@ const useAuthStore = create<AuthState>((set, get) => ({
       
       // Load biometric state after successful login
       await get().loadBiometricState();
+      
+      // Load device tracking state after successful login
+      const { user } = get();
+      if (user) {
+        try {
+          await get().loadDeviceTrackingState(user.id);
+          await get().loadTrustedDevices();
+        } catch (deviceError) {
+          logger.warn('AUTH', 'Failed to load device tracking state after login:', deviceError);
+        }
+      }
 
-      // Create JWT for server API calls
+      // Create and store JWT for server API calls using enhanced session manager
       try {
         if (__DEV__) logger.info('AUTH', 'Creating JWT token for server API calls');
-        const jwt = await createJWT();
-        (global as any).__APPWRITE_JWT__ = jwt?.jwt;
-        if (__DEV__) logger.info('AUTH', 'JWT created successfully', { hasJwt: !!jwt?.jwt });
+        const jwt = await jwtSessionManager.createAndStoreToken();
+        if (__DEV__) logger.info('AUTH', 'JWT created and stored successfully', { hasJwt: !!jwt });
 
-        // seed demo transactions (fire-and-forget)
-        try {
-          const apiMod = await import('@/lib/api');
-          const { getApiBase } = apiMod;
-          const url = `${getApiBase()}/v1/dev/seed-transactions`;
-          if (jwt?.jwt) {
+        // seed demo transactions (fire-and-forget) if we have a valid token
+        if (jwt) {
+          try {
+            const apiMod = await import('@/lib/api');
+            const { getApiBase } = apiMod;
+            const url = `${getApiBase()}/v1/dev/seed-transactions`;
             await fetch(url, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt.jwt}` },
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
               body: JSON.stringify({ count: 20, skipIfNotEmpty: true })
             }).catch(() => {});
-          }
-        } catch {}
+          } catch {}
+        }
       } catch (jwtError) {
-        console.error('createJWT failed:', jwtError, (jwtError as any)?.stack);
-        logger.error('AUTH', 'JWT creation failed', jwtError);
-        (global as any).__APPWRITE_JWT__ = undefined;
+        logger.error('AUTH', 'JWT session manager failed', { error: jwtError, stack: (jwtError as any)?.stack });
         logger.warn('AUTH', 'Continuing without JWT token');
       }
 
@@ -473,11 +557,11 @@ const useAuthStore = create<AuthState>((set, get) => ({
     } catch (error: any) {
       logger.error('AUTH', 'Login error', error);
       
+      await jwtSessionManager.clearSession();
       set({
         isAuthenticated: false,
         user: null,
       });
-      (global as any).__APPWRITE_JWT__ = undefined;
       
       // Record failed login attempt (unless it's already a lockout error)
       if (!error.message?.includes('Account temporarily locked')) {
@@ -497,10 +581,9 @@ const useAuthStore = create<AuthState>((set, get) => ({
         }
       }
       
-      // Surface full error to stdout/console for runtime environments
+      // Surface full error to structured logger
       try {
-        console.error('Login error (raw):', error);
-        console.error('Login error stack (raw):', (error as any)?.stack);
+        logger.error('AUTH', 'Login error details:', { error, stack: (error as any)?.stack });
       } catch {}
 
       // Re-throw the error (Appwrite auth service already formats errors)
@@ -525,6 +608,10 @@ const useAuthStore = create<AuthState>((set, get) => ({
       // Logout using Appwrite auth service
       await appwriteLogout();
       
+      // Force clear auth cache to ensure no stale user data
+      const { forceClearUserCache } = await import('@/lib/appwrite/auth');
+      await forceClearUserCache();
+      
       if (__DEV__) {
         logger.info('AUTH', 'Appwrite logout completed, clearing local state');
       }
@@ -532,12 +619,27 @@ const useAuthStore = create<AuthState>((set, get) => ({
       // Clear all biometric data on logout
       await clearAllBiometricData();
       
+      // Clear device trust data for the user
+      const { user } = get();
+      if (user) {
+        try {
+          await clearTrustedDevicesForUser(user.id);
+        } catch (error) {
+          logger.warn('AUTH', 'Failed to clear trusted devices on logout:', error);
+        }
+      }
+      
+      // Clear JWT session
+      await jwtSessionManager.clearSession();
+      
       set({
         isAuthenticated: false,
         user: null,
         biometricEnabled: false,
         biometricType: null,
         lastPasswordLogin: null,
+        deviceTrackingState: null,
+        trustedDevices: [],
       });
       
       if (__DEV__) {
@@ -552,8 +654,8 @@ const useAuthStore = create<AuthState>((set, get) => ({
         user: null,
       });
     } finally {
-      // Ensure JWT is cleared
-      (global as any).__APPWRITE_JWT__ = undefined;
+      // Ensure JWT session is cleared on any error
+      await jwtSessionManager.clearSession();
       set({ isLoading: false });
     }
   },
@@ -577,18 +679,56 @@ const useAuthStore = create<AuthState>((set, get) => ({
       // Update profile picture using Appwrite auth service
       const updatedProfile = await updateProfilePicture(imageUri);
       
+      // Update local state with new user data - avatar is now a string field
+      set({
+        user: {
+          ...user,
+          avatar: updatedProfile.avatar, // Direct string field
+          avatarFileId: updatedProfile.avatarFileId, // Separate field for file ID
+        } as User,
+      });
+      
+      logger.info('AUTH', 'Profile picture updated successfully', {
+        avatarUrl: updatedProfile.avatar,
+        fileId: updatedProfile.avatarFileId
+      });
+    } catch (error) {
+      logger.error('AUTH', 'Update profile picture error', error);
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+  
+  /**
+   * Updates the user's profile information
+   */
+  updateUserProfile: async (updates: { name?: string; phoneNumber?: string }) => {
+    const { user } = useAuthStore.getState();
+    
+    if (!user) {
+      throw new Error('No authenticated user found');
+    }
+
+    set({ isLoading: true });
+    
+    try {
+      // Update user profile using Appwrite auth service
+      const updatedProfile = await updateAppwriteUserProfile(updates);
+      
       // Update local state with new user data
       set({
         user: {
           ...user,
-          avatar: updatedProfile.profilePicture?.url,
-          avatarFileId: updatedProfile.profilePicture?.id,
+          name: updatedProfile.name || user.name,
+          // Note: phoneNumber is not part of the User type, but it's stored in the database
+          // The User type might need to be extended if we want to display phone numbers
         } as User,
       });
       
-      logger.info('AUTH', 'Profile picture updated successfully');
+      logger.info('AUTH', 'User profile updated successfully');
     } catch (error) {
-      logger.error('AUTH', 'Update profile picture error', error);
+      logger.error('AUTH', 'Update user profile error', error);
       throw error;
     } finally {
       set({ isLoading: false });
@@ -814,6 +954,159 @@ const useAuthStore = create<AuthState>((set, get) => ({
       logger.error('AUTH', 'Error checking login attempt status:', error);
       // On error, don't block user - set null state
       set({ loginAttempts: null });
+    }
+  },
+  
+  /**
+   * Attempts auto-login for trusted device if eligible
+   */
+  attemptAutoLogin: async (email: string): Promise<AutoLoginResult> => {
+    const { user } = get();
+    const userId = user?.id || email; // Use current user ID or fallback to email
+    
+    try {
+      return await attemptAutoLogin(userId);
+    } catch (error) {
+      logger.error('AUTH', 'Auto-login attempt failed:', error);
+      return {
+        success: false,
+        skipped: false,
+        reason: 'Auto-login error occurred',
+      };
+    }
+  },
+  
+  /**
+   * Adds current device to trusted devices list
+   */
+  addDeviceToTrusted: async (): Promise<void> => {
+    const { user, biometricType } = get();
+    
+    if (!user) {
+      throw new Error('No authenticated user found');
+    }
+    
+    try {
+      await addCurrentDeviceToTrusted(user.id, biometricType || 'unknown');
+      
+      // Reload trusted devices and tracking state
+      await get().loadTrustedDevices();
+      await get().loadDeviceTrackingState(user.id);
+      
+      logger.info('AUTH', 'Device added to trusted list');
+    } catch (error) {
+      logger.error('AUTH', 'Failed to add device to trusted list:', error);
+      throw error;
+    }
+  },
+  
+  /**
+   * Removes current device from trusted devices list
+   */
+  removeDeviceFromTrusted: async (): Promise<void> => {
+    const { user } = get();
+    
+    if (!user) {
+      throw new Error('No authenticated user found');
+    }
+    
+    try {
+      await removeCurrentDeviceFromTrusted(user.id);
+      
+      // Reload trusted devices and tracking state
+      await get().loadTrustedDevices();
+      await get().loadDeviceTrackingState(user.id);
+      
+      logger.info('AUTH', 'Device removed from trusted list');
+    } catch (error) {
+      logger.error('AUTH', 'Failed to remove device from trusted list:', error);
+      throw error;
+    }
+  },
+  
+  /**
+   * Loads device tracking state for current user
+   */
+  loadDeviceTrackingState: async (userId: string): Promise<void> => {
+    try {
+      const trackingState = await shouldAttemptAutoLogin(userId);
+      set({ deviceTrackingState: trackingState });
+      
+      logger.info('AUTH', 'Device tracking state loaded:', {
+        canAutoLogin: trackingState.canAutoLogin,
+        trustLevel: trackingState.trustLevel,
+        isDeviceTrusted: trackingState.isDeviceTrusted,
+      });
+    } catch (error) {
+      logger.error('AUTH', 'Failed to load device tracking state:', error);
+      set({ deviceTrackingState: null });
+    }
+  },
+  
+  /**
+   * Loads trusted devices list for current user
+   */
+  loadTrustedDevices: async (): Promise<void> => {
+    const { user } = get();
+    
+    if (!user) {
+      set({ trustedDevices: [] });
+      return;
+    }
+    
+    try {
+      const devices = await getTrustedDevicesForUser(user.id);
+      set({ trustedDevices: devices });
+      
+      logger.info('AUTH', `Loaded ${devices.length} trusted devices`);
+    } catch (error) {
+      logger.error('AUTH', 'Failed to load trusted devices:', error);
+      set({ trustedDevices: [] });
+    }
+  },
+  
+  /**
+   * Enables or disables device trust feature
+   */
+  setDeviceTrustEnabled: async (enabled: boolean): Promise<void> => {
+    try {
+      await setDeviceTrustEnabled(enabled);
+      
+      // Reload state after changing settings
+      const { user } = get();
+      if (user) {
+        await get().loadDeviceTrackingState(user.id);
+        await get().loadTrustedDevices();
+      }
+      
+      logger.info('AUTH', `Device trust ${enabled ? 'enabled' : 'disabled'}`);
+    } catch (error) {
+      logger.error('AUTH', 'Failed to toggle device trust feature:', error);
+      throw error;
+    }
+  },
+  
+  /**
+   * Removes a specific trusted device
+   */
+  removeTrustedDevice: async (deviceId: string): Promise<void> => {
+    const { user } = get();
+    
+    if (!user) {
+      throw new Error('No authenticated user found');
+    }
+    
+    try {
+      await removeTrustedDevice(deviceId, user.id);
+      
+      // Reload trusted devices and tracking state
+      await get().loadTrustedDevices();
+      await get().loadDeviceTrackingState(user.id);
+      
+      logger.info('AUTH', 'Trusted device removed:', { deviceId });
+    } catch (error) {
+      logger.error('AUTH', 'Failed to remove trusted device:', error);
+      throw error;
     }
   },
 }));
