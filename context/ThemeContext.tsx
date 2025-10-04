@@ -22,6 +22,7 @@ export type ThemeColors = {
   textInverse: string;
   
   // Interactive elements
+  primary: string;
   border: string;
   borderSecondary: string;
   tintPrimary: string;
@@ -144,6 +145,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       textInverse: isDark ? '#0F172A' : '#FFFFFF',
       
       // Interactive elements - softer borders
+      primary: isDark ? '#10B981' : '#0F766E', // Primary brand color
       border: isDark ? '#333333' : '#E2E8F0', // Lighter border for less harshness
       borderSecondary: isDark ? '#404040' : '#CBD5E1', // Secondary borders
       tintPrimary: isDark ? '#10B981' : '#0F766E', // Slightly softer teal

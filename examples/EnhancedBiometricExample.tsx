@@ -18,6 +18,7 @@ import { useBiometricMessages } from '@/context/BiometricToastContext';
 
 // Auth Store
 import useAuthStore from '@/store/auth.store';
+import { logger } from '@/lib/logger';
 
 interface EnhancedBiometricExampleProps {
   mode: 'login' | 'setup' | 'settings';
@@ -50,7 +51,7 @@ const EnhancedBiometricExample: React.FC<EnhancedBiometricExampleProps> = ({ mod
           const success = await setup();
           if (success) {
             // Handle success - maybe navigate or update UI
-            console.log('Biometric setup successful');
+            logger.info('BIOMETRIC', 'Biometric setup successful');
           }
         } else {
           biometricMessages.showWarning('Not Available', 'Biometric authentication is not available on this device');
@@ -61,13 +62,13 @@ const EnhancedBiometricExample: React.FC<EnhancedBiometricExampleProps> = ({ mod
         if (biometricEnabled) {
           const success = await disable();
           if (success) {
-            console.log('Biometric authentication disabled');
+            logger.info('BIOMETRIC', 'Biometric authentication disabled');
           }
         } else {
           if (state.availability?.isAvailable) {
             const success = await setup();
             if (success) {
-              console.log('Biometric authentication enabled');
+              logger.info('BIOMETRIC', 'Biometric authentication enabled');
             }
           } else {
             biometricMessages.showWarning('Not Available', 'Biometric authentication is not available on this device');

@@ -68,15 +68,25 @@ export class AppwriteCardService {
   }
 
   /**
-   * Get current authenticated user ID
+   * Get current authenticated user ID with enhanced validation
    */
   private async getCurrentUserId(): Promise<string> {
     const user = await authService.getCurrentUser();
     if (!user) {
+      logger.error('CARD_SERVICE', 'No authenticated user found in getCurrentUserId');
       throw new Error('User not authenticated - no user ID found');
     }
     
-    logger.info('CARD_SERVICE', 'Using userId for card operations', { userId: user.$id });
+    if (!user.$id) {
+      logger.error('CARD_SERVICE', 'User object missing $id field', { user });
+      throw new Error('User object is invalid - missing user ID');
+    }
+    
+    logger.info('CARD_SERVICE', 'Using userId for card operations', { 
+      userId: user.$id, 
+      userEmail: user.email,
+      timestamp: new Date().toISOString() 
+    });
     return user.$id;
   }
 
@@ -477,12 +487,26 @@ export class AppwriteCardService {
       // Execute query
       const response = await databaseService.listDocuments(collections.cards.id, queries);
 
+      logger.info('CARD_SERVICE', 'Raw query response received', {
+        documentCount: response.documents.length,
+        total: response.total,
+        queriedUserId: userId,
+        firstDocumentUserId: response.documents[0]?.userId || 'no_documents',
+        allDocumentUserIds: response.documents.map(doc => ({ docId: doc.$id, userId: doc.userId })).slice(0, 5)
+      });
+
       // Transform documents to Card type
       const cards = response.documents.map(doc => this.transformAppwriteToCard(doc));
 
-      logger.info('CARD_SERVICE', 'Cards queried successfully', { 
+      logger.info('CARD_SERVICE', 'Cards queried and transformed successfully', { 
         count: cards.length, 
-        total: response.total 
+        total: response.total,
+        cardDetails: cards.map(c => ({ 
+          cardId: c.id, 
+          userId: c.userId, 
+          holderName: c.cardHolderName,
+          last4: c.cardNumber.slice(-4) 
+        }))
       });
 
       return { cards, total: response.total };

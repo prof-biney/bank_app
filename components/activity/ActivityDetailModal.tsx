@@ -4,6 +4,7 @@ import { ActivityEvent } from '@/types/activity';
 import { ArrowDownLeft, ArrowUpRight, CreditCard, Info, X, Trash2, AlertCircle, CheckCircle, Clock } from 'lucide-react-native';
 import { useTheme } from '@/context/ThemeContext';
 import { activityLogger } from '@/lib/activityLogger';
+import { logger } from '@/lib/logger';
 import ConfirmDialog from '@/components/modals/ConfirmDialog';
 
 function getColors(event: ActivityEvent, themeColors: any) {
@@ -133,8 +134,7 @@ export default function ActivityDetailModal({
       onDelete?.(event);
       onClose();
     } catch (error) {
-      // Handle error silently or show toast
-      console.error('Failed to delete activity:', error);
+      logger.error('ACTIVITY_MODAL', 'Failed to delete activity', { error, eventId: event.id });
     } finally {
       setDeleting(false);
       setShowDeleteConfirm(false);
@@ -148,17 +148,48 @@ export default function ActivityDetailModal({
       setPayment(null);
       setErr(null);
       if (event.category !== 'transaction' || !event.transactionId) return;
+      
       try {
         setLoading(true);
         const { getApiBase } = require('@/lib/api');
-        const url = `${getApiBase()}/v1/payments`;
-        const res = await fetch(url, { headers: {} });
+        const { getValidJWT } = require('@/lib/jwt');
+        
+        // Get authentication token
+        let jwt;
+        try {
+          jwt = await getValidJWT();
+        } catch (jwtError) {
+          logger.warn('ACTIVITY_MODAL', 'Could not get JWT token for payment details', jwtError);
+        }
+        
+        const headers: any = {
+          'Content-Type': 'application/json',
+        };
+        
+        if (jwt) {
+          headers['Authorization'] = `Bearer ${jwt}`;
+        }
+        
+        const url = `${getApiBase()}/v1/payments/${event.transactionId}`;
+        logger.info('ACTIVITY_MODAL', 'Fetching payment details', { transactionId: event.transactionId, url });
+        
+        const res = await fetch(url, { headers });
+        
+        if (!res.ok) {
+          if (res.status === 404) {
+            logger.info('ACTIVITY_MODAL', 'Payment details not found', { transactionId: event.transactionId });
+            setErr('Payment details not found');
+            return;
+          }
+          throw new Error(`Failed to fetch payment details (${res.status})`);
+        }
+        
         const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-const found = Array.isArray(data?.data) ? data.data.find((p: any) => p.id === event.transactionId) : null;
-        setPayment(found || null);
+        setPayment(data?.data || data || null);
+        logger.info('ACTIVITY_MODAL', 'Payment details loaded successfully', { transactionId: event.transactionId });
       } catch (e: any) {
-        setErr(e?.message || 'Failed to load payment');
+        logger.error('ACTIVITY_MODAL', 'Failed to fetch payment details', { error: e.message, transactionId: event.transactionId });
+        setErr(e?.message || 'Payment details not available');
       } finally {
         setLoading(false);
       }
@@ -281,12 +312,27 @@ const found = Array.isArray(data?.data) ? data.data.find((p: any) => p.id === ev
                 </View>
               )}
               
-              {/* Category/Type */}
+              {/* Transaction Type */}
               {(event.tags?.length || event.type) && (
                 <View style={styles.detailRow}>
-                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Type:</Text>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Transaction Type:</Text>
                   <Text style={[styles.detailValue, { color: colors.textPrimary }]}>
-                    {event.tags?.[0] || event.type || 'Unknown'}
+                    {(() => {
+                      // Format transaction type properly
+                      const type = event.tags?.[0] || event.type || 'Unknown';
+                      const category = event.category;
+                      
+                      // If it's a transaction category, format the type nicely
+                      if (category === 'transaction') {
+                        if (type.includes('deposit') || type === 'deposit') return 'Deposit';
+                        if (type.includes('withdraw') || type === 'withdrawal' || type === 'withdraw') return 'Withdrawal';
+                        if (type.includes('transfer') || type === 'transfer') return 'Transfer';
+                        if (type.includes('payment') || type === 'payment') return 'Payment';
+                      }
+                      
+                      // For other categories or unknown types, capitalize first letter
+                      return type.charAt(0).toUpperCase() + type.slice(1);
+                    })()} 
                   </Text>
                 </View>
               )}

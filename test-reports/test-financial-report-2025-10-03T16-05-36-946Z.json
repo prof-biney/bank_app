@@ -1,0 +1,108 @@
+{
+  "metadata": {
+    "generatedAt": "2025-10-03T16:05:36.946Z",
+    "reportType": "Financial Analytics Report",
+    "version": "1.0",
+    "period": {
+      "start": "2025-09-03T16:05:36.942Z",
+      "end": "2025-10-03T16:05:36.942Z",
+      "label": "Test Period - Last 30 Days"
+    },
+    "cardId": null,
+    "cardName": "All Cards",
+    "options": {
+      "period": "30d",
+      "includeCharts": true,
+      "includeInsights": true,
+      "generatedBy": "Bank App Analytics Service Test"
+    }
+  },
+  "summary": {
+    "totalTransactions": 25,
+    "totalIncome": 5000,
+    "totalExpenses": 3500,
+    "netBalance": 1500,
+    "averageTransactionAmount": 340,
+    "currentBalance": 8500
+  },
+  "trends": {
+    "dailyTransactions": [
+      {
+        "date": "2024-01-01",
+        "count": 3,
+        "totalAmount": 450,
+        "income": 500,
+        "expenses": 50
+      },
+      {
+        "date": "2024-01-02",
+        "count": 2,
+        "totalAmount": 320,
+        "income": 0,
+        "expenses": 320
+      }
+    ],
+    "monthlyTrends": [
+      {
+        "month": "January",
+        "year": 2024,
+        "totalTransactions": 25,
+        "totalAmount": 8500,
+        "income": 5000,
+        "expenses": 3500,
+        "averageDaily": 283.33
+      }
+    ],
+    "categoryBreakdown": [
+      {
+        "category": "Groceries",
+        "count": 8,
+        "amount": 1200,
+        "percentage": 34.3
+      },
+      {
+        "category": "Transportation",
+        "count": 5,
+        "amount": 800,
+        "percentage": 22.9
+      },
+      {
+        "category": "Entertainment",
+        "count": 3,
+        "amount": 450,
+        "percentage": 12.9
+      }
+    ],
+    "transactionTypes": [
+      {
+        "type": "Purchase",
+        "count": 18,
+        "amount": 3200,
+        "percentage": 91.4
+      },
+      {
+        "type": "Withdrawal",
+        "count": 2,
+        "amount": 300,
+        "percentage": 8.6
+      }
+    ]
+  },
+  "insights": [
+    {
+      "type": "income_trend",
+      "title": "Positive Cash Flow",
+      "description": "Great job! You saved GH₵1,500.00 during this period",
+      "value": 1500,
+      "trend": "up",
+      "severity": "success"
+    },
+    {
+      "type": "category_alert",
+      "title": "Category Concentration",
+      "description": "34.3% of your spending is in Groceries. Consider diversifying your expenses.",
+      "value": 34.3,
+      "severity": "info"
+    }
+  ]
+}

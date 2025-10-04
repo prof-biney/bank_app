@@ -1,7 +1,6 @@
 import { useTheme } from '@/context/ThemeContext';
 import { getInitials } from '@/lib/imageUtils';
-// TODO: Replace with Appwrite storage helpers when available
-// import { getImage } from '@/lib/appwrite/storage';
+// Note: Component now works with Appwrite storage URLs directly via imageUrl prop
 import { Camera, Edit3, User as UserIcon } from 'lucide-react-native';
 import React from 'react';
 import {

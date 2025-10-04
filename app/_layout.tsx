@@ -15,12 +15,15 @@ import { initializeErrorSuppression } from "@/config/errorSuppression";
 import { BiometricToastProvider } from "@/context/BiometricToastContext";
 import { SplashScreenProvider } from "@/context/SplashScreenContext";
 import * as SplashScreen from 'expo-splash-screen';
+import { logger } from '@/lib/logger';
 
 // Initialize error suppression configuration
 initializeErrorSuppression();
 
 // Keep the native splash screen visible initially
-SplashScreen.preventAutoHideAsync().catch(console.warn);
+SplashScreen.preventAutoHideAsync().catch((error) => {
+  logger.warn('APP', 'Failed to prevent auto hide of splash screen:', error);
+});
 
 function RootLayoutContent() {
   return (

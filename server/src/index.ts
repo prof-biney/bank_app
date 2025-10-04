@@ -6,6 +6,7 @@ import { Client, Databases, ID, Query } from 'node-appwrite';
 import { appwriteAuth } from './middleware/auth';
 import { luhnValid, detectBrand } from './utils/luhn';
 import { validatePhoneForNetwork, isValidGhanaianMobileNumber } from './utils/phoneValidation';
+import { logger } from './utils/logger';
 
 const app = new Hono();
 
@@ -160,7 +161,12 @@ v1.post('/cards', appwriteAuth, async (c) => {
 
     // Log non-sensitive diagnostics
     const hasApiKey = Boolean(process.env.APPWRITE_API_KEY);
-    console.log('[cards.create] begin', { userId: user.$id, hasApiKey, databaseIdPresent: Boolean(databaseId), cardsCollectionPresent: Boolean(cardsCollectionId) });
+    logger.info('CARDS', 'cards.create begin', { 
+      userId: user.$id, 
+      hasApiKey, 
+      databaseIdPresent: Boolean(databaseId), 
+      cardsCollectionPresent: Boolean(cardsCollectionId) 
+    });
 
     const doc = await databases.createDocument(databaseId, cardsCollectionId, ID.unique(), {
       userId: user.$id,
@@ -185,7 +191,7 @@ v1.post('/cards', appwriteAuth, async (c) => {
       created: doc.$createdAt
     };
     if (idemKey) idem.set(`${user.$id}:${idemKey}`, { status: 200, body, expiresAt: Date.now() + IDEM_TTL_MS });
-    console.log('[cards.create] success', { userId: user.$id, docId: doc.$id });
+    logger.info('CARDS', 'cards.create success', { userId: user.$id, docId: doc.$id });
     return c.json(body);
   } catch (e: any) {
     const errInfo = {
@@ -194,7 +200,7 @@ v1.post('/cards', appwriteAuth, async (c) => {
       type: e?.type,
       response: e?.response || undefined,
     };
-    console.error('[cards.create] error', { userId: (c.get('user') as any)?.$id, ...errInfo });
+    logger.error('CARDS', 'cards.create error', { userId: (c.get('user') as any)?.$id, ...errInfo });
     return c.json({ error: 'server_error', ...errInfo }, 500);
   }
 });
@@ -513,7 +519,7 @@ v1.post('/transfers', appwriteAuth, async (c) => {
     
     // Step 2: Search for recipient card that matches both card number and holder name
     const cleanRecipientNumber = recipient.replace(/[^0-9]/g, ''); // Remove all non-digits
-    console.log('[transfer.create] searching for recipient', { recipientNumber: cleanRecipientNumber, recipientName });
+    logger.info('TRANSFERS', 'searching for recipient', { recipientNumber: cleanRecipientNumber, recipientName });
     
     // Search for cards with matching last4 digits first
     const last4 = cleanRecipientNumber.slice(-4);
@@ -522,7 +528,7 @@ v1.post('/transfers', appwriteAuth, async (c) => {
       Query.limit(50) // Reasonable limit to avoid performance issues
     ]);
     
-    console.log('[transfer.create] found', potentialCards.documents.length, 'cards with matching last4:', last4);
+    logger.info('TRANSFERS', 'potential matches found', { count: potentialCards.documents.length, last4 });
     
     // Filter by exact card number match and holder name (if provided)
     for (const card of potentialCards.documents) {
@@ -535,7 +541,7 @@ v1.post('/transfers', appwriteAuth, async (c) => {
         
         if (!recipientName || cardHolderName === providedName) {
           recipientCard = card;
-          console.log('[transfer.create] found matching recipient card:', {
+          logger.info('TRANSFERS', 'found matching recipient card', {
             cardId: card.$id,
             userId: card.userId,
             holderName: card.holder,
@@ -569,7 +575,7 @@ v1.post('/transfers', appwriteAuth, async (c) => {
       await databases.updateDocument(databaseId, cardsCol, recipientCard.$id, { balance: newRecipientBalance });
       recipientCredited = true;
       
-      console.log('[transfer.create] credited recipient card', {
+      logger.info('TRANSFERS', 'credited recipient card', {
         recipientCardId: recipientCard.$id,
         previousBalance: recipientCurrentBalance,
         newBalance: newRecipientBalance,
@@ -613,9 +619,9 @@ v1.post('/transfers', appwriteAuth, async (c) => {
             message: `You received GHS ${amount.toFixed(2)} from ${senderCard.holder}. Your new balance is GHS ${newRecipientBalance!.toFixed(2)}.`,
             unread: true
           });
-          console.log('[transfer.create] notification sent to recipient:', recipientCard.userId);
+          logger.info('TRANSFERS', 'notification sent to recipient', { recipientUserId: recipientCard.userId });
         } catch (notifError) {
-          console.warn('[transfer.create] failed to send notification:', notifError);
+          logger.warn('TRANSFERS', 'failed to send notification', { error: notifError });
           // Don't fail the transfer if notification fails
         }
       }
@@ -638,7 +644,7 @@ v1.post('/transfers', appwriteAuth, async (c) => {
     
     if (idemKey) idem.set(`${user.$id}:${idemKey}`, { status: 200, body, expiresAt: Date.now() + IDEM_TTL_MS });
     
-    console.log('[transfer.create] success', {
+    logger.info('TRANSFERS', 'transfer success', {
       userId: user.$id,
       cardId,
       amount,
@@ -652,21 +658,21 @@ v1.post('/transfers', appwriteAuth, async (c) => {
     
   } catch (e: any) {
     // Rollback logic: if any balance was changed, restore it
-    console.error('[transfer.create] error occurred, attempting rollback', { error: e?.message });
+    logger.error('TRANSFERS', 'transfer error occurred, attempting rollback', { error: e?.message });
     
     if (recipientCredited && recipientCard && originalRecipientBalance >= 0) {
       try {
         await databases.updateDocument(databaseId, cardsCol, recipientCard.$id, { balance: originalRecipientBalance });
-        console.log('[transfer.create] rolled back recipient balance', { recipientCardId: recipientCard.$id, originalBalance: originalRecipientBalance });
+        logger.info('TRANSFERS', 'rolled back recipient balance', { recipientCardId: recipientCard.$id, originalBalance: originalRecipientBalance });
       } catch (rollbackError) {
-        console.error('[transfer.create] failed to rollback recipient balance:', rollbackError);
+        logger.error('TRANSFERS', 'failed to rollback recipient balance', { error: rollbackError });
       }
     }
     
     if (balanceDebited && originalBalance > 0) {
       try {
         await databases.updateDocument(databaseId, cardsCol, cardId, { balance: originalBalance });
-        console.log('[transfer.create] rolled back sender balance', { cardId, originalBalance });
+        logger.info('TRANSFERS', 'rolled back sender balance', { cardId, originalBalance });
         
         // Create a failed transaction record
         await databases.createDocument(databaseId, txCol, ID.unique(), {
@@ -681,7 +687,7 @@ v1.post('/transfers', appwriteAuth, async (c) => {
           failureReason: 'system_error'
         });
       } catch (rollbackError) {
-        console.error('[transfer.create] failed to rollback sender balance:', rollbackError);
+        logger.error('TRANSFERS', 'failed to rollback sender balance', { error: rollbackError });
       }
     }
     
@@ -691,7 +697,7 @@ v1.post('/transfers', appwriteAuth, async (c) => {
       type: e?.type,
       response: e?.response || undefined,
     };
-    console.error('[transfer.create] error', { userId: user.$id, cardId, amount, ...errInfo });
+    logger.error('TRANSFERS', 'transfer error', { userId: user.$id, cardId, amount, ...errInfo });
     return c.json({ error: 'server_error', message: 'Transfer failed. Any debited amounts have been refunded.', ...errInfo }, 500);
   }
 });
@@ -761,7 +767,7 @@ v1.post('/deposits', appwriteAuth, async (c) => {
             unread: true
           });
         } catch (notifError) {
-          console.warn('[deposit.create] failed to send cash deposit notification:', notifError);
+          logger.warn('DEPOSITS', 'failed to send cash deposit notification', { error: notifError });
         }
       }
       
@@ -779,7 +785,7 @@ v1.post('/deposits', appwriteAuth, async (c) => {
       
       if (idemKey) idem.set(`${user.$id}:${idemKey}`, { status: 200, body, expiresAt: Date.now() + IDEM_TTL_MS });
       
-      console.log('[deposit.create] cash deposit completed immediately', {
+      logger.info('DEPOSITS', 'cash deposit completed immediately', {
         userId: user.$id,
         depositId: depositDoc.$id,
         cardId,
@@ -808,7 +814,7 @@ v1.post('/deposits', appwriteAuth, async (c) => {
     
     if (idemKey) idem.set(`${user.$id}:${idemKey}`, { status: 200, body, expiresAt: Date.now() + IDEM_TTL_MS });
     
-    console.log('[deposit.create] pending deposit created', {
+    logger.info('DEPOSITS', 'pending deposit created', {
       userId: user.$id,
       depositId: depositDoc.$id,
       cardId,
@@ -825,7 +831,7 @@ v1.post('/deposits', appwriteAuth, async (c) => {
       type: e?.type,
       response: e?.response || undefined,
     };
-    console.error('[deposit.create] error', { userId: user.$id, cardId, amount, ...errInfo });
+    logger.error('DEPOSITS', 'deposit create error', { userId: user.$id, cardId, amount, ...errInfo });
     return c.json({ error: 'server_error', message: 'Failed to create deposit request', ...errInfo }, 500);
   }
 });
@@ -901,11 +907,11 @@ v1.post('/deposits/:id/confirm', appwriteAuth, async (c) => {
           unread: true
         });
       } catch (notifError) {
-        console.warn('[deposit.confirm] failed to send notification:', notifError);
+        logger.warn('DEPOSITS', 'failed to send deposit confirmation notification', { error: notifError });
       }
     }
     
-    console.log('[deposit.confirm] deposit completed', {
+    logger.info('DEPOSITS', 'deposit confirmed and completed', {
       userId: user.$id,
       depositId: id,
       cardId: depositDoc.cardId,
@@ -929,7 +935,7 @@ v1.post('/deposits/:id/confirm', appwriteAuth, async (c) => {
       code: e?.code,
       type: e?.type,
     };
-    console.error('[deposit.confirm] error', { userId: user.$id, depositId: id, ...errInfo });
+    logger.error('DEPOSITS', 'deposit confirm error', { userId: user.$id, depositId: id, ...errInfo });
     return c.json({ error: 'server_error', message: 'Failed to confirm deposit', ...errInfo }, 500);
   }
 });
@@ -1224,7 +1230,7 @@ v1.post('/notifications', appwriteAuth, async (c) => {
       createdAt: doc.$createdAt
     });
   } catch (e: any) {
-    console.error('[notifications.create] error', { userId: user.$id, error: e?.message });
+    logger.error('NOTIFICATIONS', 'notification create error', { userId: user.$id, error: e?.message });
     return c.json({ error: 'server_error', message: e?.message }, 500);
   }
 });
@@ -1356,7 +1362,7 @@ v1.get('/sentry/env', (c) => {
 
 v1.post('/sentry/test', appwriteAuth, async (c) => {
   const user = (c.get('user') as any) || {};
-  console.error('[sentry:test] sample error triggered', { ts: new Date().toISOString(), user: user.$id || 'anon' });
+  logger.error('SENTRY', 'test error triggered', { ts: new Date().toISOString(), user: user.$id || 'anon' });
   return c.json({ ok: true }, 202);
 });
 
@@ -1413,7 +1419,7 @@ v1.get('/diag', async (c) => {
 app.route('/v1', v1);
 
 const port = Number(process.env.PORT || 3000);
-console.log(`[server] listening on http://localhost:${port}`);
+logger.info('SERVER', 'server starting', { port, endpoint: `http://localhost:${port}` });
 export default {
   port,
   fetch: app.fetch

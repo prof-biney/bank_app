@@ -10,6 +10,8 @@ import { databaseService, Query, ID, collections } from './database';
 import { authService } from './auth';
 import { logger } from '../logger';
 import { activityLogger } from '../activityLogger';
+// Cache and auto-refresh will be handled inline like transfer service
+import { withdrawalPaymentsAPI, type WithdrawalPaymentRequest, type BankTransferRequest, type CashPickupRequest } from '../api/withdrawalPaymentsAPI';
 import type { Card } from '@/types';
 
 // Ghana-specific mobile networks
@@ -370,43 +372,197 @@ export class AppwriteWithdrawalService {
   }
 
   /**
-   * Initiate withdrawal request
+   * Process withdrawal with comprehensive error handling and validation
    */
-  async initiateWithdrawal(withdrawalRequest: WithdrawalRequest): Promise<WithdrawalResponse> {
+  async processWithdrawal(withdrawalRequest: WithdrawalRequest): Promise<WithdrawalResponse & { newBalance?: number; transactionId?: string }> {
+    let withdrawalId: string | null = null;
+    let uploadedFileCleanup: string[] = []; // Track any files that need cleanup
+    
     try {
       const userId = await this.getCurrentUserId();
       
-      logger.info('WITHDRAWAL_SERVICE', 'Initiating withdrawal', {
+      logger.info('WITHDRAWAL_SERVICE', 'Processing enhanced withdrawal', {
         userId,
         amount: withdrawalRequest.amount,
         method: withdrawalRequest.withdrawalMethod,
+        cardId: withdrawalRequest.cardId,
+        requestId: withdrawalId
+      });
+
+      // Step 1: Validate withdrawal request
+      logger.info('WITHDRAWAL_SERVICE', 'Step 1: Validating withdrawal request');
+      try {
+        this.validateWithdrawalRequest(withdrawalRequest);
+        logger.info('WITHDRAWAL_SERVICE', 'Withdrawal request validation passed');
+      } catch (validationError) {
+        logger.error('WITHDRAWAL_SERVICE', 'Withdrawal request validation failed', validationError);
+        throw new Error(`Validation failed: ${validationError.message}`);
+      }
+
+      // Step 2: Get and validate card
+      logger.info('WITHDRAWAL_SERVICE', 'Step 2: Fetching and validating card');
+      let card;
+      try {
+        card = await databaseService.getDocument(collections.cards.id, withdrawalRequest.cardId);
+        if (!card) {
+          throw new Error('Card not found in database');
+        }
+        logger.info('WITHDRAWAL_SERVICE', 'Card retrieved successfully', {
+          cardId: withdrawalRequest.cardId,
+          balance: card.balance,
+          cardType: card.type
+        });
+      } catch (cardError) {
+        logger.error('WITHDRAWAL_SERVICE', 'Failed to retrieve card', cardError);
+        throw new Error(`Card access failed: ${cardError.message}`);
+      }
+
+      // Step 3: Verify card ownership
+      if (card.userId !== userId) {
+        logger.error('WITHDRAWAL_SERVICE', 'Unauthorized card access attempt', {
+          cardUserId: card.userId,
+          requestUserId: userId
+        });
+        throw new Error('Unauthorized: Card does not belong to current user');
+      }
+
+      // Step 4: Check balance sufficiency
+      const currentBalance = card.balance; // Balance is already in correct format (GHS)
+      const requestedAmount = withdrawalRequest.amount;
+      
+      logger.info('WITHDRAWAL_SERVICE', 'Step 4: Balance verification', {
+        currentBalance,
+        requestedAmount,
         cardId: withdrawalRequest.cardId
       });
 
-      // Validate withdrawal request
-      this.validateWithdrawalRequest(withdrawalRequest);
+      if (currentBalance < requestedAmount) {
+        const error = `Insufficient funds. Available: GHS ${currentBalance.toFixed(2)}, Requested: GHS ${requestedAmount.toFixed(2)}`;
+        logger.error('WITHDRAWAL_SERVICE', 'Insufficient balance', {
+          available: currentBalance,
+          requested: requestedAmount,
+          deficit: requestedAmount - currentBalance
+        });
+        throw new Error(error);
+      }
 
-      // Calculate fees
+      // Step 5: Calculate fees and final amounts
+      logger.info('WITHDRAWAL_SERVICE', 'Step 5: Calculating fees and amounts');
       const fees = this.calculateWithdrawalFees(withdrawalRequest.amount, withdrawalRequest.withdrawalMethod);
       const netAmount = withdrawalRequest.amount - fees;
-
-      // Generate unique withdrawal ID
-      const withdrawalId = ID.unique();
+      const newBalance = currentBalance - requestedAmount;
       
-      // Generate instructions
-      const instructions = this.generateWithdrawalInstructions(withdrawalRequest, withdrawalId, fees);
+      logger.info('WITHDRAWAL_SERVICE', 'Fee calculation completed', {
+        requestedAmount,
+        fees,
+        netAmount,
+        newBalance
+      });
 
-      // Prepare withdrawal data for database
-      const withdrawalData = {
+      // Step 6: Generate unique withdrawal ID and instructions
+      logger.info('WITHDRAWAL_SERVICE', 'Step 6: Generating withdrawal ID and instructions');
+      withdrawalId = ID.unique();
+      
+      const instructions = this.generateWithdrawalInstructions(withdrawalRequest, withdrawalId, fees);
+      logger.info('WITHDRAWAL_SERVICE', 'Instructions generated', {
+        withdrawalId,
+        reference: instructions.reference,
+        method: withdrawalRequest.withdrawalMethod
+      });
+
+      // Step 7: Process payment through external API
+      logger.info('WITHDRAWAL_SERVICE', 'Step 7: Processing payment through external API');
+      let paymentResult;
+      
+      try {
+        if (withdrawalRequest.withdrawalMethod === 'mobile_money') {
+          logger.info('WITHDRAWAL_SERVICE', 'Processing mobile money withdrawal');
+          const paymentRequest: WithdrawalPaymentRequest = {
+            cardId: withdrawalRequest.cardId,
+            amount: withdrawalRequest.amount,
+            currency: withdrawalRequest.currency || 'GHS',
+            network: withdrawalRequest.mobileNetwork as any,
+            recipientName: withdrawalRequest.recipientName || 'Recipient',
+            recipientNumber: withdrawalRequest.mobileNumber || '',
+            description: withdrawalRequest.description,
+            reference: instructions.reference
+          };
+          
+          paymentResult = await withdrawalPaymentsAPI.processMobileMoneyWithdrawal(paymentRequest);
+          
+        } else if (withdrawalRequest.withdrawalMethod === 'bank_transfer') {
+          logger.info('WITHDRAWAL_SERVICE', 'Processing bank transfer withdrawal');
+          const bankRequest: BankTransferRequest = {
+            cardId: withdrawalRequest.cardId,
+            amount: withdrawalRequest.amount,
+            currency: withdrawalRequest.currency || 'GHS',
+            bankCode: withdrawalRequest.bankName || '',
+            accountNumber: withdrawalRequest.accountNumber || '',
+            accountName: withdrawalRequest.accountName || '',
+            description: withdrawalRequest.description,
+            reference: instructions.reference
+          };
+          
+          paymentResult = await withdrawalPaymentsAPI.processBankTransfer(bankRequest);
+          
+        } else if (withdrawalRequest.withdrawalMethod === 'cash_pickup') {
+          logger.info('WITHDRAWAL_SERVICE', 'Processing cash pickup withdrawal');
+          const cashRequest: CashPickupRequest = {
+            cardId: withdrawalRequest.cardId,
+            amount: withdrawalRequest.amount,
+            currency: withdrawalRequest.currency || 'GHS',
+            provider: withdrawalRequest.pickupProvider || '',
+            receiverName: withdrawalRequest.receiverName || '',
+            receiverPhone: withdrawalRequest.receiverPhone || '',
+            receiverIdType: withdrawalRequest.receiverIdType || 'ghana_card',
+            receiverIdNumber: withdrawalRequest.receiverIdNumber || '',
+            description: withdrawalRequest.description,
+            reference: instructions.reference
+          };
+          
+          paymentResult = await withdrawalPaymentsAPI.processCashPickup(cashRequest);
+        } else {
+          throw new Error(`Unsupported withdrawal method: ${withdrawalRequest.withdrawalMethod}`);
+        }
+        
+        logger.info('WITHDRAWAL_SERVICE', 'Payment processing completed', {
+          success: paymentResult.success,
+          paymentId: paymentResult.data?.paymentId,
+          transactionId: paymentResult.data?.transactionId
+        });
+        
+      } catch (paymentError) {
+        logger.error('WITHDRAWAL_SERVICE', 'Payment processing failed', paymentError);
+        throw new Error(`Payment processing failed: ${paymentError.message}`);
+      }
+      
+      if (!paymentResult.success) {
+        const error = paymentResult.error || 'Payment processing failed';
+        logger.error('WITHDRAWAL_SERVICE', 'Payment processing returned failure', {
+          error,
+          paymentResult
+        });
+        throw new Error(error);
+      }
+      
+      // Update fees and amounts from payment result
+      const actualFees = paymentResult.data?.fees || fees;
+      const actualNetAmount = paymentResult.data?.netAmount || netAmount;
+      const actualNewBalance = currentBalance - withdrawalRequest.amount;
+
+      // Create withdrawal record in database with payment details
+      const enhancedWithdrawalData = {
         userId,
         cardId: withdrawalRequest.cardId,
-        amount: Math.round(withdrawalRequest.amount * 100), // Convert to cents
-        fees: Math.round(fees * 100),
-        netAmount: Math.round(netAmount * 100),
+        amount: withdrawalRequest.amount, // Keep in GHS format
+        fees: actualFees,
+        netAmount: actualNetAmount,
         currency: withdrawalRequest.currency || 'GHS',
         withdrawalMethod: withdrawalRequest.withdrawalMethod,
-        status: 'pending',
-        reference: instructions.reference,
+        status: paymentResult.data?.status || 'completed',
+        reference: paymentResult.data?.reference || instructions.reference,
+        paymentId: paymentResult.data?.paymentId,
+        transactionId: paymentResult.data?.transactionId,
         
         // Method-specific data
         mobileNetwork: withdrawalRequest.mobileNetwork,
@@ -424,23 +580,62 @@ export class AppwriteWithdrawalService {
         receiverIdNumber: withdrawalRequest.receiverIdNumber,
         
         description: withdrawalRequest.description,
-        instructions: instructions,
-        metadata: withdrawalRequest.metadata || {},
+        instructions: paymentResult.data?.instructions || instructions,
+        metadata: { 
+          ...withdrawalRequest.metadata, 
+          paymentProcessing: paymentResult.data 
+        },
         expiresAt: instructions.expiresAt,
+        completedAt: new Date().toISOString(),
         createdAt: new Date().toISOString(),
       };
-
-      // Create withdrawal record in database
+      
       const document = await databaseService.createDocument(
-        collections.withdrawals.id,
-        withdrawalData,
+        collections.transactions.id,
+        enhancedWithdrawalData,
         withdrawalId
+      );
+
+      // Update card balance (keep in GHS format)
+      await databaseService.updateDocument(
+        collections.cards.id,
+        withdrawalRequest.cardId,
+        {
+          balance: actualNewBalance, // Keep in GHS format
+          lastTransactionDate: new Date().toISOString()
+        }
+      );
+
+      // Create transaction record
+      const transactionData = {
+        userId,
+        cardId: withdrawalRequest.cardId,
+        type: 'withdrawal',
+        amount: withdrawalRequest.amount, // Keep in GHS format
+        currency: withdrawalRequest.currency || 'GHS',
+        description: withdrawalRequest.description || `Withdrawal via ${withdrawalRequest.withdrawalMethod.replace('_', ' ')}`,
+        balanceAfter: actualNewBalance,
+        fees: actualFees,
+        reference: paymentResult.data?.reference || instructions.reference,
+        withdrawalMethod: withdrawalRequest.withdrawalMethod,
+        recipient: withdrawalRequest.recipientName || withdrawalRequest.accountName || withdrawalRequest.receiverName,
+        status: 'completed',
+        paymentId: paymentResult.data?.paymentId,
+        externalTransactionId: paymentResult.data?.transactionId,
+        processedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString()
+      };
+
+      const transactionDoc = await databaseService.createDocument(
+        collections.transactions.id,
+        transactionData,
+        ID.unique()
       );
 
       // Log activity to centralized logger (fire-and-forget)
       activityLogger.logTransactionActivity(
         document.$id,
-        'created',
+        'completed',
         'withdrawal',
         {
           amount: withdrawalRequest.amount,
@@ -448,48 +643,163 @@ export class AppwriteWithdrawalService {
           withdrawalMethod: withdrawalRequest.withdrawalMethod,
           fees: fees,
           netAmount: netAmount,
+          newBalance: newBalance,
           currency: withdrawalRequest.currency || 'GHS',
           recipient: withdrawalRequest.recipientName || withdrawalRequest.accountName || withdrawalRequest.receiverName,
-          status: 'pending',
+          status: 'completed',
+          transactionId: transactionDoc.$id
         },
-        `Withdrawal request created: ${withdrawalRequest.withdrawalMethod.replace('_', ' ')}`,
+        `Withdrawal completed: ${withdrawalRequest.withdrawalMethod.replace('_', ' ')}`,
         userId
       ).catch(error => {
         logger.warn('WITHDRAWAL_SERVICE', 'Failed to log withdrawal activity', error);
       });
 
-      // Withdrawal request has been logged to centralized activity logger above
+      // Clear withdrawal-related cache
+      await this.clearWithdrawalCache(withdrawalRequest.cardId);
+      
+      // Trigger auto-refresh of relevant data (fire-and-forget)
+      this.triggerAutoRefresh(withdrawalRequest.cardId);
 
-      logger.info('WITHDRAWAL_SERVICE', 'Withdrawal request created successfully', {
+        logger.info('WITHDRAWAL_SERVICE', 'Withdrawal processed successfully', {
         withdrawalId: document.$id,
+        transactionId: transactionDoc.$id,
+        paymentId: paymentResult.data?.paymentId,
         amount: withdrawalRequest.amount,
-        netAmount,
-        fees
+        netAmount: actualNetAmount,
+        fees: actualFees,
+        newBalance: actualNewBalance
       });
 
       return {
         success: true,
         data: {
           id: document.$id,
-          status: 'pending',
+          status: paymentResult.data?.status || 'completed',
           amount: withdrawalRequest.amount,
-          fees,
-          netAmount,
-          newBalance: 0, // Will be updated after processing
-          instructions,
-          reference: instructions.reference,
-          estimatedCompletionTime: this.getEstimatedCompletionTime(withdrawalRequest.withdrawalMethod),
+          fees: actualFees,
+          netAmount: actualNetAmount,
+          newBalance: actualNewBalance,
+          instructions: paymentResult.data?.instructions || instructions,
+          reference: paymentResult.data?.reference || instructions.reference,
+          estimatedCompletionTime: paymentResult.data?.estimatedCompletionTime || this.getEstimatedCompletionTime(withdrawalRequest.withdrawalMethod),
           expiresAt: instructions.expiresAt
-        }
+        },
+        newBalance: actualNewBalance,
+        transactionId: paymentResult.data?.transactionId || transactionDoc.$id
       };
 
     } catch (error) {
-      logger.error('WITHDRAWAL_SERVICE', 'Failed to initiate withdrawal', error);
+      logger.error('WITHDRAWAL_SERVICE', 'Failed to process withdrawal', error);
+      
+      // Log failure activity
+      try {
+        const userId = await this.getCurrentUserId();
+        await activityLogger.logTransactionActivity(
+          'FAILED_WITHDRAWAL',
+          'failed',
+          'withdrawal',
+          {
+            amount: withdrawalRequest.amount,
+            cardId: withdrawalRequest.cardId,
+            withdrawalMethod: withdrawalRequest.withdrawalMethod,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          },
+          `Withdrawal failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          userId
+        );
+      } catch (logError) {
+        logger.warn('WITHDRAWAL_SERVICE', 'Failed to log withdrawal failure activity', logError);
+      }
+      
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to initiate withdrawal'
+        error: error instanceof Error ? error.message : 'Failed to process withdrawal'
       };
     }
+  }
+
+  /**
+   * Clear withdrawal-related cache and refresh data
+   */
+  private async clearWithdrawalCache(cardId: string): Promise<void> {
+    try {
+      // Import AsyncStorage for cache cleanup
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      
+      // Clear transaction cache that might be stale
+      await AsyncStorage.removeItem('cached_transactions');
+      await AsyncStorage.removeItem('transaction_cache');
+      
+      // Clear card balance cache
+      await AsyncStorage.removeItem(`card_balance_${cardId}`);
+      
+      // Clear any withdrawal history cache
+      await AsyncStorage.removeItem('withdrawal_history');
+      
+      logger.info('WITHDRAWAL_SERVICE', 'Withdrawal cache cleared successfully');
+    } catch (error) {
+      logger.warn('WITHDRAWAL_SERVICE', 'Failed to clear withdrawal cache', error);
+      // Non-critical error - don't fail the withdrawal
+    }
+  }
+  
+  /**
+   * Trigger auto-refresh of relevant data after successful withdrawal
+   */
+  private async triggerAutoRefresh(cardId: string): Promise<void> {
+    try {
+      // Import refresh functions from app context if available
+      const { refreshCardBalances, refreshTransactions, refreshNotifications } = await import('@/context/AppContext');
+      
+      // Trigger refresh of card balances
+      setTimeout(async () => {
+        try {
+          if (refreshCardBalances) {
+            await refreshCardBalances();
+            logger.info('WITHDRAWAL_SERVICE', 'Card balances refreshed after withdrawal');
+          }
+        } catch (error) {
+          logger.warn('WITHDRAWAL_SERVICE', 'Failed to refresh card balances', error);
+        }
+      }, 500);
+      
+      // Trigger refresh of transactions
+      setTimeout(async () => {
+        try {
+          if (refreshTransactions) {
+            await refreshTransactions();
+            logger.info('WITHDRAWAL_SERVICE', 'Transactions refreshed after withdrawal');
+          }
+        } catch (error) {
+          logger.warn('WITHDRAWAL_SERVICE', 'Failed to refresh transactions', error);
+        }
+      }, 1000);
+      
+      // Trigger refresh of notifications
+      setTimeout(async () => {
+        try {
+          if (refreshNotifications) {
+            await refreshNotifications();
+            logger.info('WITHDRAWAL_SERVICE', 'Notifications refreshed after withdrawal');
+          }
+        } catch (error) {
+          logger.warn('WITHDRAWAL_SERVICE', 'Failed to refresh notifications', error);
+        }
+      }, 1500);
+      
+    } catch (error) {
+      logger.warn('WITHDRAWAL_SERVICE', 'Failed to trigger auto-refresh', error);
+      // Non-critical error
+    }
+  }
+  
+  /**
+   * Initiate withdrawal request (legacy method for backward compatibility)
+   */
+  async initiateWithdrawal(withdrawalRequest: WithdrawalRequest): Promise<WithdrawalResponse> {
+    // For enhanced functionality, use processWithdrawal instead
+    return this.processWithdrawal(withdrawalRequest);
   }
 
   /**
@@ -625,10 +935,10 @@ export class AppwriteWithdrawalService {
           queries.push(Query.equal('withdrawalMethod', method));
         }
         if (minAmount !== undefined) {
-          queries.push(Query.greaterThanEqual('amount', Math.round(minAmount * 100)));
+          queries.push(Query.greaterThanEqual('amount', minAmount));
         }
         if (maxAmount !== undefined) {
-          queries.push(Query.lessThanEqual('amount', Math.round(maxAmount * 100)));
+          queries.push(Query.lessThanEqual('amount', maxAmount));
         }
         if (dateFrom) {
           queries.push(Query.greaterThanEqual('$createdAt', dateFrom));
@@ -656,16 +966,16 @@ export class AppwriteWithdrawalService {
       }
 
       // Execute query
-      const response = await databaseService.listDocuments(collections.withdrawals.id, queries);
+      const response = await databaseService.listDocuments(collections.transactions.id, queries);
 
       // Transform documents
       const withdrawals = response.documents.map(doc => ({
         id: doc.$id,
         userId: doc.userId,
         cardId: doc.cardId,
-        amount: doc.amount / 100, // Convert from cents
-        fees: doc.fees / 100,
-        netAmount: doc.netAmount / 100,
+        amount: doc.amount, // Already in GHS format
+        fees: doc.fees,
+        netAmount: doc.netAmount,
         currency: doc.currency,
         withdrawalMethod: doc.withdrawalMethod,
         status: doc.status,
@@ -695,7 +1005,7 @@ export class AppwriteWithdrawalService {
     try {
       const userId = await this.getCurrentUserId();
       
-      const document = await databaseService.getDocument(collections.withdrawals.id, withdrawalId);
+      const document = await databaseService.getDocument(collections.transactions.id, withdrawalId);
       
       if (document.userId !== userId) {
         throw new Error('Unauthorized: Withdrawal does not belong to current user');
@@ -705,9 +1015,9 @@ export class AppwriteWithdrawalService {
         id: document.$id,
         userId: document.userId,
         cardId: document.cardId,
-        amount: document.amount / 100,
-        fees: document.fees / 100,
-        netAmount: document.netAmount / 100,
+        amount: document.amount,
+        fees: document.fees,
+        netAmount: document.netAmount,
         currency: document.currency,
         withdrawalMethod: document.withdrawalMethod,
         status: document.status,
@@ -751,7 +1061,7 @@ export class AppwriteWithdrawalService {
       }
 
       const document = await databaseService.updateDocument(
-        collections.withdrawals.id,
+        collections.transactions.id,
         withdrawalId,
         updateData
       );
@@ -794,13 +1104,12 @@ export class AppwriteWithdrawalService {
 // Create and export withdrawal service instance
 export const withdrawalService = new AppwriteWithdrawalService();
 
-// Export commonly used functions
-export const {
-  initiateWithdrawal,
-  queryWithdrawals,
-  getWithdrawal,
-  updateWithdrawalStatus
-} = withdrawalService;
+// Export commonly used functions with proper `this` binding
+export const processWithdrawal = withdrawalService.processWithdrawal.bind(withdrawalService);
+export const initiateWithdrawal = withdrawalService.initiateWithdrawal.bind(withdrawalService);
+export const queryWithdrawals = withdrawalService.queryWithdrawals.bind(withdrawalService);
+export const getWithdrawal = withdrawalService.getWithdrawal.bind(withdrawalService);
+export const updateWithdrawalStatus = withdrawalService.updateWithdrawalStatus.bind(withdrawalService);
 
 // Export default service
 export default withdrawalService;
